@@ -1,0 +1,143 @@
+﻿#TITLE:AdCtl: Склеиваем AdMob, Analytics и StartAD с QML
+
+      Привет.
+Вкратце. Не так давно на хабре была статья о скрещивании AdMob и Qt путём реализации кроссплатформенной библиотеки. Вот только не было там возможности интегрировать библиотеку с QML приложением. Недавно, решив встроить AdMob в своё небольшое новое Qt Quick приложение, я столкнулся с этой проблемой и реализовал небольшую обёртку. Но, так как я решил встроить рекламу, то мне понадобилась и аналитика.
+Покопался, нашёл соответствующую библиотеку для встраивания GAnalytics, подключил, всё ок. Опубликовал приложение — начал искать пути продвижения. Понял, что это давно уже подмятый бизнес и инди разработчику довольно сложно будет продвинуться без хороших инвестиций. 
+Но вдруг я наткнулся на интересный cross-promoution сервис — StartAd.mobi. Его суть в том, что в первый месяц сеть бесплатно даёт тебе в разы больше трафика, чем приводишь ты. Стало интересно, внедрил и этот сервис в проект для того чтобы проверить статистику и попытать счастья.
+Как вы понимаете, интеграция каждого из данных решений превратилась небольшой в ад, потому что в проекте появились три внешние зависимости, которыми не понятно как управлять.
+В итоге, посмотрел я на код проекта и понял что начал получаться франкенштейн, которого нужно срочно рефакторить. А если уж будем рефакторить — то выделим весь код отвечающий за взаимодействие с поставщиками рекламы и аналитикой в подпроект, сделаем его опенсорсом, напишем программный интерфейс и постараемся максимально облегчить его внедрение в любой новый Qt проект.
+Основное, чего я хотел достичь — делать как можно меньше телодвижений для интеграции такого функционала в будущие проекты.
+Так родился AdCtl.
+Под катом я расскажу о деталях реализации библиотеки и приведу примеры её внедрения в свой собственный проект.
+Итак, Вас заинтересовало моё небольшое описание? Отлично! Посмотрим, что же мы имеем.
+Библиотека представляет собой обёртку, интегрирующую на данный момент три внешних сервиса в одно целое:Google AdMob. основано на github.com/yevgeniy-logachev/QtAdMob;
+StartAD.mobi основано на github.com/kafeg/SDK-Android;
+Google Analytics основано на github.com/HSAnet/qt-google-analytics.
+
+Всё кроме StartAD заводится под Android и вроде бы должно завестись под iOS. За не имением соответствующих девайсов. не могу сделать и проверить нормальный порт.
+Смысл библиотеки заключается в объединении фукнций данных сервисов в единый программный интерфейс. Логика работы с библиотекой выглядит примерно так:У нас есть новое приложение под Android, которое мы только что выложили в Google Play;
+Мы хотим раскрутить наше приложение, а затем монетизировать его;
+Мы хотим получать статистику действий пользователей в приложении.
+
+Для этих целей мы делаем следующее:Определяем экраны, где будет показываться баннер AdMob;
+Определяем экраны, где будет показываться баннер StartAD.mobi;
+Интегрируем тот и другой баннеры, настраиваем отправку сведений в GAnalytics при совершении тех или иных действий пользователями.
+
+В общем всё максимально просто и логично.
+Для достижения данной цели достаточно просто. Вот что нам необходимо сделать. Для примера будем считать, что в нашем Qt проекте каталог android расположен по адресу PROJECT_ROOT/mobile/android.1. Добавляем новый подмодуль Git к нашему проекту.cd $$PROJECT_ROOT/mobile
+git submodule add https://github.com/kafeg/adctl.git
+git submodule update --init --recursive
+
+Данная команда скачает исходники библиотеки вместе с зависимостями.2. Подключаем .pri файл библиотеки к своему проекту.    #AdCtl: Google Analytics, AdMob, StartAD.mobi
+    ANDROID_PACKAGE_SOURCE_DIR = $$PWD/mobile/android
+    include(mobile/adctl/AdCtl.pri)
+    android {
+      OTHER_FILES += \
+        $$PWD/mobile/android/AndroidManifest.xml
+    }
+
+Здесь мы задаём директорию исходников android части приложения и подключаем наш .pri файл, который уже содержит все необходимые команды для интеграции внешних библиотек.3. Настраиваем наш AndroidManifext.xml по аналогии с habrahabr.ru/post/261425
+После тега 'application' добавляем строку подключающую к проекту Google Play Services:&lt;!--This meta-data tag is required to use Google Play Services.--&gt;
+        &lt;meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version"/&gt;
+
+Меняем параметр android:name главной activity на «ru.forsk.AdCtl.AdCtlActivity». Этим мы укажем компилятору, что главным классом activity будет именно наш класс, в котором реализованы все необходимые фичи.
+После главной activity добавляем ещё одну, специально для показа рекламы:        &lt;!--Include the AdActivity configChanges and theme. --&gt;
+        &lt;activity android:name="com.google.android.gms.ads.AdActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize" android:theme="@android:style/Theme.Translucent" android:label="Тёмные истории"&gt;
+            &lt;meta-data android:name="android.app.lib_name" android:value="darkstories"/&gt;
+        &lt;/activity&gt;
+
+И наконец добавляем нужные разрешения к проекту перед закрывающим тегом :&lt;uses-permission android:name="android.permission.INTERNET"/&gt;
+&lt;uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/&gt;
+&lt;uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/&gt;
+
+Готово! Итого мы интегрировали три внешних сервиса за три простых шага.
+Ну а все необходимые дополнительные файлы будут автоматически скопированы в каталог mobile/android средствами qmake.
+Как же их использовать? Покажу на примере QML.
+Допустим у нас есть файл main.qml в котором находится один Rectangle.Rectangle {
+    id: root
+    anchors.fill: parent
+}
+
+Желая добавить к нашему приложению рекламу мы должны сделать следующее:
+1. Объявить новый QML тип в main.cpp:    #include &lt;mobile/adctl/adctl.h&gt;
+    ...
+    //AdCtl
+    QApplication::setApplicationName("Darkstories");
+    QApplication::setApplicationVersion("1.1");
+    qmlRegisterType&lt;AdCtl&gt;("ru.forsk.adctl", 1, 0, "AdCtl");
+
+2. Добавить в наш main.qml объявление нашего нового типа.    AdCtl {
+        id: adCtl
+
+        //manage enabled components
+        adMobBannerEnabled: true
+        adMobIinterstitialEnabled: true
+        startAdBannerEnabled: true
+        gAnalyticsEnabled: true
+
+        //set ids
+        adMobId: "YOUR_ADMOB_UNIT_ID"
+        startAdId: "YOUR_STARTADMOBI_ID"
+        gAnalyticsId: "YOUR_GANALYTICS_TRACKING_ID"
+
+        //Start positions for banners.
+        adMobBannerPosition: Qt.point(0,-500)
+        startAdBannerPosition: Qt.point(0,-500)
+
+        //when StartAd.mobi baners is showed we can to reposition it
+        onStartAdBannerShowed: {
+            console.log("onStartAdBannerShowed");
+            startAdBannerPosition = Qt.point(0,
+                                     (appWindow.height - adCtl.startAdBannerHeight * 1.3))
+        }
+
+        //when AdMob baners is showed we can to reposition it
+        onAdMobBannerShowed: {
+            console.log("onAdMobBannerShowed");
+            adMobBannerPosition = Qt.point((appWindow.width - adCtl.adMobBannerWidth) * 0.5,
+                                     (appWindow.height - adCtl.adMobBannerHeight * 1.5 - 200))
+            adCtl.showAdMobInterstitial();
+        }
+
+        //When all variables are setted, we can to initialize our code
+        Component.onCompleted: { adCtl.init(); adCtl.showAdMobInterstitial(); }
+    }
+
+3. Изменить описание нашего root-элемента.Rectangle {
+    id: root
+    anchors.fill: parent
+    anchors.bottomMargin: adCtl.startAdBannerHeight
+    Component.onCompleted: { adCtl.sendGaAppView("MainWindow"); }
+}
+
+И всё будет работать!
+Что здесь происходит? Очень просто.
+При объявлении нового элемента типа AdCtl мы задаём параметрами, какие подмодули нам нужны в текущем приложении. Доступно как видно из исходника 4 модуля — AdMob Banner, AbMobInterstitial, StartAd Banner и Google Analytics.
+После объявления необходимых модулей, мы задаём ID Для каждого из внешних сервисов.
+И наконец, мы устанавливаем позиции по умолчанию за границами экрана и итоговые позиции баннеров, основываясь на событиях. происходящих в тот момент, когда баннеры получили всю информацию и окончательно отрисовались.
+В то же время, мы сдвигаем положение root элемента нашего приложения таким образом. чтобы баннер никогда не перекрывал интерфейс приложения.
+Вот в общем-то и всё. Подключение данной библиотеки в новый проект будет занимать не более 10 минут, а на выходе мы получаем полноценную интеграцию с тремя внешними срвисами и можем рулить баннерами как душе угодно.
+Помимо описанных выше функций. библиотека также предоставляет несколько методов. которые можно дёргать в любой момент.
+Методы для управления баннерами:    void showAdMobBanner();
+    void hideAdMobBanner();
+    void showAdMobInterstitial();
+    void showStartAdBanner();
+    void hideStartAdBanner();
+
+Методы для управления Google Analytics:    void sendGaAppView(const QString &amp;screenName = QString());
+    void sendGaEvent(const QString &amp;category = QString(),
+                   const QString &amp;action = QString(),
+                   const QString &amp;label = QString(),
+                   const QVariant &amp;value = QVariant());
+    void endGaSession();
+
+Все описанные методы доступны из QML кода с таким синтаксисом:adCtl.sendGaEvent("EventCategory", "EventAction", "Event label", "Event value")
+
+Собственно всё.
+В дальнейших планах у меня расширить функциональность библиотеки и добавить возможность авторизации через Google Play Services, сохранение результатов игр в облаке и взаимодействие с ачивками.
+Жду Ваших комментариев и предложений. Библиотека позволяет легко подключить другие рекламные площадки. Также, не отказался бы от помощи в интеграции iOS зависимой части кода для StartAD и проверки работоспособности кода GAnalytics и QtAdMob на данной платформе.
+PS: Ссылка на демо приложение есть на GitHub странице библиотеки.
+
+      
+      
+    

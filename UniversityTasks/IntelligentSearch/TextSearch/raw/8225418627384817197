@@ -1,0 +1,126 @@
+﻿#TITLE:Проверяем все страницы сайта в валидаторе html
+
+      Интро
+Цель — создать велосипед скрипт, который пробежится по сайту и проверит каждую страницу сайта на валидность html. 
+Я слышал, что если нападает перфекционизм, то надо полежать, отдохнуть и это пройдет. 
+Подумаешь, в валидаторе ошибка…
+Но если все же не проходит, то Ставим докер и контейнер с валидатором
+Раньше поставить локальный валидатор было делом муторным. 
+Не то, что бы сложным, а требующим времени. 
+С приходом докера он устанавливается за секунды. 
+Ставим докер:yum install docker
+
+После установки докера берем себе готовый образ с собранным валидатором:docker pull magnetikonline/html5validator
+
+Когда образ закачается, то запускаем его:docker run -p 8080:80 -p 8888:8888 --name validator --restart=always  -d magnetikonline/html5validator
+
+И стартуем:docker start validator
+
+После запуска можно зайти на http://localhost:8888 и увидеть:
+Локальный валидатор работает! Его можно натравить на какой-нибудь сайт. 
+И проверяем с командной строки:curl 'localhost:8888?doc=http://www.w3schools.com'
+И вот такой результат:
+Как видно, валидатор нашел 3 ошибки. Паучок
+Теперь надо написать скрипт, который бы обошел все страницы сайта. 
+За основу я взял вот такой web crawler/scraper на основе Mojo.
+И немного изменил:#!/usr/bin/env perl
+use 5.010;
+use open qw(:locale);
+use strict;
+use utf8;
+use warnings qw(all);
+use Mojo::UserAgent;
+use List::MoreUtils 'true';
+use Term::ANSIColor;
+
+# Адрес сайта для проверки
+my $site_to_check = 'http://habrahabr.ru';
+
+# Адрес локального валидатора
+my $local_validator = 'http://192.168.1.217:8888';
+
+# FIFO queue
+my @urls = ( Mojo::URL-&gt;new($site_to_check) );
+
+# User agent following up to 5 redirects
+my $ua = Mojo::UserAgent-&gt;new( max_redirects =&gt; 5 );
+
+# Track accessed URLs
+my $active = 0;
+my %uniq;
+
+sub parse {
+    my ($tx) = @_;
+
+    # Request URL
+    my $url = $tx-&gt;req-&gt;url;
+
+    # Extract and enqueue URLs
+    for my $e ( $tx-&gt;res-&gt;dom('a[href]')-&gt;each ) {
+
+        # Validate href attribute
+        my $link = Mojo::URL-&gt;new( $e-&gt;{href} );
+        next if 'Mojo::URL' ne ref $link;
+
+        # "normalize" link
+        $link = $link-&gt;to_abs( $tx-&gt;req-&gt;url )-&gt;fragment(undef);
+        next unless $link-&gt;protocol =~ /^https?$/x;
+
+        # Don't go deeper than /a/b/c
+        next if @{ $link-&gt;path-&gt;parts } &gt; 3;
+
+        # Access every link only once
+        next if ++$uniq{ $link-&gt;to_string } &gt; 1;
+
+        # Don't visit other hosts
+        next if $link-&gt;host ne $url-&gt;host;
+
+        push @urls, $link;
+        my $get   = $ua-&gt;get( $local_validator . "?doc=$link" )-&gt;res-&gt;body;
+        my @answ  = split / /, $get;
+        my $count = true { /class="error"/ } @answ;
+        print color("green"), $link, color("reset");
+        print "  Кол-во ошибок в валидаторе: ",
+          color("red"), "$count \n", color("reset");
+
+    }
+
+    return;
+}
+
+sub get_callback {
+    my ( undef, $tx ) = @_;
+
+    # Parse only OK HTML responses
+    $tx-&gt;res-&gt;code == 200
+      and $tx-&gt;res-&gt;headers-&gt;content_type =~ m{^text/html\b}ix
+      and parse($tx);
+
+    # Deactivate
+    --$active;
+
+    return;
+}
+
+Mojo::IOLoop-&gt;recurring(
+    0 =&gt; sub {
+
+        # Keep up to 4 parallel crawlers sharing the same user agent
+        for ( $active .. 4 - 1 ) {
+
+            # Dequeue or halt if there are no active crawlers anymore
+            return ( $active or Mojo::IOLoop-&gt;stop )
+              unless my $url = shift @urls;
+
+            # Fetch non-blocking just by adding
+            # a callback and marking as active
+            ++$active;
+            $ua-&gt;get( $url =&gt; \&amp;get_callback );
+        }
+    }
+);
+
+# Start event loop if necessary
+Mojo::IOLoop-&gt;start unless Mojo::IOLoop-&gt;is_running;
+Ссылка на гитхабРезультат работы:
+    

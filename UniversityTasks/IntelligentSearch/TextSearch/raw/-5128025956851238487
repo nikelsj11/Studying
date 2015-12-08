@@ -1,0 +1,148 @@
+﻿#TITLE:Установка Zabbix 2.4 на RedHat Openshift
+
+      Недавно мне потребовался собственный «облачный» сервер мониторинга бюджетом в 0 рублей. В качестве решения был выбран zabbix на платформе openshift. Данный вариант подходит для резервного базового мониторинга или мониторинга небольшого портала с помошью web-scenarios и кастомных скриптов через UserParameter. 
+Решил поделиться данным экспериментом с сообществом, в том числе с целью получить конструктивную критику. 
+Первым делом, естественно, нужно зарегистрироваться на openshift. Для работы zabbix потребуется application с набором картриджей mysql и crontab. Выглядит это примерно следующим образом:
+Тут же можно взять строку для соединения с сервером openshift, нажав на «Want to log in your application?». Надо разместить в хранилище публичных ключей openshift свой публичный ssh-ключ. 
+Скачать последнюю версию zabbix можно с официального сайта. На сервере openshift создаём каталог для сборки исполняемых файлов zabbix, заливаем туда исходники, распаковываем и собираем:]\&gt;mkdir -p /tmp/BUILD ; cd  /tmp/BUILD ; wget http://downloads.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Stable/2.4.6/zabbix-2.4.6.tar.gz ; tar xf zabbix-2.4.6.tar.gz ; cd zabbix-2.4.6 ; &gt;  mkdir /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix
+]\&gt;./configure --enable-server --enable-java  --with-mysql --with-libcurl --enable-agent --with-ssh2 --prefix=/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix
+]\&gt; make
+]\&gt; make install 
+
+Настраиваем сервер и агент для работы в среде openshift. Тут надо будет в конфигурационном файле заменить $OPENSHIFT_APP_UUID и $OPENSHIFT_PHP_IP на соответствующий приложению:]\&gt; export  | grep OPENSHIFT_PHP_IP
+declare -x OPENSHIFT_PHP_IP="127.13.151.129"
+]\&gt; export | grep OPENSHIFT_APP_UUID
+declare -x OPENSHIFT_APP_UUID="55e9bc400c1e66a589000029"
+]\&gt;vi /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_server.conf
+ListenIP=$OPENSHIFT_PHP_IP
+ListenPort=30051
+LogFile=/tmp/zabbix_server.log
+LogFileSize=5
+DebugLevel=3
+PidFile=/tmp/zabbix_server.pid
+DBHost=localhost
+DBName=zabbix
+#DBSchema=zabbix
+DBUser=zabbix
+DBPassword=&lt;ПАРОЛЬ&gt;
+DBSocket=/var/lib/openshift/$OPENSHIFT_APP_UUID/mysql/socket/mysql.sock
+
+]\&gt;vi /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_agentd.conf
+PidFile=/tmp/zabbix_agentd.pid
+LogFile=/tmp/zabbix_agentd.log
+LogFileSize=5
+DebugLevel=3
+Server=127.13.151.129
+ServerActive=127.13.151.129:30051
+ListenPort=30050
+ListenIP=127.13.151.129
+StartAgents=3
+Hostname=Zabbix server
+
+Запускаем для проверки:/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/sbin/zabbix_server -c /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_server.conf
+ /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/sbin/zabbix_agentd -c  /var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_agentd.conf
+
+Смотрим в логи:[zabbix-chinacoolhacker.rhcloud.com zabbix]\&gt; tail -3 /tmp/zabbix_server.log
+ 82320:20150904:153339.334 server #24 started [escalator #1]
+ 82321:20150904:153339.334 server #25 started [proxy poller #1]
+ 82323:20150904:153339.335 server #26 started [self-monitoring #1]
+ 
+ [zabbix-chinacoolhacker.rhcloud.com zabbix]\&gt; tail -2 /tmp/zabbix_agentd.log
+111422:20150904:154248.644 agent #4 started [listener #3]
+111423:20150904:154248.644 agent #5 started [active checks #1]
+
+Исполняемый код работает, можно переходить к фронт-энду.
+Тут я решил воспользоваться встроенным функционалом openshift — деплой через git. Клонировал себе на локалхост «болванку» сайта:% git clone ssh://55e9bc400c1e66a589000029@zabbix-chinacoolhacker.rhcloud.com/~/git/zabbix.git/
+
+Существует 2 варианта настройки фронт-энда zabbix- с помощью правки конфига и через удобный gui. Оба варианта рабочие, но при рестарте рискуем потерять изменения внесённые помимо гита — поэтому я делаю через конфиг, это не сложно. Скопировал содержимое фронт-энда из архива zabbix. Удаляю setup.php чтобы злоумышленники не смогли внести изменения в мою инсталляцию и правлю конфиг под свои нужды:c@pentahon:~/ZABBIX/zabbix % rm -f setup.php
+c@pentahon:~/ZABBIX/zabbix % cd conf
+c@pentahon:~/ZABBIX/zabbix/conf % mv zabbix.conf.php.example zabbix.conf.php
+c@pentahon:~/ZABBIX/zabbix/conf % vi zabbix.conf.php
+
+// Zabbix GUI configuration file.
+global $DB;
+
+$DB["TYPE"]                             = 'MYSQL';
+$DB["SERVER"]                   = 'localhost';
+$DB["PORT"]                             = '0';
+$DB["DATABASE"]                 = 'zabbix';
+$DB["USER"]                             = 'zabbix';
+$DB["PASSWORD"]                 = 'oDWp7akWrxWiMAIRCoYJ';
+// Schema name. Used for IBM DB2 and PostgreSQL.
+$DB["SCHEMA"]                   = '';
+
+$ZBX_SERVER                             = '127.13.151.129';
+$ZBX_SERVER_PORT                = '30051';
+$ZBX_SERVER_NAME                = 'Overseer';
+
+$IMAGE_FORMAT_DEFAULT   = IMAGE_FORMAT_PNG;
+?&gt;
+
+Создаём .htaccess в корне сайта:c@pentahon:~/ZABBIX/zabbix/conf % cd ..
+c@pentahon:~/ZABBIX/zabbix % vi .htaccess
+
+php_value upload_max_filesize 20M
+php_value date.timezone Europe/Moscow
+php_value post_max_size 20M
+php_value max_execution_time 300
+php_value max_input_time 300
+php_value max_input_time 300
+php_value mysql.default_socket "/var/lib/stickshift/$OPENSHIFT_APP_UUID/mysql-5.1/socket/mysql.sock"
+
+Все в гит!git add *
+git add .htaccess
+git commit -m "zabb"
+git push
+
+После удачного пуша можно заходить в веб-интерфейс (логин\пароль — admin\zabbix, не забудьте его сменить!) и настраивать мониторинг:
+Чтобы заработал агент и начали собираться метрики необходимо изменить настройки ip и порта:
+Теперь надо добавить несколько задач в крон — для рестарта приложений сервера и агента в случае их падения. Crontab расположен в /var/lib/openshift/55e9bc400c1e66a589000029/app-root/runtime/repo/.openshift/cron. Создаём файлы:mkdir /tmp/status
+]\&gt; vi minutely/zabbixwatchog.sh
+#!/bin/bash
+### config
+pidof_prog="/sbin/pidof"
+###
+zabbix_agentd_prog=/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/sbin/zabbix_agentd
+zabbix_agentd_conf=/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_agentd.conf
+zabbix_server_prog=/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/sbin/zabbix_server
+zabbix_server_conf=/var/lib/openshift/$OPENSHIFT_APP_UUID/app-root/data/zabbix/etc/zabbix_server.conf
+###
+agentstatlog=/tmp/status/agentstat.log
+serverstatlog=/tmp/status/serverstat.log
+###
+### server lifekeeper ###
+serverststat=`$pidof_prog $zabbix_server_prog`
+if [ "$serverststat" ]
+ then
+    echo "`date` : server pids: $serverststat" &gt;&gt; $serverstatlog;
+ else
+    echo "restarting server at `date`"  &gt;&gt; $serverstatlog;
+    $zabbix_server_prog -c $zabbix_server_conf;
+    sleep 3
+    echo "`date` SERVER started with pids: `$pidof_prog $zabbix_server_prog` " &gt;&gt; $serverstatlog;
+fi
+
+### agent lifekeeper ###
+agentstat=`$pidof_prog $zabbix_agentd_prog`
+if [ "$agentstat" ]
+ then
+    echo "`date` : agent pids: $agentstat" &gt;&gt; $agentstatlog;
+ else
+    echo "restarting agent at `date`"  &gt;&gt; $agentstatlog;
+    $zabbix_agentd_prog -c $zabbix_agentd_conf;
+    sleep 3
+    echo "`date` agent started with pids: `$pidof_prog $zabbix_agentd_prog` " &gt;&gt; $agentstatlog;
+fi
+#
+]\&gt; vi daily/zabbix.sh
+#!/bin/bash
+cp /tmp/status/agentstat.log /tmp/status/agentstat.log.`date +%Y-%m-%d` &amp;&amp; echo '' &gt; /tmp/status/agentstat.log
+cp /tmp/status/serverstat.log /tmp/status/serverstat.log.`date +%Y-%m-%d` &amp;&amp; echo '' &gt; /tmp/status/serverstat.log
+find /tmp/status/ -mtime +7 -exec rm {} \;
+
+Теперь в случае отсутствия в системе процессов zabbix они автоматически запустятся по крону.
+P.S.
+Данная инсталляция хорошо подходит для web-scenarios и кастомных проверок на основе UserParamater, запускаемых с агента, непосредственно установленного на сервер OpenShift. 
+Как правильно заметил  Disen, по соображениям безопасности не рекомендуется выставлять порты zabbix-agent своих серверов в интернет!
+      
+    

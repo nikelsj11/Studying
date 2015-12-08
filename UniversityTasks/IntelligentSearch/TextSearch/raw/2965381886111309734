@@ -1,0 +1,238 @@
+﻿#TITLE:Компилируемые привязки данных в приложениях Windows 10
+
+      
+Одним из нововведений Windows UAP является то, что стало возможным создавать биндинги которые будут скомпилированы. Такое нововведение значительно улучшает производительность (в том числе и скорость загрузки) приложения. Ранее привязки данных были основаны на рефлексии, а потому медленны. Плюс ко всему, стало гораздо удобнее проводить отладку кода компилируемых биндингов. 
+Для того, чтобы создать биндинг, который будет сформирован при компиляции приложения необходимо использовать {x:Bind} вместо {Binding}.
+Привязку можно делать как к code-behind классу, так и к другим элементам управления страницы.
+Например:    &lt;Grid x:Name="grd" Tag="Пример биндинга"&gt;
+              &lt;TextBlock FontSize="40" Text="{x:Bind grd.Tag}" /&gt;
+   &lt;/Grid&gt;
+
+Если значением {x:Bind} указать просто Tag, то привязка будет происходить к атрибуту Tag объекта Page.
+Компилируемые биндинги являются строго типизированными (можно привязать только к объектам с конкретным типом) и проверяются во время компиляции, а значит, если где-то будет обнаружена ошибка, то компиляция будет прервана. 
+Аналогично биндингам WPF возможны различные режимы привязки: OneTime, OneWay и TwoWay. Режимом по умолчанию является OneTime.
+Сравнение производительности скомпилированных биндингов и обычных вы можете увидеть на следующем графике:
+Для того чтобы контрол окна приложения изменялся при изменениях в привязанном объекте, поддерживаются и давно известные разработчикам интерфейсы: INotifyPropertyChanged, IObservableVector, INotifyCollectionChanged. 
+Рассмотрим несложный пример использования x:Bind
+Создадим простой класс Employee:public class Employee 
+    {
+        private string _name;
+        private string _organization;
+        private int? _age;
+
+        public string Name
+        {
+            get { return _name; }
+            set { _name = value;}
+        }
+
+        public string Organization
+        {
+            get { return _organization; }
+            set { _organization = value; }
+        }
+
+        public int? Age
+        {
+            get { return _age;  }
+            set { _age = value; }
+        }
+    }
+
+В класс нашей страницы (по умолчанию это MainPage) добавим пространство имен:using System.Collections.ObjectModel;
+
+Оно необходимо нам для использования ObservableCollection. Применим именно коллекцию ObservableCollection так как она содержит реализацию INotifyCollectionChanged, а значит, каждый раз при добавлении и удалении элементов коллекции будет обновлен и элемент управления к которому привязаны данные коллекции. 
+Объявим коллекцию:ObservableCollection&lt;Employee&gt; manager = new ObservableCollection&lt;Employee&gt;();
+
+Добавим несколько элементов в коллекцию. Сделаем это после инициализации страницы:        public MainPage()
+        {
+            this.InitializeComponent();
+
+        manager.Add(new Employee { Age = 45, Name = "Ольга", Organization = "ООО Рога и Копыта" });
+        manager.Add(new Employee { Age = 25, Name = "Татьяна", Organization = "ОАО Шаркон" });
+        manager.Add(new Employee { Age = 22, Name = "Анна", Organization = "ООО Рога и Копыта" });
+
+        }
+
+Теперь мы можем в XAML коде нашей страницы использовать следующую конструкцию:&lt;ListView ItemsSource="{x:Bind manager}" Width="200" Height="250"
+                  BorderThickness="1" BorderBrush="Black"&gt;
+            &lt;ListView.ItemTemplate&gt;
+                &lt;DataTemplate x:DataType="local:Employee"&gt;
+                    &lt;TextBlock Text="{x:Bind Name}" /&gt;
+                &lt;/DataTemplate&gt;
+            &lt;/ListView.ItemTemplate&gt;
+        &lt;/ListView&gt;
+
+Здесь под local:Employee используется ссылка на пространство имен из заголовка страницы:&lt;Page
+    x:Class="CompiledBindingsDemo.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:CompiledBindingsDemo"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"&gt;
+
+В результате получим:
+Значения {x:Bind} могут быть следующие: Converter, ConverterLanguage, ConverterParameter, FallbackValue, Mode, Path, TargetNullValue
+В отличие от привязок данных с помощью {Binding}, не используются следующие значения: Source, ElementName, RelativeSource, UpdateSourceTrigger
+Они стали не нужны и заменены иным функционалом. Скажем, RelativeSource заменяется именем элемента и его атрибутом (смотрите первый пример). Из всех возможностей обновления источника привязки UpdateSourceTrigger в x:Bind осталась по умолчанию только PropertyChanged (обновляет источник привязки сразу же после изменения свойства объекта привязки). Только TextBox.Text обновляет источник после потери фокуса.
+Еще одной новой замечательной возможностью является атрибут x:Phase, который позволяет производить прогрессивную загрузку элементов. 
+Рассмотрим на нашем примере:&lt;DataTemplate x:DataType="local:Employee"&gt;
+                    &lt;StackPanel Orientation="Vertical"&gt;
+                    &lt;TextBlock Text="{x:Bind Name}" x:Phase="1" /&gt;
+                    &lt;TextBlock Text="{x:Bind Organisation}" x:Phase="3" /&gt;
+                    &lt;TextBlock Text="{x:Bind Age}" x:Phase="2" /&gt;
+                    &lt;/StackPanel&gt;
+                &lt;/DataTemplate&gt;
+
+В данном случае очередность загрузки/прорисовки элементов задана принудительно. Первым будет загружен первый TextBlock с именем, вторым третий с возрастом и последним будет загружен текст с названием организации. В данном случае порядок не особенно существенен, но иногда, особенно при использовании медиа данных он бывает важен. Если указать значением x:Phase=«0», то это будет означать что этому элементу значение порядка загрузки не задано. 
+Для инициализации привязок данных можно использовать Bindings.Initialize(), но принудительная инициализация не требуется, так как она сама происходит во время загрузки страницы.
+Возможен вызов Bindings.Update() для обновления асинхронных данных. Этот же метод можно использовать для привязок типа OneTime, которые потребляют меньше всего ресурсов. 
+Для того чтобы поставить привязку «на паузу» и не отслеживать изменения данных можно вызвать Bindings.StopTracking(). А для того, чтобы продолжить отслеживание вызывается Update().
+Кроме того теперь стало возможным использовать привязки для событий. Стандартно событие клика объявляется так:&lt;Button Click="PokeEmployee"&gt;Poke Employee&lt;/Button&gt;
+
+Можно объявить событие, находящееся внутри класса, с помощью такой вот привязки события:&lt;Button Click="{x:Bind SomeDataClass.Poke}"&gt;Poke Employee&lt;/Button&gt;
+
+Англо-русский словарь на слово Poke одним из значений выдает «запись элемента данных». А значит, судя по всему, основным предназначением привязок событий является императивное изменение данных.
+Модифицируем наш пример:                &lt;DataTemplate x:DataType="local:Employee"&gt;
+                    &lt;StackPanel Orientation="Vertical"&gt;
+                    &lt;TextBlock Text="{x:Bind Name}" x:Phase="1" /&gt;
+                    &lt;TextBlock Text="{x:Bind Organization}" x:Phase="3" /&gt;
+                    &lt;TextBlock Text="{x:Bind Age,Mode=OneWay}" x:Phase="2" /&gt;
+                        &lt;Button Click="{x:Bind Poke}" Content="Добавить год"/&gt;
+                    &lt;/StackPanel&gt;
+                &lt;/DataTemplate&gt;
+
+И в наш класс Employee добавим:        public void Poke()
+        {
+            this.Age = this.Age+1;
+        }
+
+Но вот незадача, при отладке заметно, что значение Age увеличивается, как положено, а вот интерфейс не обновляется. Это потому, что коллекция ObservableCollection обновляет свою привязку только при добавлении или удалении элементов. Для того чтобы обновление происходило и при изменении данных необходимо реализовать интерфейс INotifyPropertyChanged. Делается это точно так же, как и делалось ранее. Добавлением пространства имен:using System.ComponentModel;
+
+Объявлением интерфейса:    public class Employee : INotifyPropertyChanged
+
+И реализацией события изменения свойства:  public event PropertyChangedEventHandler PropertyChanged;
+        protected void RaisePropertyChanged(string name)
+        {
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(name));
+            }
+        }
+
+Теперь можно вызывать это событие в сеттере после установки значения Age:        public int? Age
+        {
+            get { return _age;  }
+            set { _age = value;
+                RaisePropertyChanged("Age");
+            }
+        }
+Весь код класса:using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+using System.ComponentModel; 
+
+namespace CompiledBindingsDemo
+{
+
+    public class Employee : INotifyPropertyChanged
+    {
+        private string _name;
+        private string _organization;
+        private int? _age;
+
+        public string Name
+        {
+            get { return _name; }
+            set { _name = value;}
+        }
+
+        public string Organization
+        {
+            get { return _organization; }
+            set { _organization = value; }
+        }
+
+        public int? Age
+        {
+            get { return _age;  }
+            set { _age = value;
+                RaisePropertyChanged("Age");
+            }
+        }
+
+       public void Poke()
+        {
+            this.Age = this.Age+1;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void RaisePropertyChanged(string name)
+        {
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(name));
+            }
+        }
+
+    }
+
+}
+
+Привязанное событие может быть вызвано как без параметров void Poke(), 
+так и с параметрами void Poke(object sender, RoutedEventArgs e)
+или с параметрами базового типа события void Poke(object sender, object e)
+Перегрузки не поддерживаются.
+Разумеется, что название метода не обязательно должно быть Poke.
+События {x:Bind} могут заменить такие события MVVM как ICommand или EventToCommand, но такой параметр, как CanExecute в них не поддерживается.
+Компилированные привязки поддерживают старые добрые конвертеры. То есть можно создать класс, реализующий интерфейс IValueConverter и в нем совершить преобразования.Класс может выглядеть следующим образом:using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+using Windows.UI.Xaml.Data;
+
+namespace CompiledBindingsDemo
+{
+    class ConverterExample : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value == null) return string.Empty;
+
+            // какие-то преобразования со значением value
+            string newtext = value.ToString();
+            newtext = newtext.ToUpper();
+
+            return newtext;
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            // используется редко
+            throw new NotImplementedException();
+        }
+    }
+}
+
+Если у нас в приложении есть такой класс, то мы можем добавить его в ресурсы XAML страницы: &lt;Page.Resources&gt;
+        &lt;local:ConverterExample x:Name="ThatsMyConverter"/&gt;
+    &lt;/Page.Resources&gt;
+
+Теперь мы можем использовать конвертер при привязке данных:&lt;TextBlock Text="{x:Bind Name,Converter={StaticResource ThatsMyConverter}}" /&gt;
+
+И тогда регистр текста, который содержится в Name, при отображении будет изменен конвертером на верхний (заглавные буквы).
+Компилируемые биндинги подходят не для всех ситуаций. В некоторых лучше использовать классические привязки данных с помощью {Binding} вместо {x:Bind}
+{Binding} может работать вместе с JSON или каким либо иным нетипизированным словарем объектов. {x:Bind} не работает без информации о конкретном типе данных.
+Duck Typing (если что-то ходит как утка, и крякает как утка, то будем относиться к этому как к утке) – одинаковые имена свойств различных объектов отлично работают с {Binding}, но не с {x:Bind}. например Text="{Binding Age}" будет работать и с классом Person и с классом Wine. Для использования x:Bind придется создать базовый класс или интерфейс. 
+Программное создание связей возможно только с {Binding}. При использовании {x:Bind} нет возможности добавить или удалить привязки в runtime.
+{x:Bind} не может быть использован в стиле для сеттеров, но зато он может быть использован в шаблоне DataTemplate (как это рассматривалось выше).
+Пример вы можете найти на GitHub
+
+      
+      
+    

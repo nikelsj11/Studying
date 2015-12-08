@@ -1,0 +1,279 @@
+﻿#TITLE:Использование React JSX вместе с TypeScript 1.6
+
+      Не так давно Microsoft объявила о выпуске TypeScript 1.6 Beta, одним из интересных, на мой взгляд, нововведением является поддержка React/JSX, что в совокупности с особенностями TypeScript'а открывает новые возможности.
+Я расскажу о личном опыте — как начал использовать связку TypeScript + React, с каким проблемами столкнулся и как их решал. А так же покажу примеры gulp-тасков для того, чтобы это все заработало и продемонстрирую код минимального todo приложения на TypeScript + React (ссылка на Github).
+Если вам это интересно — пожалуйста, заходите под кат. TypeScript 1.6Найтивная поддержка JSX
+
+ ПодготовкаУстановка TypeScript 1.6 Beta
+Создание package.json
+ Создание gulpfile.jsКомпиляция TypeScript
+browserify
+Копирование index.html
+gulpfile.js файл
+
+TypeScript Definitions
+Создание tsconfig.json
+
+ React-кодtodoItem.tsx компонент
+main.tsx компонент
+bootstrap.ts
+index.html
+
+ Запуск и фейерверкиУстановка и компиляция
+Запуск
+
+Вместо заключения
+TypeScript 1.6
+Вот основные изменения и дополнения, которые принесло это обновление:ES6 итераторы
+Локальные типы
+Найтивная поддержка JSX
+Абстрактные классы и методы
+
+Полный список и ссылки на issues можно найти на Github. Надеюсь, что кто-нибудь из хабрасообщества сделает более полный обзор всех изменений. Я же уделю внимание только одному из них, а именно:Найтивная поддержка JSX
+«Вау!» — вот первая мысль, когда я прочитал анонс. Но дальше начались проблемы, так как нельзя просто взять и использовать edge-технологии, поэтому перед тем, начать писать классный типизированный код, нам нужно немного поработать в консоли, чтобы избежать в будущем проблемы со сборкой и деплоем нашего кода.Подготовка
+По умолчанию будем считать, что у нас установлены и настроены актуальные версии nodejs и npm.Установка TypeScript 1.6 Beta
+Для установки TypeScript 1.6 Beta в глобальную область видимости воспользуемся командой:npm install -g typescript@1.6.0-beta
+
+После этого у вас в консоле будет доступна команда tsc — это собственно и есть компилятор для TypeScript. Убедитесь что у вас установлена версия 1.6-beta.
+Проверим, что всё установилось с помощью команды:tsc --version
+
+Для локальной установки будем использовать команду:npm install typescript@1.6.0-beta --save-dev
+Создание package.json
+Файл package.json содержит в себе информацию о вашем приложении: название, версия, зависимости и тому подобное. Любая директория, в которой есть этот файл, интерпретируется как Node.js-пакет, даже если вы не собираетесь публиковать его.
+Способ использования файла package.json зависит от того, собираетесь ли вы скачивать пакет или публиковать его. В нашем случае он будет содержать список зависимостей нашего проекта:{
+  "name": "tsc-react-gulp-example",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^0.13.3"
+  },
+  "devDependencies": {
+    "browserify": "^11.0.0",
+    "del": "^1.2.0",
+    "gulp": "^3.9.0",
+    "gulp-typescript": "^2.8.0",
+    "typescript": "next",
+    "vinyl-source-stream": "^1.1.0"
+  }
+}
+Создание gulpfile.js
+В качестве сборщика проекта я использовал gulp, но, как по мне, особой разницы нет, так как главное — идея. Для сборки проекта мы воспользуемся уже готовыми npm пакетами: gulp-typescript для компиляции TypeScript и browserify для работы с зависимостями нашего проекта.Компиляция TypeScript
+Таск для компиляции TypeScript выглядит следующим образом:var gulp        = require('gulp'),
+    typescript  = require('typescript'),
+    ts          = require('gulp-typescript'),
+
+var project = ts.createProject('src/tsconfig.json', {typescript: typescript});
+
+gulp.task('compile', function () {
+  var result = gulp
+    .src('src/**/*{ts,tsx}')
+    .pipe(ts(project));
+  return result.js.pipe(gulp.dest('.tmp'));
+});
+
+Здесь мы использали ранее рассмотренный файл проекта. Более подробно — на github странице проекта.browserify
+Таск для создания бандла проекта выглядит следующим образом:var gulp        = require('gulp'),
+    browserify  = require('browserify'),
+    source      = require('vinyl-source-stream');
+    
+gulp.task('bundle', function () {
+  var b = browserify('.tmp/bootstrap.js');
+  return b.bundle()
+    .pipe(source('bundle.js'))
+    .pipe(gulp.dest('dist'));
+});
+Копирование index.html
+В качестве примера работы со статическими файлами и их копирования в gulp приведу пример gulp-таска для копирования index.html в папку dist:gulp.task('through', function () {
+  return gulp
+    .src(['src/index.html'])
+    .pipe(gulp.dest('dist'));
+});
+gulpfile.js файл
+Тогда весь gulpfile.js будем таким:Исходный код gulpfile.js'use strict';
+
+var gulp        = require('gulp'),
+    typescript  = require('typescript'),
+    ts          = require('gulp-typescript'),
+    browserify  = require('browserify'),
+    source      = require('vinyl-source-stream'),
+    del         = require('del');
+
+var project = ts.createProject('src/tsconfig.json', {typescript: typescript});
+
+gulp.task('through', function () {
+  return gulp
+    .src(['src/index.html'])
+    .pipe(gulp.dest('dist'));
+});
+
+gulp.task('compile', function () {
+  var result = gulp.src('src/**/*{ts,tsx}')
+    .pipe(ts(project));
+  return result.js.pipe(gulp.dest('.tmp'));
+});
+
+gulp.task('bundle', ['through','compile'], function () {
+  var b = browserify('.tmp/bootstrap.js');
+  return b.bundle()
+    .pipe(source('bundle.js'))
+    .pipe(gulp.dest('dist'))
+  ;
+});
+
+gulp.task('clean', function (done) {
+  del(['.tmp'], done.bind(this));
+});
+TypeScript Definitions
+Я сейчас не буду подробно останавливаться на описании TypeScript Definitions, об этом написано много классных статей. Скажу лишь, что для того чтобы можно было использовать библиотеки написанные на JS для них нужно использовать эти самые TypeScript Definitions. И есть даже целый опенсорсный проект в котором народ пишет такие дефинишены для популярных проектов. Их можно искать и скачивать на сайте, а можно поставить консольную утилиту которая этот процесс упростит:npm install -g tsd
+
+С помощью этой утилиты мы скачаем definitions для React и сохраним в файл tsd.json запись о TypeScript Definition:tsd query react --action install --save
+ Заметка:
+Проект находится в open-source, развивается и активно поддерживается сообществом — borisyankov/DefinitelyTyped.Создание tsconfig.json
+Файл tsconfig.json хранит настройки компиляции для вашего проекта. Такой файл поддерживается компилятором начиная с версии 1.5. Минимальный tsconfig.json, позволяющий компилировать файлы для React/JSX выглядит следующим образом:{ 
+  "compilerOptions" :  { 
+    "module" :  "umd", 
+    "jsx" :  "react" 
+  } 
+}
+React-код
+Для примера работы связки TypeScript + React мы напишем минимальное todo приложение.todoItem.tsx компонент
+Начнём с самого маленького кирпичика, а именно — TodoItem. Добавим TypeScript Definition для React в начало файла:/// &lt;reference path="../../typings/react/react.d.ts" /&gt;
+
+Затем импортируем React в наш класс:import * as React from 'react';
+
+Определим интерфейс ITodo для элемента:interface ITodo {
+    description: string;
+}
+
+А также интерфейсы для состояния и свойств нашего компонента:export interface ITodoItemState {}
+
+export interface ITodoItemProps {
+    item: ITodo;
+    onRemove?: (todo: ITodo) =&gt; any;
+    key?: number;
+}
+
+Тогда сам компонент будет выглядить следующим образом:export class TodoItem extends React.Component&lt;ITodoItemProps, ITodoItemState&gt; {
+    constructor () {
+        super();
+        this.removeItem = this.removeItem.bind(this);
+    }
+
+    removeItem () {
+        this.props.onRemove(this.props.item);
+    }
+
+    render () {
+        return (
+            &lt;li&gt;
+              &lt;span&gt; {this.props.item.description} &lt;/span&gt;
+              &lt;button onClick={this.removeItem} &gt;delete&lt;/button&gt;
+            &lt;/li&gt;
+        );
+    }
+}
+main.tsx компонент
+Данный компонент будет содержать основную логику работы приложения. Принцип тот же, что и в TodoItem компоненте, поэтому приведу полный листинг файла:main.tsx/// &lt;reference path="../../typings/react/react.d.ts" /&gt;
+
+import * as React from 'react';
+import {TodoItem} from './todoItem';
+
+interface ITodo {
+    description: string;
+    key: number;
+}
+
+export interface IMainState {
+    newItem?: {
+        description: string;
+    };
+    todoList?: ITodo[];
+}
+
+export interface IMainProps {}
+
+export class Main extends React.Component&lt;IMainProps, IMainState&gt; {
+
+    state: IMainState = {newItem: {description: ''}, todoList: []}
+
+    constructor () {
+        super();
+        this.changeName = this.changeName.bind(this);
+        this.addItem = this.addItem.bind(this);
+        this.removeItem = this.removeItem.bind(this);
+    }
+
+    changeName (e: any) {
+        this.setState({
+            newItem: {
+                description: e.target.value
+            }
+        });
+    }
+
+    addItem () {
+        var list = this.state.todoList;
+        list.push({
+            description: this.state.newItem.description,
+            key: new Date().getTime()
+        });
+        this.setState({
+            todoList: list,
+            newItem: {description: ''}
+        });
+    }
+
+    removeItem (item: ITodo) {
+        var list = this.state.todoList.filter(i =&gt; i.key !== item.key);
+        this.setState({todoList: list});
+    }
+
+    render () {
+        var todoItems = this.state.todoList.map(item =&gt; {
+            return &lt;TodoItem key={item.key} item={item} onRemove={this.removeItem} &gt;&lt;/TodoItem&gt;;
+        });
+        return (
+            &lt;div&gt;
+                &lt;div&gt;
+                    &lt;input type="text" placeholder="input new item" value={this.state.newItem.description} onChange={this.changeName} /&gt;
+                    &lt;button onClick={this.addItem} &gt;add&lt;/button&gt;
+                &lt;/div&gt;
+                &lt;ul&gt;{todoItems}&lt;/ul&gt;
+            &lt;/div&gt;
+        );
+    }
+}
+bootstrap.ts
+Данный файл служит точкой для старта приложения и содержит логику для вызова основого компонента:/// &lt;reference path="../typings/react/react.d.ts" /&gt;
+
+import * as React from 'react';
+import {Main} from './Main/main';
+
+React.render(React.createElement(Main), document.getElementById('main'));
+index.html
+Так как мы не добавляляли никаких стилей и тд, то исходный код файла будет таким:&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+    &lt;head&gt;
+        &lt;meta charset="UTF-8"&gt;
+        &lt;title&gt;tsc-react-example&lt;/title&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+        &lt;div id="main"&gt;&lt;/div&gt;
+        &lt;script src="bundle.js"&gt;&lt;/script&gt;
+    &lt;/body&gt;
+&lt;/html&gt;
+Запуск и фейерверкиУстановка и компиляция
+После того как были созданы все файлы, папки и таски, выполним:npm install
+
+для установки всех пакетов и:gulp bundle
+
+для компиляции нашего приложения.Запуск
+Тут всё очень прозаично — натравливаем любимый сервер на папку dist и радуемся полученным результатам, например так:cd dist
+npm install -g http-server
+http-server -p 3000
+
+Затем идём на localhost:3000/index.html и тестируем.Вместо заключения
+Весь код представленный в этом мини-гайде можно найти по ссылке. Любые замечания и предложения только приветствуются.
+Спасибо за внимание.
+Happy coding!
+      
+    

@@ -1,0 +1,95 @@
+﻿#TITLE:Хабр шелл: встраиваем кросплатформенный ssh server в java приложение
+
+      
+Расскажу как внедрить в существующее java приложение ssh сервер, который может выводить в терминал данные о лучших статьях с habrahabr. Это лишь пример, но на его основе вы сможете получить дополнительное средство для администрирования вашей программы и расширить поведение любыми командами, без изменения исходного кода и пересборки приложения. 
+Скринкаст работы можете увидеть в конце статьи.
+В качестве ssh server мы с вами используем СRaSH — это одна из реализаций командного интерпретатора на java. Он позволяет создать в java процессе сервер, выполняющий команды по протоколам ssh/telnet и включает в себя набор готовых команд с возможностью написания новых на groovy. «Из коробки» есть готовые команды для работы с JMX, доступом к базе данных, java потокам, мониторингу heap, изменения уровня логирования.
+Возможно, этот проект знаком, если вы использовали Spring Boot, Mulesoft Enterprise Service Bus, Play Framework, Vert.x. Теперь вы сможете встроить его даже в корпоративную легасятину на java!
+Итак, начнем с реализации хабр команды. Пишется реализация на groovy. Для тех, кто знаком с java — написать новую реализацию будет не сложно. 
+Сохраним нашу команду для Хабра в файл sonarqube-5.1.2/cmd/habrahabrShell.groovy:import org.crsh.cli.Usage
+import org.crsh.cli.Command
+import org.crsh.cli.Argument
+import org.crsh.cli.Required
+
+@Usage("Example for habrahabr")
+class habrahabrShell {
+  @Usage("Display best topics from habrahabr")
+  @Command
+  public void displayBest() {
+	def feedContent = "http://habrahabr.ru/rss/best/".toURL().text
+	def rss = new XmlSlurper().parseText(feedContent)
+	rss.channel.item.each{
+	    out &lt;&lt; "$it.title [$it.link]\n"
+   	}
+  }
+
+  @Usage("Say hello")
+  @Command
+  public void sayHello(@Required @Argument String message) {
+    out &lt;&lt; "Hello habrahabr $message"
+  }
+}
+
+Учтите, что командный интерпретатор будет использовать имя команды на основе имени файла, а не имени класса. Аннотации  @Usage позволяют CRaSH печатать справку по команде и ее параметрам. Эта команда, выводящая на консоль Hello habrahabr с вашим параметром, не особо полезна и несет скорее мотивирующий эффект и показывает что писать команды достаточно просто. Команда displayBest более сложна в реализации: получаем содержимое rss ленты с помощью toURL().text, парсим ее XmlSlurper().parseText() и выводим на консоль список лучших статей за сутки и ссылок на них, итерируясь по элементам channel.item из ленты.
+Нашим подопытным приложением для внедрения CRaSH остается SonarQube. Как его скачать, сконфигурировать и нафаршировать aspectj агентом подробно рассказывал и показывал в прошлой статье. Конфигурацию -javaagent оставляем без изменений, а в org.aspectj.weaver.loadtime.configuration указываем новый файл скрипта config:file:/home/igor/dev/projects/sonar-demo/scripts/shell-console.xml
+Содержимое файла shell-console.xml:&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;configuration&gt;
+    &lt;aspects&gt;
+        &lt;name&gt;com.github.igorsuhorukov.СrashubSsh&lt;/name&gt;
+        &lt;type&gt;AFTER&lt;/type&gt;
+        &lt;pointcut&gt;execution(* org.sonar.server.app.WebServer.start(..))&lt;/pointcut&gt;
+        &lt;artifacts&gt;
+            &lt;artifact&gt;org.crashub:crash.connectors.ssh:1.3.1&lt;/artifact&gt;
+            &lt;classRefs&gt;
+                &lt;variable&gt;Bootstrap&lt;/variable&gt;
+                &lt;className&gt;org.crsh.standalone.Bootstrap&lt;/className&gt;
+            &lt;/classRefs&gt;
+            &lt;classRefs&gt;
+                &lt;variable&gt;Builder&lt;/variable&gt;
+                &lt;className&gt;org.crsh.vfs.FS$Builder&lt;/className&gt;
+            &lt;/classRefs&gt;
+            &lt;classRefs&gt;
+                &lt;variable&gt;ClassPathMountFactory&lt;/variable&gt;
+                &lt;className&gt;org.crsh.vfs.spi.url.ClassPathMountFactory&lt;/className&gt;
+            &lt;/classRefs&gt;
+            &lt;classRefs&gt;
+                &lt;variable&gt;FileMountFactory&lt;/variable&gt;
+                &lt;className&gt;org.crsh.vfs.spi.file.FileMountFactory&lt;/className&gt;
+            &lt;/classRefs&gt;
+        &lt;/artifacts&gt;
+        &lt;process&gt;
+            &lt;expression&gt;
+                classLoader = Bootstrap.getClassLoader();
+
+                classpathDriver = new ClassPathMountFactory(classLoader);
+		otherCmd = new FileMountFactory(new java.io.File(System.getProperty("user.dir")));
+                cmdFS = new Builder().register("classpath", classpathDriver).register("file", otherCmd).mount("classpath:/crash/commands/").mount("file:cmd/").build();
+                confFS = new Builder().register("classpath", classpathDriver).mount("classpath:/crash/").build();
+                bootstrap = new Bootstrap(classLoader, confFS, cmdFS);
+
+                config = new java.util.Properties();
+                config.put("crash.ssh.port", "2000");
+                config.put("crash.ssh.auth_timeout", "300000");
+                config.put("crash.ssh.idle_timeout", "300000");
+                config.put("crash.auth", "simple");
+                config.put("crash.auth.simple.username", "admin");
+                config.put("crash.auth.simple.password", "admin");
+
+                bootstrap.setConfig(config);
+                bootstrap.bootstrap();
+
+
+                //bootstrap.shutdown();
+            &lt;/expression&gt;
+        &lt;/process&gt;
+    &lt;/aspects&gt;
+&lt;/configuration&gt;
+
+Эта конфигурация позволяет агенту, после выполнения метода start() класса org.sonar.server.app.WebServer, скачать из maven репозитария артефакт org.crashub:crash.connectors.ssh:1.3.1, сконфигурировать сервер и запустить его вызовом bootstrap.bootstrap(). Нашу команду сервер найдет в директории cmd, которую мы указали при инициализации с помощью mount(«file:cmd/»). Ну и аутентификация будет с помощью заданных нами логина и пароля admin/admin, ssh сервер будет слушать порт 2000 — put(«crash.ssh.port», «2000»)
+Реализовано это на MVEL — java подобном скрипте с помощью AspectJ-scripting агента и соответствующей конфигурации. Агент доступен в центральном maven репозитарии
+9 сентября в Москве пройдет моя открытая сессия по аспектно-ориентированному программированию. Вход свободный, после опубликую на хабре материалы доклада. Регистрация openevent9sept2015.questionpro.com
+Вся магия этой статьи реализована с помощью аспектно ориентрованного программирования и заключается лишь в 2х файлах: habrahabrShell.groovy и shell-console.xml и параметре с указанием jvm агента. Не правда ли просто!?
+
+      
+      
+    

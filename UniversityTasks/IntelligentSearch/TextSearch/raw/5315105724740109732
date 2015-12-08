@@ -1,0 +1,492 @@
+﻿#TITLE:Ограничение памяти, доступной программе
+
+      Решил я как-то заняться задачкой сортировки миллиона целых чисел при имеющейся памяти в 1 Мб. Но перед этим мне пришлось подумать над тем, как можно ограничить объём доступной памяти для программы. И вот, что я придумал.Виртуальная память процесса
+Перед тем, как окунуться в разные методы ограничения памяти, необходимо знать, как устроена виртуальная память процесса. Лучшая статья на эту тему — «Анатомия программы в памяти».
+Прочитав статью, я могу предложить две возможности для ограничения памяти: уменьшить виртуальное адресное пространство или объём кучи.
+Первое: уменьшение объёма адресного пространства. Это довольно просто, но не совсем корректно. Мы не можем уменьшить всё пространство до 1 Мб — не хватит места для ядра и библиотек.
+Второе: уменьшение объёма кучи. Это не так-то просто сделать, и обычно так никто не делает, поскольку это доступно только через возню с компоновщиком. Но для нашей задачи это был бы более корректный вариант.
+Также я рассмотрю другие методы, такие, как отслеживание использования памяти через перехват вызовов библиотек и системы, и изменение окружения программы через эмуляцию и введение «песочницы».
+Для тестирования будем использовать небольшую программу по имени big_alloc, размещающую, и затем освобождающую 100 MiB.#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;stdbool.h&gt;
+
+// 1000 раз по 100 KiB = 100 000 KiB = 100 MiB
+#define NALLOCS 1000
+#define ALLOC_SIZE 1024*100 // 100 KiB
+
+int main(int argc, const char *argv[])
+{
+    int i = 0;
+    int **pp;
+    bool failed = false;
+
+    pp = malloc(NALLOCS * sizeof(int *));
+    for(i = 0; i &lt; NALLOCS; i++)
+    {
+        pp[i] = malloc(ALLOC_SIZE);
+        if (!pp[i])
+        {
+            perror("malloc");
+            printf("Облом после %d размещений\n", i);
+            failed = true;
+            break;
+        }
+        // Обратимся к нескольким байтам памяти, чтобы обмануть copy-on-write.
+        memset(pp[i], 0xA, 100);
+        printf("pp[%d] = %p\n", i, pp[i]);
+    }
+
+    if (!failed)
+        printf("Успешно разместили %d байтов\n", NALLOCS * ALLOC_SIZE);
+
+    for(i = 0; i &lt; NALLOCS; i++)
+    {
+        if (pp[i])
+            free(pp[i]);
+    }
+    free(pp);
+
+    return 0;
+}
+
+Все исходники есть на github.ulimit
+То, о чём сразу вспоминает старый unix-хакер, когда ему нужно ограничить память. Это утилита из bash, которая позволяет ограничивать ресурсы программы. На деле это интерфейс к setrlimit.
+Мы можем установить ограничение на объём памяти для программы.$ ulimit -m 1024
+
+Проверяем:$ ulimit -a
+core file size          (blocks, -c) 0
+data seg size           (kbytes, -d) unlimited
+scheduling priority             (-e) 0
+file size               (blocks, -f) unlimited
+pending signals                 (-i) 7802
+max locked memory       (kbytes, -l) 64
+max memory size         (kbytes, -m) 1024
+open files                      (-n) 1024
+pipe size            (512 bytes, -p) 8
+POSIX message queues     (bytes, -q) 819200
+real-time priority              (-r) 0
+stack size              (kbytes, -s) 8192
+cpu time               (seconds, -t) unlimited
+max user processes              (-u) 1024
+virtual memory          (kbytes, -v) unlimited
+file locks                      (-x) unlimited
+
+Мы задали ограничение в 1024 кб — 1 MiB. Но если мы попытаемся запустить программу, она отработает без ошибок. Несмотря на лимит в 1024 кб, в top видно, что программа занимает аж 4872 кб.
+Причина в том, что Linux не устанавливает жёстких ограничений, и в man об этом написано:ulimit [-HSTabcdefilmnpqrstuvx [limit]]
+    ...
+    -m     The maximum resident set size (many systems do not honor this limit)
+
+Есть также опция ulimit -d, которая должна работать, но всё равно не работает из-за mmap (см. раздел про компоновщик).QEMU
+Для манипуляции программным окружением QEMU прекрасно подходит. У неё есть опция –R для ограничения виртуального адресного пространства. Но до слишком малых значений его ограничивать нельзя – не поместятся libc и kernel.
+Глядите:$ qemu-i386 -R 1048576 ./big_alloc
+big_alloc: error while loading shared libraries: libc.so.6: failed to map segment from shared object: Cannot allocate memory
+
+Тут -R 1048576 оставляет 1 MiB на виртуальное адресное пространство.
+Для этого надо отвести что-то порядка 20 MB. Вот:$ qemu-i386 -R 20M ./big_alloc
+malloc: Cannot allocate memory
+Failed after 100 allocations
+
+Останавливается после 100 итераций (10 MB).
+В общем, QEMU пока лидирует среди методов для ограничения, надо только поиграться с величиной –R.Контейнер
+Ещё вариант – запустить программу в контейнере и ограничить ресурсы. Для этого можно:использовать какой-нибудь docker
+использовать инструменты usermode из пакета lxc
+написать свой скрипт с libvirt.
+что-то ещё…
+
+Но ресурсы будут ограничены при помощи подсистемы Linux под названием cgroups. Можно играться с ними напрямую, но я рекомендую через lxc. Я бы хотел использовать docker, но он работает только на 64-битных машинах.
+LXC — это LinuX Containers. Это набор инструментов и библиотек из userspace для управления функциями ядра и создания контейнеров – изолированных безопасных окружений для приложений, или для всей системы.
+Функции ядра следующие: Control groups (cgroups)
+ Kernel namespaces
+ chroot
+ Kernel capabilities
+ SELinux, AppArmor
+ Seccomp policies
+
+Документацию можно найти на офсайте или в блоге автора.
+Для запуска приложения в контейнере необходимо предоставить lxc-execute конфиг, где указать все настройки контейнера. Начать можно с примеров в /usr/share/doc/lxc/examples. Man рекомендует начать с lxc-macvlan.conf. Начнём:# cp /usr/share/doc/lxc/examples/lxc-macvlan.conf lxc-my.conf
+# lxc-execute -n foo -f ./lxc-my.conf ./big_alloc
+Successfully allocated 102400000 bytes
+
+Работает!
+Теперь давайте ограничим память при помощи cgroup. LXC позволяет настроить подсистему памяти для cgroup контейнера, задавая ограничения памяти. Параметры можно найти в документации по RedHat. Я нашёл 2: memory.limit_in_bytes — задаёт максимальное количество пользовательской памяти, включая файловый кэш
+ memory.memsw.limit_in_bytes — задаёт максимальное количество в сумме памяти и свопа
+
+Что я добавил в lxc-my.conf:lxc.cgroup.memory.limit_in_bytes = 2M
+lxc.cgroup.memory.memsw.limit_in_bytes = 2M
+
+Запускаем:# lxc-execute -n foo -f ./lxc-my.conf ./big_alloc
+#
+
+Тишина — видимо, памяти слишком мало. Попробуем запустить из шелла# lxc-execute -n foo -f ./lxc-my.conf /bin/bash
+#
+
+bash не запустился. Попробуем /bin/sh:# lxc-execute -n foo -f ./lxc-my.conf -l DEBUG -o log /bin/sh
+sh-4.2# ./dev/big_alloc/big_alloc 
+Killed
+
+И в dmesg можно отследить славную смерть процесса:[15447.035569] big_alloc invoked oom-killer: gfp_mask=0xd0, order=0, oom_score_adj=0
+...
+[15447.035779] Task in /lxc/foo
+[15447.035785]  killed as a result of limit of 
+[15447.035789] /lxc/foo
+
+[15447.035795] memory: usage 3072kB, limit 3072kB, failcnt 127
+[15447.035800] memory+swap: usage 3072kB, limit 3072kB, failcnt 0
+[15447.035805] kmem: usage 0kB, limit 18014398509481983kB, failcnt 0
+[15447.035808] Memory cgroup stats for /lxc/foo: cache:32KB rss:3040KB rss_huge:0KB mapped_file:0KB writeback:0KB swap:0KB inactive_anon:1588KB active_anon:1448KB inactive_file:16KB active_file:16KB unevictable:0KB
+[15447.035836] [ pid ]   uid  tgid total_vm      rss nr_ptes swapents oom_score_adj name
+[15447.035963] [ 9225]     0  9225      942      308      10        0 0 init.lxc
+[15447.035971] [ 9228]     0  9228      833      698       6        0 0 sh
+[15447.035978] [ 9252]     0  9252    16106      843      36        0 0 big_alloc
+[15447.035983] Memory cgroup out of memory: Kill process 9252 (big_alloc) score 1110 or sacrifice child
+[15447.035990] Killed process 9252 (big_alloc) total-vm:64424kB, anon-rss:2396kB, file-rss:976kB
+
+Хотя мы не получили сообщение об ошибке от big_alloc насчёт malloc failure и количества доступной памяти, мне кажется, мы удачно ограничили память при помощи контейнеров. Пока остановимся на этомКомпоновщик
+Попробуем изменить бинарный образ, ограничив доступное куче место. Компоновка – последний этап построения программы. Для этого используется компоновщик и его скрипт. Скрипт – описание разделов программы в памяти вместе со всякими атрибутами и прочим.
+Пример компоновочного скрипта:ENTRY(main)
+
+SECTIONS
+{
+  . = 0x10000;
+  .text : { *(.text) }
+  . = 0x8000000;
+  .data : { *(.data) }
+  .bss : { *(.bss) }
+}
+
+Точка означает текущее положение. Например, раздел .text начинается с адреса 0×10000, а затем, начиная с 0×8000000 у нас есть два следующих раздела: .data и .bss. Точка входа — main.
+Всё круто, но в реальных программах работать не будет. Функция main, которую вы пишете в программах на С, реально не является первой вызываемой. Сперва совершается очень много инициализаций и подчисток. Этот код содержится в библиотеке времени исполнения С (crt) и распределено по библиотекам crt#.o в /usr/lib.
+Подробности можно увидеть, запустив gcc –v. Сначала она вызывает ccl, создаёт ассемблерный код, транслирует в объектный файл через as и в конце собирает всё вместе с ELF при помощи collect2. collect2 — обёртка ld. Она принимает объектный файл и 5 дополнительных библиотек, чтобы создать конечный бинарный образ:    /usr/lib/gcc/i686-redhat-linux/4.8.3/./././crt1.o
+    /usr/lib/gcc/i686-redhat-linux/4.8.3/./././crti.o
+    /usr/lib/gcc/i686-redhat-linux/4.8.3/crtbegin.o
+    /tmp/ccEZwSgF.o &lt;- объектный файл нашей программы
+    /usr/lib/gcc/i686-redhat-linux/4.8.3/crtend.o
+    /usr/lib/gcc/i686-redhat-linux/4.8.3/./././crtn.o
+
+Всё это очень сложно, поэтому вместо написания собственного скрипта я отредактирую скрипт компоновщика по умолчанию. Получим его, передав -Wl,-verbose в gcc:gcc big_alloc.c -o big_alloc -Wl,-verbose
+
+Теперь подумаем, как его изменить. Посмотрим, как бинарник строится по умолчанию. Скомпилируем и поищем адрес раздела .data. Вот выдача objdump -h big_alloc Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+...
+12 .text         000002e4  080483e0  080483e0  000003e0  2**4
+                 CONTENTS, ALLOC, LOAD, READONLY, CODE
+...
+23 .data         00000004  0804a028  0804a028  00001028  2**2
+                 CONTENTS, ALLOC, LOAD, DATA
+24 .bss          00000004  0804a02c  0804a02c  0000102c  2**2
+                 ALLOC
+
+Разделы .text, .data и .bss расположены около 128 MiB.
+Посмотрим, где стек, при помощи gdb:[restrict-memory]$ gdb big_alloc 
+...
+Reading symbols from big_alloc...done.
+(gdb) break main
+Breakpoint 1 at 0x80484fa: file big_alloc.c, line 12.
+(gdb) r
+Starting program: /home/avd/dev/restrict-memory/big_alloc 
+
+Breakpoint 1, main (argc=1, argv=0xbffff164) at big_alloc.c:12
+12              int i = 0;
+Missing separate debuginfos, use: debuginfo-install glibc-2.18-16.fc20.i686
+(gdb) info registers 
+eax            0x1      1
+ecx            0x9a8fc98f       -1701852785
+edx            0xbffff0f4       -1073745676
+ebx            0x42427000       1111650304
+esp            0xbffff0a0       0xbffff0a0
+ebp            0xbffff0c8       0xbffff0c8
+esi            0x0      0
+edi            0x0      0
+eip            0x80484fa        0x80484fa &lt;main+10&gt;
+eflags         0x286    [ PF SF IF ]
+cs             0x73     115
+ss             0x7b     123
+ds             0x7b     123
+es             0x7b     123
+fs             0x0      0
+gs             0x33     51
+
+esp указывает на 0xbffff0a0, что около 3 GiB. Значит, у нас есть куча в ~2.9 GiB.
+В реальном мире верхний адрес стека случайный, его можно увидеть, например, в выдаче:# cat /proc/self/maps
+
+Как мы знаем, куча растёт от конца .data по направлению к стеку. Что, если мы подвинем раздел .data как можно выше?
+Давайте разместим сегмент данных в 2 MiB перед стеком. Берём верх стека, вычитаем 2 MiB:
+0xbffff0a0 — 0x200000 = 0xbfdff0a0 
+Смещаем все разделы, начинающиеся с .data на этот адрес:. =     0xbfdff0a0
+.data           :
+{
+  *(.data .data.* .gnu.linkonce.d.*)
+  SORT(CONSTRUCTORS)
+}
+
+Компилируем:$ gcc big_alloc.c -o big_alloc -Wl,-T hack.lst
+
+Опции -Wl и -T hack.lst говорят компоновщику, чтобы он использовал hack.lst в качестве сценария работы.
+Посмотрим на заголовок:Разделы:
+Idx Name          Size      VMA       LMA       File off  Algn
+
+ ...
+
+ 23 .data         00000004  bfdff0a0  bfdff0a0  000010a0  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+ 24 .bss          00000004  bfdff0a4  bfdff0a4  000010a4  2**2
+                  ALLOC
+
+И всё равно данные размещаются в памяти. Как? Когда я попытался посмотреть значения указателей, возвращаемых malloc, я увидел, что размещение начинается где-то после окончания раздела.data по адресам вроде 0xbf8b7000, постепенно продолжается с увеличением указателей, а затем опять возвращается к нижним адресам вроде 0xb5e76000. Выглядит так, будто куча растёт вниз.
+Если подумать, ничего странного в этом нет. Я проверил исходники glibc и выяснил, что когда brk не справляется, то используется mmap. Значит, glibc просит ядро разместить страницы, ядро видит, что у процесса куча дыр в виртуальной памяти, и размещает в одном из пустых мест страницу, после чего glibc возвращает указатель с неё.
+Запуск big_alloc под strace подтвердил теорию. Посмотрите на нормальный бинарник:brk(0)                                  = 0x8135000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb77df000
+mmap2(NULL, 95800, PROT_READ, MAP_PRIVATE, 3, 0) = 0xb77c7000
+mmap2(0x4226d000, 1825436, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x4226d000
+mmap2(0x42425000, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1b8000) = 0x42425000
+mmap2(0x42428000, 10908, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x42428000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb77c6000
+mprotect(0x42425000, 8192, PROT_READ)   = 0
+mprotect(0x8049000, 4096, PROT_READ)    = 0
+mprotect(0x42269000, 4096, PROT_READ)   = 0
+munmap(0xb77c7000, 95800)               = 0
+brk(0)                                  = 0x8135000
+brk(0x8156000)                          = 0x8156000
+brk(0)                                  = 0x8156000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb77de000
+brk(0)                                  = 0x8156000
+brk(0x8188000)                          = 0x8188000
+brk(0)                                  = 0x8188000
+brk(0x81ba000)                          = 0x81ba000
+brk(0)                                  = 0x81ba000
+brk(0x81ec000)                          = 0x81ec000
+...
+brk(0)                                  = 0x9c19000
+brk(0x9c4b000)                          = 0x9c4b000
+brk(0)                                  = 0x9c4b000
+brk(0x9c7d000)                          = 0x9c7d000
+brk(0)                                  = 0x9c7d000
+brk(0x9caf000)                          = 0x9caf000
+...
+brk(0)                                  = 0xe29c000
+brk(0xe2ce000)                          = 0xe2ce000
+brk(0)                                  = 0xe2ce000
+brk(0xe300000)                          = 0xe300000
+brk(0)                                  = 0xe300000
+brk(0)                                  = 0xe300000
+brk(0x8156000)                          = 0x8156000
+brk(0)                                  = 0x8156000
++++ exited with 0 +++
+
+А теперь на модифицированный:brk(0)                                  = 0xbf896000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb778f000
+mmap2(NULL, 95800, PROT_READ, MAP_PRIVATE, 3, 0) = 0xb7777000
+mmap2(0x4226d000, 1825436, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x4226d000
+mmap2(0x42425000, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1b8000) = 0x42425000
+mmap2(0x42428000, 10908, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x42428000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb7776000
+mprotect(0x42425000, 8192, PROT_READ)   = 0
+mprotect(0x8049000, 4096, PROT_READ)    = 0
+mprotect(0x42269000, 4096, PROT_READ)   = 0
+munmap(0xb7777000, 95800)               = 0
+brk(0)                                  = 0xbf896000
+brk(0xbf8b7000)                         = 0xbf8b7000
+brk(0)                                  = 0xbf8b7000
+mmap2(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb778e000
+brk(0)                                  = 0xbf8b7000
+brk(0xbf8e9000)                         = 0xbf8e9000
+brk(0)                                  = 0xbf8e9000
+brk(0xbf91b000)                         = 0xbf91b000
+brk(0)                                  = 0xbf91b000
+brk(0xbf94d000)                         = 0xbf94d000
+brk(0)                                  = 0xbf94d000
+brk(0xbf97f000)                         = 0xbf97f000
+...
+brk(0)                                  = 0xbff8e000
+brk(0xbffc0000)                         = 0xbffc0000
+brk(0)                                  = 0xbffc0000
+brk(0xbfff2000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb7676000
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb7576000
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb7476000
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb7376000
+...
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb1c76000
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb1b76000
+brk(0)                                  = 0xbffc0000
+brk(0xbfffa000)                         = 0xbffc0000
+mmap2(NULL, 1048576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0xb1a76000
+brk(0)                                  = 0xbffc0000
+brk(0)                                  = 0xbffc0000
+brk(0)                                  = 0xbffc0000
+...
+brk(0)                                  = 0xbffc0000
+brk(0)                                  = 0xbffc0000
+brk(0)                                  = 0xbffc0000
++++ exited with 0 +++
+
+Сдвиг раздела .data к стеку с целью уменьшить место для кучи смысла не имеет, поскольку ядро разместит страницу в пустом пространстве.Песочница
+Ещё один способ ограничения памяти программы — sandboxing. Отличие от эмуляции в том, что мы ничего не эмулируем, а просто отслеживаем и контролируем некоторые вещи в поведении программы. Обычно используется в исследованиях в области безопасности, когда вы изолируете зловреда и анализируете его так, чтобы он не нанёс вреда вашей системе.Трюк с LD_PRELOAD 
+LD_PRELOAD — специальная переменная окружения, заставляющая динамический компоновщик использовать в приоритете предзагруженные библиотеки, в т.ч. libc. Этот трюк, кстати, также используют и некоторые зловреды.
+Я написал простую песочницу, перехватывающую вызовы malloc/free, работающую с памятью и возвращающую ENOMEM по исчерпанию лимита.
+Для этого я сделал библиотеку общего пользования (shared library) c моими реализациями вокруг malloc/free, увеличивающими счётчик на объём malloc, и уменьшающими, когда вызывается free. Она предзагружается через LD_PRELOAD.
+Моя реализация malloc:void *malloc(size_t size)
+{
+    void *p = NULL;
+
+    if (libc_malloc == NULL) 
+        save_libc_malloc();
+
+    if (mem_allocated &lt;= MEM_THRESHOLD)
+    {
+        p = libc_malloc(size);
+    }
+    else
+    {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    if (!no_hook) 
+    {
+        no_hook = 1;
+        account(p, size);
+        no_hook = 0;
+    }
+
+    return p;
+}
+
+libc_malloc — указатель на оригинальный malloc из libc. no_hook локальный флаг в потоке. Используется для того, чтобы можно было использовать malloc в хуках и избежать рекурсивных вызовов.
+malloc используется неявно в функции account библиотекой uthash. Зачем использовать таблицу хешей? Потому, что при вызове free вы передаёте в неё только указатель, а внутри free неизвестно, сколько памяти было выделено. Поэтому у вас есть таблица с указателями-ключами и объёмом размещённой памяти в виде значений. Вот что я делаю в malloc:struct malloc_item *item, *out;
+
+item = malloc(sizeof(*item));
+item-&gt;p = ptr;
+item-&gt;size = size;
+
+HASH_ADD_PTR(HT, p, item);
+
+mem_allocated += size;
+
+fprintf(stderr, "Alloc: %p -&gt; %zu\n", ptr, size);
+
+mem_allocated это та статическая переменная, которую сравнивают с ограничением в malloc.
+Теперь при вызове free происходит следующее:struct malloc_item *found;
+
+HASH_FIND_PTR(HT, &amp;ptr, found);
+if (found)
+{
+    mem_allocated -= found-&gt;size;
+    fprintf(stderr, "Free: %p -&gt; %zu\n", found-&gt;p, found-&gt;size);
+    HASH_DEL(HT, found);
+    free(found);
+}
+else
+{
+    fprintf(stderr, "Freeing unaccounted allocation %p\n", ptr);
+}
+
+Да, просто уменьшаем mem_allocated.
+И что самое крутое — это работает.[restrict-memory]$ LD_PRELOAD=./libmemrestrict.so ./big_alloc
+pp[0] = 0x25ac210
+pp[1] = 0x25c5270
+pp[2] = 0x25de2d0
+pp[3] = 0x25f7330
+pp[4] = 0x2610390
+pp[5] = 0x26293f0
+pp[6] = 0x2642450
+pp[7] = 0x265b4b0
+pp[8] = 0x2674510
+pp[9] = 0x268d570
+pp[10] = 0x26a65d0
+pp[11] = 0x26bf630
+pp[12] = 0x26d8690
+pp[13] = 0x26f16f0
+pp[14] = 0x270a750
+pp[15] = 0x27237b0
+pp[16] = 0x273c810
+pp[17] = 0x2755870
+pp[18] = 0x276e8d0
+pp[19] = 0x2787930
+pp[20] = 0x27a0990
+malloc: Cannot allocate memory
+Failed after 21 allocations
+
+Полный код библиотеки на github
+Получается, что LD_PRELOAD – отличный способ ограничить памятьptrace
+ptrace — ещё одна возможность для построения песочницы. Это системный вызов, позволяющий управлять выполнением другого процесса. Встроен в различные POSIX ОС.
+Это основа таких трассировщиков, как strace, ltrace, и почти всех программ для создания песочниц — systrace, sydbox, mbox и дебаггеров, включая gdb.
+Я сделал свой инструмент при помощи ptrace. Он отслеживает вызовы brk и меряет расстояние между изначальным значением break и новым, которое задаётся следующим вызовом brk.
+Программа форкается и запускает 2 процесса. Родительский – трассировщик, а дочерний – трассируемый. В дочернем процессе я вызываю ptrace(PTRACE_TRACEME) и затем execv. В родительском использую ptrace(PTRACE_SYSCALL) чтобы остановиться на syscall и отфильтровать вызовы brk из дочернего, а затем ещё один ptrace(PTRACE_SYSCALL) для получения значения, возвращаемого brk.
+Когда brk выходит за заданное значение, я выставляю -ENOMEM в качестве возвращаемого значения brk. Это задаётся в регистре eax, поэтому я просто перезаписываю его с ptrace(PTRACE_SETREGS). Вот самая вкусная часть:// Получить возвращаемое значение
+if (!syscall_trace(pid, &amp;state))
+{
+    dbg("brk return: 0x%08X, brk_start 0x%08X\n", state.eax, brk_start);
+
+    if (brk_start) // We have start of brk
+    {
+        diff = state.eax - brk_start;
+
+        // Если дочерний процесс превысил ограничение 
+        // заменить возвращаемое значение brk на -ENOMEM
+        if (diff &gt; THRESHOLD || threshold) 
+        {
+            dbg("THRESHOLD!\n");
+            threshold = true;
+            state.eax = -ENOMEM;
+            ptrace(PTRACE_SETREGS, pid, 0, &amp;state);
+        }
+        else
+        {
+            dbg("diff 0x%08X\n", diff);
+        }
+    }
+    else
+    {
+        dbg("Assigning 0x%08X to brk_start\n", state.eax);
+        brk_start = state.eax;
+    }
+}
+
+Также я перехватываю вызовы mmap/mmap2, так как у libc хватает мозгов вызывать их при проблемах с brk. Так что когда заданное значение превышено и я вижу вызов mmap, я обламываю его с ENOMEM.
+Работает![restrict-memory]$ ./ptrace-restrict ./big_alloc
+pp[0] = 0x8958fb0
+pp[1] = 0x8971fb8
+pp[2] = 0x898afc0
+pp[3] = 0x89a3fc8
+pp[4] = 0x89bcfd0
+pp[5] = 0x89d5fd8
+pp[6] = 0x89eefe0
+pp[7] = 0x8a07fe8
+pp[8] = 0x8a20ff0
+pp[9] = 0x8a39ff8
+pp[10] = 0x8a53000
+pp[11] = 0x8a6c008
+pp[12] = 0x8a85010
+pp[13] = 0x8a9e018
+pp[14] = 0x8ab7020
+pp[15] = 0x8ad0028
+pp[16] = 0x8ae9030
+pp[17] = 0x8b02038
+pp[18] = 0x8b1b040
+pp[19] = 0x8b34048
+pp[20] = 0x8b4d050
+malloc: Cannot allocate memory
+Failed after 21 allocations
+
+Но мне это не нравится. Это завязано на ABI, т.е. тут приходится использовать rax вместо eax на 64-битной машине, поэтому надо либо делать отдельную версию, или использовать #ifdef, или принудительно использовать опцию -m32 option. И скорее всего не будет работать на других POSIX-подобных системах, у которых может быть другой ABI.Иные способы
+Что ещё можно попробовать (эти варианты были отвергнуты по разным причинам):хуки malloc. В man написано, что уже не поддерживаются
+Seccomp и prctl при помощи PR_SET_MM_START_BRK. Может сработать – но, как сказано в документации, это не песочница, а способ минимизации доступной поверхности ядра. То есть, это будет ещё более криво, чем использовать ручной ptrace
+libvirt-sandbox. Всего лишь обёртка для lxc и qemu.
+SELinux sandbox. Не работает, ибо использует cgroup.
+Ссылки Статья Gustavo Duarte 
+ Limiting time and memory consumption of a program in Linux.
+ Linux sandboxing
+
+    

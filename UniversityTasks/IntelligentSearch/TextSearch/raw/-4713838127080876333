@@ -1,0 +1,325 @@
+﻿#TITLE:Инкапсуляция интерфейсов. Делаем API в C++ удобным и понятным
+
+      В свое время я написал для журнала «Хакер» цикл статей для рубрики «Академия С++», в котором описывал интересные возможности использования C++. Цикл давно завершён, но меня до сих пор часто спрашивают, как именно работает эмуляция динамической типизации из первой статьи. Дело в том, что когда я начинал цикл, не знал точно, что нужно, а что нет, и упустил в описании ряд нужных фактов. Зря! В обучающем материале не бывает ничего лишнего. Сегодня я в деталях изложу, как именно получается красивый высокоуровневый API в терминах самого обычного C++: просто классы, методы и данные.Для чего это нужно
+Как правило, на C++ пишется что-то быстрое, но не всегда удобное в использовании. В процессе разработки любого продукта выделяется общий функционал с худо-бедно оформленным интерфейсом работы с сущностями продукта. Язык C++ всячески поощряет указатели и ссылки на базовые классы, которые множатся и усложняют код, заворачиваются во всевозможные «умные» указатели и порождают километровые строки при любом обращении к подобной конструкции!
+Согласитесь, вряд ли удобно использовать такое:	std::unordered_map&lt;std::string, std::vector&lt; std::shared_ptr&lt;base_class&gt;&gt;&gt;
+
+Особенно если для каждого элемента вектора нужна операция класса-наследника, то есть метод не входит в вышеупомянутый base_class. Что, не можете найти base_class в конструкции чуть выше? А я о чём говорил!
+Для удобства использования работы с базовым классом проще всего выделить сущность работы с ним и инкапсулировать в неё интерфейс как простой указатель на данные класса.Интерфейс базового класса
+Чтобы максимально упростить повествование, будет много примеров, и мы не будем отходить далеко от кода. Сам код будет прилагаться к статье, и здесь его нигде и никто уже не потеряет. Итак, базовый класс предлагаю оформить как объект данных, давайте максимально его упростим:class object
+{
+public:
+    object(); // по умолчанию создание без данных, аналог null
+    virtual ~object(); // для корректной генерации unique_ptr
+    // копирование
+    object(const object&amp; another);
+    object&amp; operator = (const object&amp; another);
+    // проверка на null
+    bool is_null() const;
+    // объявление типа спрятанного в реализации
+    class data;
+    // для работы с потомками
+    const data* get_data() const;
+    // это понадобится для тестирования
+    const char* data_class() const;
+protected:
+    // инициализация в потомках
+    object(data* new_data);
+    void reset(data* new_data);
+    // это нужно для работы с данными
+    void assert_not_null(const char* file, int line) const;
+private:
+    // для простоты изложения
+    std::unique_ptr&lt;data&gt; m_data;
+};
+
+То, что мы ранее использовали в качестве интерфейса на базовый класс, превращается у нас в object::data — важнейший класс, который теперь не виден нигде снаружи.
+На самом деле, в object, как и в object::data, должны присутствовать базовые операции, для которых и был заведён тот самый base_class. Но нам они в описании не понадобятся, и без того будет много интересного.
+В минимальном виде класс данных объекта выглядит проще некуда:class object::data
+{
+public:
+    // самый важный метод класса данных
+    virtual data* clone() const = 0;
+    // это понадобится для тестирования
+    virtual const char* class_name() const = 0;
+};
+
+Единственный метод, который нам действительно понадобится в базовом классе — это клонирование данных соответствующего наследника. Причём, как можно было заметить, интерфейсный класс прекрасно обходится без метода clone(), сам object и все его наследники пользуются обычными конструкторами копирования. Вот здесь мы и подходим к самому главному — наследованию от инкапсулированного базового класса.Двойное наследование
+Для наследников нам нужно выбрать пару сущностей. Давайте будем разрабатывать компьютерную игру, где у нас будут космические корабли и астероиды. Соответственно, нам нужны две пары классов для работы: asteroid и spaceship.
+Давайте добавим по уникальному методу классам наследникам: пусть астероиды различаются по целочисленному идентификатору, а космические корабли идентифицируются уникальным именем:class asteroid : public object
+{
+public:
+    // пусть астероидов без идентификатора не бывает
+    asteroid(int identifier);
+    // копируем астероид
+    asteroid(const asteroid&amp; another);
+    asteroid&amp; operator = (const asteroid&amp; another);
+    // понадобится для приведения типа "наверх"
+    asteroid(const object&amp; another);
+    asteroid&amp; operator = (const object&amp; another);
+    // уникальный метод класса-наследника
+    int get_identifier() const;
+    // собственный класс данных
+    class data;
+private:
+    // ссылка на интерфейс своего (!) класса данных
+    data* m_data;
+};
+
+class spaceship : public object
+{
+public:
+    // да не будет безымянных кораблей
+    spaceship(const char* name);
+    // копируем данные корабля
+    spaceship(const spaceship&amp; another);
+    spaceship&amp; operator = (const spaceship&amp; another);
+    // понадобится для приведения типа "наверх"
+    spaceship(const object&amp; another);
+    spaceship&amp; operator = (const object&amp; another);
+    // уникальный метод класса "получить имя"
+    const char* get_name() const;
+    // свой класс данных
+    class data;
+private:
+    // ссылка на свои (!) методы и свойства
+    data* m_data;
+};
+
+Обратите внимание, что несмотря на то, что роль контейнера выполняет предок object, в наследниках есть ссылка на содержимое object, но уже нужного типа. Наследование основных классов также должно быть продублировано для классов данных (ниже я покажу, для чего это нужно):class asteroid::data : public object::data
+{
+public:
+    // данные астероида создаются только с идентификатором
+    data(int identifier);
+    // получение идентификатора доступно только для астероида
+    int get_identifier() const;
+    // вот эта перегрузка крайне важна!
+    virtual object::data* clone() const override;
+    // эта перегрузка понадобится только для теста
+    virtual const char* class_name() const override;
+private:
+    // данные класса asteroid известны только в реализации
+    int m_identifier;
+};
+
+class spaceship::data : public object::data
+{
+public:
+    // имя обязательно, без него звездолёт с данными не создать
+    data(const char* name);
+    // запросить имя можно только через интерфейс spaceship::data
+    const char* get_name() const;
+    // очень важно перегрузить этот метод!
+    virtual object::data* clone() const override;
+    // понадобится для тестирования и наглядности
+    virtual const char* class_name() const override;
+private:
+    // только в реализации нам и понадобится #include &lt;string&gt;
+    std::string m_name;
+};
+
+Теперь чуточку подробнее пройдём по реализации, и всё сразу встанет на свои места.Реализация методов
+Создание экземпляра непосредственно типа object конструктором по умолчанию будет означать создание объекта с null-значением.object::object()
+{
+}
+
+object::~object()
+{
+}
+
+object::object(object::data* new_data)
+    : m_data(new_data)
+{
+}
+
+object::object(const object&amp; another)
+    : m_data(another.is_null() ? nullptr : another.m_data-&gt;clone())
+{
+}
+
+object&amp; object::operator = (const object&amp; another)
+{
+    m_data.reset(another.is_null() ? nullptr : another.m_data-&gt;clone());
+    return *this;
+}
+
+bool object::is_null() const
+{
+    return !m_data;
+}
+
+const object::data* object::get_data() const
+{
+    return m_data.get();
+}
+
+const char* object::data_class() const
+{
+    return is_null() ? "null" : m_data-&gt;class_name();
+}
+
+void object::reset(object::data* new_data)
+{
+    m_data.reset(new_data);
+}
+
+void object::assert_not_null(const char* file, int line) const
+{
+    if (is_null())
+    {
+        std::stringstream output;
+        output &lt;&lt; "Assert 'object is not null' failed at file: '" &lt;&lt; file &lt;&lt; "' line: " &lt;&lt; line;
+        throw std::runtime_error(output.str());
+    }
+}
+
+Теперь самое главное, как же инициализируются экземпляры классов-наследников:asteroid::asteroid(int identifier)
+	: object(m_data = new asteroid::data(identifier))
+{
+}
+
+spaceship::spaceship(const char* name)
+	: object(m_data = new spaceship::data(name))
+{
+}
+
+Как видно из этих нескольких строк, мы убиваем сразу стадо зайцев одни залпом фазового бластера: мы получаем создание наследников с сохранением ссылки на данные в специальный класс-контейнер обычным конструктором;
+класс-контейнер является также и базовым классом для всех прочих, вся основная работе по хранению интерфейса делается в базовом классе;
+класс-наследник имеет интерфейс для работы с классом данных соответствующего класса в m_data;
+работаем мы с самыми обычными классами, не по ссылке, получая все плюшки автоматизации C++ работы с экземплярами классов.
+
+Разумеется при обращении к данным соответствующий класс будет использовать свой интерфейс-наследник, при этом проверяя данные на null:int asteroid::get_identifier() const
+{
+    assert_not_null(__FILE__, __LINE__);
+    return m_data-&gt;get_identifier();
+}
+
+const char* spaceship::get_name() const
+{
+    assert_not_null(__FILE__, __LINE__);
+    return m_data-&gt;get_name();
+}
+
+Простой пример, который будет работать как часы:	asteroid aster(12345);
+	spaceship ship("Alfa-Romeo");
+	object obj;
+	object obj_aster = asteroid(67890);
+	object obj_ship = spaceship("Omega-Juliette");
+
+Проверяем:Test for null:
+ aster.is_null(): false
+ ship.is_null(): false
+ obj.is_null(): true
+ obj_aster.is_null(): false
+ obj_ship.is_null(): false
+Test for data class:
+ aster.data_class(): asteroid
+ ship.data_class(): spaceship
+ obj.data_class(): null
+ obj_aster.data_class(): asteroid
+ obj_ship.data_class(): spaceship
+Test identification:
+ aster.get_identifier(): 12345
+ ship.get_name(): Alfa-Romeo
+Не правда ли, напоминает высокоуровневые языки: C#, Java, Python и т.п.? Единственную сложность составит получение обратно интерфейса наследников, запакованных в object. Сейчас мы научимся извлекать в экземпляры asteroid и spaceship то, что ранее было запаковано в object.Путь наверх
+Всё, что нам нужно, это перегрузить конструктор классов-наследников, правда сама инициализация при этом получится не очень:asteroid::asteroid(const asteroid&amp; another)
+    : object(m_data = another.is_null() ? nullptr : static_cast&lt;asteroid::data*&gt;(another.get_data()-&gt;clone()))
+{
+}
+
+asteroid&amp; asteroid::operator = (const asteroid&amp; another)
+{
+    reset(m_data = another.is_null() ? nullptr : static_cast&lt;asteroid::data*&gt;(another.get_data()-&gt;clone()));
+    return *this;
+}
+
+asteroid::asteroid(const object&amp; another)
+    : object(m_data = (dynamic_cast&lt;const asteroid::data*&gt;(another.get_data()) ?
+                       dynamic_cast&lt;asteroid::data*&gt;(another.get_data()-&gt;clone()) : nullptr))
+{
+}
+
+asteroid&amp; asteroid::operator = (const object&amp; another)
+{
+    reset(m_data = (dynamic_cast&lt;const asteroid::data*&gt;(another.get_data()) ?
+                    dynamic_cast&lt;asteroid::data*&gt;(another.get_data()-&gt;clone()) : nullptr));
+    return *this;
+}
+spaceship::spaceship(const spaceship&amp; another)
+    : object(m_data = another.is_null() ? nullptr : static_cast&lt;spaceship::data*&gt;(another.get_data()-&gt;clone()))
+{
+}
+
+spaceship&amp; spaceship::operator = (const spaceship&amp; another)
+{
+    reset(m_data = another.is_null() ? nullptr : static_cast&lt;spaceship::data*&gt;(another.get_data()-&gt;clone()));
+    return *this;
+}
+
+spaceship::spaceship(const object&amp; another)
+    : object(m_data = (dynamic_cast&lt;const spaceship::data*&gt;(another.get_data()) ?
+                       dynamic_cast&lt;spaceship::data*&gt;(another.get_data()-&gt;clone()) : nullptr))
+{
+}
+
+spaceship&amp; spaceship::operator = (const object&amp; another)
+{
+    reset(m_data = (dynamic_cast&lt;const spaceship::data*&gt;(another.get_data()) ?
+                    dynamic_cast&lt;spaceship::data*&gt;(another.get_data()-&gt;clone()) : nullptr));
+    return *this;
+}
+
+Как видно, здесь придётся использовать dynamic_cast, просто потому что приходится идти вверх по иерархии классов данных. Выглядит массивно, но результат того стоит:	object obj_aster = asteroid(67890);
+	object obj_ship = spaceship("Omega-Juliette");
+	asteroid aster_obj = obj_aster;
+	spaceship ship_obj = obj_ship;
+
+Проверяем:Test for null:
+ aster_obj.is_null(): false
+ ship_obj.is_null(): false
+Test for data class:
+ aster_obj.data_class(): asteroid
+ ship_obj.data_class(): spaceship
+Test identification:
+ aster_obj.get_identifier(): 67890
+ ship_obj.get_name(): Omega-Juliette
+Туда и обратно. Как у Толкиена, только значительно короче.
+Не забываем протестировать также и операторы присвоения:    aster = asteroid(335577);
+    ship = spaceship("Ramambahara");
+    obj = object();
+    obj_aster = asteroid(446688);
+    obj_ship = spaceship("Mamburu");
+    aster_obj = obj_aster;
+    ship_obj = obj_ship;
+
+И снова проверяем:Test for null:
+ aster.is_null(): false
+ ship.is_null(): false
+ obj.is_null(): true
+ obj_aster.is_null(): false
+ obj_ship.is_null(): false
+ aster_obj.is_null(): false
+ ship_obj.is_null(): false
+Test for data class:
+ aster.data_class(): asteroid
+ ship.data_class(): spaceship
+ obj.data_class(): null
+ obj_aster.data_class(): asteroid
+ obj_ship.data_class(): spaceship
+ aster_obj.data_class(): asteroid
+ ship_obj.data_class(): spaceship
+Test identification:
+ aster.get_identifier(): 335577
+ ship.get_name(): Ramambahara
+ aster_obj.get_identifier(): 446688
+ ship_obj.get_name(): Mamburu
+Всё работает как надо! Ниже идёт ссылка на GitHub с исходниками.PROFIT!
+Что мы имеем? Это не Pimpl, для Pimpl здесь слишком много полиморфизма, да и название «указатель на реализацию» не самое удачное. В C++ реализация и так находится отдельно от объявления класса, в .cpp файлах, Pimpl позволяет убрать данные в реализацию. Здесь данные не просто прячутся в реализацию, они составляют дерево иерархии, при этом зеркально отражая иерархию интерфейсных классов. Вдобавок мы получаем инкапсуляцию null-значений и можем встраивать логику допустимости null-значений в классы-наследники. Все классы легко жонглируют данными — как своими, так и всей цепочкой предков и наследников, при этом сам синтаксис будет прост и лаконичен.
+Хотите сделать просто в API своей библиотеки? Теперь вам ничего не мешает. Что до реплик о том, что C++ очень сложен и на нём нельзя сделать высокоуровневую логику — пожалуйста, можно комбинировать массивы таких объектов, не хуже C# или Java, при этом преобразования будут даже проще. Вы можете сделать ваши классы простыми в использовании, при этом не понадобится хранить указатели на базовый класс, возиться с фабриками, в общем, всячески эмулировать обычные конструкторы и операторы присвоения больше не придётся.Полезные ссылки
+Со статьёй идут исходники, выложенные на GitHub.
+Исходники дополнены парой методов, которые упрощают тестирование и позволяют быстрее понять, как работает передача данных между объектами.
+Также оставлю ссылку на цикл статей «Академия C++» для журнала «Хакер».
+
+      
+      
+    

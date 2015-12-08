@@ -1,0 +1,76 @@
+﻿#TITLE:Подготовка приложения для iOS 9
+
+      ￼9 сентября выйдет новый релиз iOS и OS X. Времени остается все меньше, и многие разработчики уже оптимизировали свои приложения для работы на новых ОС. Тем, кто этого ещё не сделал, предлагаю коротко рассмотреть, что необходимо для поддержки iOS 9.App Transport Security
+В iOS 9 появилась технология App Transport Security, которая помогает сделать передачу данных по сети более безопасной. Она включена по умолчанию, поэтому если ваш сервер не удовлетворяет требованиям ATS, то соединение завершится с ошибкой 
+An SSL error has occurred and a secure connection to the server cannot be made.
+ 
+Однако ATS можно настроить. Понять, какие настройки необходимо конфигурировать, поможет команда nscurl. Например, для Яндекса:
+nscurl --ats-diagnostics http://ya.ru
+&lt;...&gt;
+Default ATS Secure Connection
+---
+ATS Default Connection
+2015-08-28 11:51:06.868 nscurl[7019:8960694] NSURLSession/
+NSURLConnection HTTP load failed (kCFStreamErrorDomainSSL, -9802)
+Result : FAIL
+---
+&lt;...&gt;
+Configuring PFS exceptions for ya.ru
+---
+Disabling Perfect Forward Secrecy
+Result : PASS
+---
+&lt;...&gt;
+
+Видно, что успешно установить соединение удастся, только если отключить Perfect Forward Secrecy, поэтому в Info.plist файле для домена ya.ru необходимо указать NSExceptionRequiresForwardSecrecy=NO.
+Рассмотрим основные конфигурации ATS.Отключить ATS
+Полностью отключить ATS можно, указав флаг NSAllowsArbitraryLoads=NO. Такая конфигурация рекомендуется только для отладки. 
+￼	&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+	&lt;dict&gt;
+		&lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;
+		&lt;true/&gt;
+	&lt;/dict&gt;
+Отключить ￼PFS для всех поддоменов	&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+	&lt;dict&gt;
+		&lt;key&gt;NSExceptionDomains&lt;/key&gt;
+		&lt;dict&gt;
+			&lt;key&gt;ya.ru&lt;/key&gt;
+			&lt;dict&gt;
+				&lt;key&gt;NSIncludesSubdomains&lt;/key&gt;
+				&lt;true/&gt;
+				&lt;key&gt;NSExceptionRequiresForwardSecrecy&lt;/key&gt;
+				&lt;false/&gt;
+			&lt;/dict&gt;
+		&lt;/dict&gt;
+	&lt;/dict&gt;
+￼￼Отключить ATS для всех соединений кроме одного
+Для приложений, которые открывают внешние ссылки во встроенном браузере, необходимо отключить ATS для всех соединений, кроме соединений к API серверу.	&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+	&lt;dict&gt;
+		&lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;
+		&lt;true/&gt;
+		&lt;key&gt;NSExceptionDomains&lt;/key&gt;
+		&lt;dict&gt;
+			&lt;key&gt;ya.ru&lt;/key&gt;
+			&lt;dict&gt;
+				&lt;key&gt;NSExceptionRequiresForwardSecrecy&lt;/key&gt;
+				&lt;false/&gt;
+				&lt;key&gt;NSExceptionAllowsInsecureHTTPLoads&lt;/key&gt;
+				&lt;false/&gt;
+			&lt;/dict&gt;
+		&lt;/dict&gt;
+	&lt;/dict&gt;
+Биткод
+В iOS 9 появилась техонология App Thinning, которая позволяет оптимизировать размер устанавливаемого приложения. Теперь в Xcode 7 во время компиляции генерируется биткод для платформ, которые поддерживаются приложением. Это опция включена по умолчанию. Однако некоторые сторонние библиотеки пока ещё не скомпилированы с биткодом. Если ваше приложение использует такие библиотеки, то генерацию биткода необходимо отключить. Ставим в проекте ENABLE_BITCODE=NO.
+￼Переходы в сторонние приложения
+В iOS 9 изменилось поведение метода canOpenURL:. Теперь необходимо объявлять список схем, которые используются для перехода в сторонние приложения. Это делается с помощью ключа LSApplicationQueriesSchemes в файле Info.plist. Например, если ваше приложение открывает Яндекс.Навигатор, то конфигурация будет выглядеть так:	&lt;key&gt;LSApplicationQueriesSchemes&lt;/key&gt;
+	&lt;array&gt;
+		&lt;string&gt;yandexnavi&lt;/string&gt;
+	&lt;/array&gt;
+
+￼Facebook SDK
+Если ваше приложение использует Facebook SDK, то необходимо настроить ATS и список схем так, как рекомендует Facebook на странице Preparing Your Apps for iOS 9. Также стоит обратить внимание на другие сторонние библиотеки, которые устанавливают соединение со своими серверами или открывают сторонние приложения.Итог
+Корректная настройка ATS, биткода и списка схем — это основное, что необходимо сделать для корректной работы приложения на iOS 9. Это несложно, особенно если понять, для чего это необходимо и как правильно это делается. Ведь эти знания пригодятся не только при переходе с iOS 8 SDK, но и в будущем при создании новых проектов.Успехов!
+
+      
+      
+    

@@ -1,0 +1,389 @@
+﻿#TITLE:Пишем свой логер на основе psr/log. Для начинающих
+
+      Представим себе, что мы пишем свой фреймворк, cms или самое обычное приложение и нам, конечно же, понадобится компонент для логирования. Можно было бы взять уже готовое решение , но сегодня мы будем писать свой компонент. И писать мы его будем используя уже готовую реализацию PSR-3 psr/log.  Описание самого PSR-3 можно почитать тут.
+Что же должен будет уметь наш компонент:легко настраиваться
+писать логи в несколько мест одновременно
+
+Давайте создадим базовый класс нашего компонента:&lt;?php
+namespace Logger;
+
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Class Logger
+ */
+class Logger extends AbstractLogger implements LoggerInterface
+{
+	/**
+	 * @inheritdoc
+	 */
+	public function log($level, $message, array $context = [])
+	{
+		//тут мы будем логировать
+	}
+}
+
+Мы могли бы сделать логирование в файл, базу и пр. прям в методе log(), но нам же нужно гибко настраивать наш компонент. Поэтому для логирования в разные места мы у нас будут использоваться роуты.
+Вот так выглядит базовый класс нашего лог-роута:&lt;?php
+namespace Logger;
+
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Class Route
+ */
+abstract class Route extends AbstractLogger implements LoggerInterface
+{
+	/**
+	 * @var bool Включен ли роут
+	 */
+	public $isEnable = true;
+}
+
+Пока в нём есть только одно свойство $isEnable, но вскоре мы его расширим. 
+Теперь давайте создадим на его основе роут который будет писать логи в файл:&lt;?php
+namespace Logger\Routes;
+
+use Logger\Route;
+
+/**
+ * Class FileRoute
+ */
+class FileRoute extends Route
+{
+	/**
+	 * @var string Путь к файлу
+	 */
+	public $filePath;
+	/**
+	 * @var string Шаблон сообщения
+	 */
+	public $template = "{date} {level} {message} {context}";
+
+	/**
+	 * @inheritdoc
+	 */
+	public function __construct(array $attributes = [])
+	{
+		parent::__construct($attributes);
+
+		if (!file_exists($this-&gt;filePath))
+		{
+			touch($this-&gt;filePath);
+		}
+	}
+
+	/**
+	 * @inheritdoc
+	 */
+	public function log($level, $message, array $context = [])
+	{
+		file_put_contents($this-&gt;filePath, trim(strtr($this-&gt;template, [
+			'{date}' =&gt; $this-&gt;getDate(),
+			'{level}' =&gt; $level,
+			'{message}' =&gt; $message,
+			'{context}' =&gt; $this-&gt;contextStringify($context),
+		])) . PHP_EOL, FILE_APPEND);
+	}
+}
+А так, если мы захотим писать логи в БД&lt;?php
+namespace Logger\Routes;
+
+use PDO;
+use Logger\Route;
+
+/**
+ * Class DatabaseRoute
+ *
+ * Создание таблицы:
+ *
+ * CREATE TABLE default_log (
+ *      id integer PRIMARY KEY,
+ *      date date,
+ *      level varchar(16),
+ *      message text,
+ *      context text
+ * );
+ */
+class DatabaseRoute extends Route
+{
+	/**
+	 * @var string Data Source Name
+	 * @see http://php.net/manual/en/pdo.construct.php
+	 */
+	public $dsn;
+	/**
+	 * @var string Имя пользователя БД
+	 */
+	public $username;
+	/**
+	 * @var string Пароль пользователя БД
+	 */
+	public $password;
+	/**
+	 * @var string Имя таблицы
+	 */
+	public $table;
+
+	/**
+	 * @var PDO Подключение к БД
+	 */
+	private $connection;
+
+	/**
+	 * @inheritdoc
+	 */
+	public function __construct(array $attributes = [])
+	{
+		parent::__construct($attributes);
+		$this-&gt;connection = new PDO($this-&gt;dsn, $this-&gt;username, $this-&gt;password);
+	}
+
+	/**
+	 * @inheritdoc
+	 */
+	public function log($level, $message, array $context = [])
+	{
+		$statement = $this-&gt;connection-&gt;prepare(
+			'INSERT INTO ' . $this-&gt;table . ' (date, level, message, context) ' .
+			'VALUES (:date, :level, :message, :context)'
+		);
+		$statement-&gt;bindParam(':date', $this-&gt;getDate());
+		$statement-&gt;bindParam(':level', $level);
+		$statement-&gt;bindParam(':message', $message);
+		$statement-&gt;bindParam(':context', $this-&gt;contextStringify($context));
+		$statement-&gt;execute();
+	}
+}
+Ну или в syslog&lt;?php
+namespace Logger\Routes;
+
+use Logger\Route;
+use Psr\Log\LogLevel;
+
+/**
+ * Class SyslogRoute
+ */
+class SyslogRoute extends Route
+{
+	/**
+	 * @var string Шаблон сообщения
+	 */
+	public $template = "{message} {context}";
+
+	/**
+	 * @inheritdoc
+	 */
+	public function log($level, $message, array $context = [])
+	{
+		$level = $this-&gt;resolveLevel($level);
+		if ($level === null)
+		{
+			return;
+		}
+
+		syslog($level, trim(strtr($this-&gt;template, [
+			'{message}' =&gt; $message,
+			'{context}' =&gt; $this-&gt;contextStringify($context),
+		])));
+	}
+	/**
+	 * Преобразование уровня логов в формат подходящий для syslog()
+	 *
+	 * @see http://php.net/manual/en/function.syslog.php
+	 * @param $level
+	 * @return string
+	 */
+	private function resolveLevel($level)
+	{
+		$map = [
+			LogLevel::EMERGENCY =&gt; LOG_EMERG,
+			LogLevel::ALERT =&gt; LOG_ALERT,
+			LogLevel::CRITICAL =&gt; LOG_CRIT,
+			LogLevel::ERROR =&gt; LOG_ERR,
+			LogLevel::WARNING =&gt; LOG_WARNING,
+			LogLevel::NOTICE =&gt; LOG_NOTICE,
+			LogLevel::INFO =&gt; LOG_INFO,
+			LogLevel::DEBUG =&gt; LOG_DEBUG,
+		];
+		return isset($map[$level]) ? $map[$level] : null;
+	}
+}
+
+Для того чтобы во всех наших логах использовался единый формат даты, в базовый класс роута мы добавили метод getDate() и свойство $dateFormat, а так же метод contextStringify() который будет превращать в строку третий параметр метода log():&lt;?php
+namespace Logger;
+
+use DateTime;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Class Route
+ */
+abstract class Route extends AbstractLogger implements LoggerInterface
+{
+	/**
+	 * @var bool Включен ли роут
+	 */
+	public $isEnable = true;
+	/**
+	 * @var string Формат даты логов
+	 */
+	public $dateFormat = DateTime::RFC2822;
+
+	/**
+	 * Текущая дата
+	 *
+	 * @return string
+	 */
+	public function getDate()
+	{
+		return (new DateTime())-&gt;format($this-&gt;dateFormat);
+	}
+
+	/**
+	 * Преобразование $context в строку
+	 *
+	 * @param array $context
+	 * @return string
+	 */
+	public function contextStringify(array $context = [])
+	{
+		return !empty($context) ? json_encode($context) : null;
+	}
+}
+
+Теперь нам нужно как-то научить наш Logger дружить с роутами:&lt;?php
+namespace Logger;
+
+use SplObjectStorage;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Class Logger
+ */
+class Logger extends AbstractLogger implements LoggerInterface
+{
+	/**
+	 * @var SplObjectStorage Список роутов
+	 */
+	public $routes;
+
+	/**
+	 * Конструктор
+	 */
+	public function __construct()
+	{
+		$this-&gt;routes = new SplObjectStorage();
+	}
+
+	/**
+	 * @inheritdoc
+	 */
+	public function log($level, $message, array $context = [])
+	{
+		foreach ($this-&gt;routes as $route)
+		{
+			if (!$route instanceof Route)
+			{
+				continue;
+			}
+			if (!$route-&gt;isEnable)
+			{
+				continue;
+			}
+			$route-&gt;log($level, $message, $context);
+		}
+	}
+}
+
+Теперь при вызове метода log() нашего компонента, он пробежится по всем активным роутам и вызовет метод log() у каждого из них. В качестве хранилища наших роутов мы использовали SplObjectStorage из стандартной библиотеки PHP. Теперь для конфигуривания нашего компонента можно писать так:$logger = new Logger\Logger();
+
+$logger-&gt;routes-&gt;attach(new Logger\Routes\FileRoute([
+	'isEnable' =&gt; true,
+	'filePath' =&gt; 'data/default.log',
+]));
+$logger-&gt;routes-&gt;attach(new Logger\Routes\DatabaseRoute([
+	'isEnable' =&gt; true,
+	'dsn' =&gt; 'sqlite:data/default.sqlite',
+	'table' =&gt; 'default_log',
+]));
+$logger-&gt;routes-&gt;attach(new Logger\Routes\SyslogRoute([
+	'isEnable' =&gt; true,
+]));
+
+$logger-&gt;info("Info message");
+$logger-&gt;alert("Alert message");
+$logger-&gt;error("Error message");
+$logger-&gt;debug("Debug message");
+$logger-&gt;notice("Notice message");
+$logger-&gt;warning("Warning message");
+$logger-&gt;critical("Critical message");
+$logger-&gt;emergency("Emergency message");
+
+Для конфигурирования роутов при инициализации еще раз дополним класс Route:&lt;?php
+namespace Logger;
+
+use DateTime;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Class Route
+ */
+abstract class Route extends AbstractLogger implements LoggerInterface
+{
+	/**
+	 * @var bool Включен ли роут
+	 */
+	public $isEnable = true;
+	/**
+	 * @var string Формат даты логов
+	 */
+	public $dateFormat = DateTime::RFC2822;
+
+	/**
+	 * Конструктор
+	 *
+	 * @param array $attributes Атрибуты роута
+	 */
+	public function __construct(array $attributes = [])
+	{
+		foreach ($attributes as $attribute =&gt; $value)
+		{
+			if (property_exists($this, $attribute))
+			{
+				$this-&gt;{$attribute} = $value;
+			}
+		}
+	}
+
+	/**
+	 * Текущая дата
+	 *
+	 * @return string
+	 */
+	public function getDate()
+	{
+		return (new DateTime())-&gt;format($this-&gt;dateFormat);
+	}
+
+	/**
+	 * Преобразование $context в строку
+	 *
+	 * @param array $context
+	 * @return string
+	 */
+	public function contextStringify(array $context = [])
+	{
+		return !empty($context) ? json_encode($context) : null;
+	}
+}
+
+Вот и всё, теперь у нас простенькая реализация логера для нашего приложения. Это далеко не предел, ведь можно еще сделать настройку уровней логов которые роут будет обрабатывать, сделать роуты для записи логов в logstash или по ssh на удалённую машину и многое многое другое.
+Посмотреть всё в готовом виде можно на github https://github.com/alexmgit/psrlogger
+      
+    

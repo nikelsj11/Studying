@@ -1,0 +1,73 @@
+﻿#TITLE:IDE от JetBrains теперь доступны только в аренду
+
+      Сегодня PyCharm предложил обновиться до IntelliJ IDEA Ultimate Edition, чему я, мягко говоря, удивился. 
+Перейдя по предложенной ссылке я обнаружил объявление об изменении модели лицензирования для сред разработки от JetBrains:What products are affected?
+IntelliJ IDEA Ultimate, AppCode, CLion, PhpStorm, PyCharm Professional, RubyMine, WebStorm, ReSharper, ReSharper C++, dotTrace, dotCover, and dotMemory. No changes apply to the family of server tools including YouTrack, TeamCity, Upsource, and Hub.www.jetbrains.com/toolbox 
+Суть изменений сводится к тому, что вводится новый тип лицензии, позволяющий арендовать несколько сред в одной пачке (даже все вместе), добавляется модель лицензирования по подписке (то есть аренда продуктов) и отменяется бессрочная модель лицензирования (perpetual) при которой можно было приобрести продукт в пользование навсегда:What is changing?
+Perpetual licenses will no longer be available for purchase as of November 2, 2015 for selected products. A new subscription-based licensing model will replace the existing model.www.jetbrains.com/toolbox
+В блоге компании JetBrains можно прочитать воодушевляющую статью о том, как плохо было разработчикам, которым приходилось покупать несколько сред разработки и как хорошо им станет теперь, с новой моделью лицензирования:blog.jetbrains.com/blog/2015/09/03/introducing-jetbrains-toolbox
+В комментариях большАя часть разработчиков не разделяет оптимизма, мне показался хорошо отражающим общее мнение комментарий некоего Andrzej Sliwa:seriously! show me who will like renting over owning (not only software but any stuff like apartments, cars etc.) We as developers really dislike any kind of DEPENDENCY! you should know it.
+Представители JetBrains объясняют свое решение тем, что их продукты уже полны фич, и с такой моделью они теперь могут не гнаться за все новыми фичами в релизах для стимуляции пользователей к апгрейду, а сосредоточатся на постоянном улучшении продуктов. 
+У меня есть собственная догадка, что такое нововведение связано скорее с тем, что в период финансовой нестабильности многие попридержали деньги на обновление поддержки и это сказалось на поступлении денежных средств компании. Может стоило об это прямо сказать?
+Стоит отметить, что всюду раскиданы предупреждения, что лицензионная модель не окончательная и, в течение недели, стоит ждать новостей:Update (September 8th): The licensing model announced previously including conditions and prices, is not final. Please expect updates next week.
+We announced a new subscription licensing model and JetBrains Toolbox yesterday. We want you to rest assured that we are listening. Your comments, questions and concerns are not falling on deaf ears.blog.jetbrains.com/blog/2015/09/04/we-are-listening
+Ну раз хотят услышать, давайте выскажемся.
+Лично я расстроен сменой модели, но, если это необходимо для выживания JetBrains с ее продуктами, готов смириться.
+
+      	
+		
+
+	
+
+		А что вы думаете по поводу новой модели лицензирования?
+
+		
+					
+
+
+				
+					для меня ничего не изменилось
+				
+			
+					
+
+
+				
+					не согласен с арендой, переезжаю на другую IDE
+				
+			
+					
+
+
+				
+					не согласен, но смирюсь
+				
+			
+					
+
+
+				
+					новая модель меня устраивает
+				
+			
+					
+
+
+				
+					еще не понял, что произошло или не определился со своим мнением
+				
+			
+					
+
+
+				
+					особое мнение (ни один из вариантов ответа не подходит)
+				
+			Проголосовало 3277 человек. Воздержалось 1174 человека.
+	
+
+    Только зарегистрированные пользователи могут участвовать в опросе. Войдите, пожалуйста.
+	
+
+      
+    

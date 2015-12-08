@@ -1,0 +1,348 @@
+﻿#TITLE:Игра на чистой Java от новичка, для новичков
+
+      Я начинающий программист на Java, и путь мой пройден тысячами.
+Сначала идет долгий и мучительный выбор Самой Правильной Книги, затем первый восторг от работы перепечатанных из нее листингов программ. Затем осознание растущей крутости и профессионализма. Падение в яму собственного ничтожества, при попытке написать что-то самостоятельно. И долгий путь наверх.
+В моем случае Самой Правильной Книгой стал двухтомник «Java. Библиотека профессионала.» за авторством Кея Хорстманна и Гари Корнелла, а самой первой книгой, которая открыла дверь в мир Java – Яков Файн «Программирование на Java для детей, родителей, дедушек и бабушек».
+Чтобы закрепить пытающиеся разбежаться знания, которые упорно пытались остаться на страницах Умных Книжек, а не в голове, я решил написать простую игру. Основная задача была в том, чтобы писать без применения сторонних библиотек.Общая идея (не моя, а взята из флеш-игры Chain Rxn)
+На прямоугольном игровом поле, в зависимости от уровня, появляется некоторое количество шариков, которые носятся по нему, с разной скоростью, отражаясь от стенок. Игрок нажимает курсором мыши, на игровом поле, и в точке нажатия возникает растущий шарик, который увеличивается до заданного радиуса. По истечении определенного времени, Остальные шарики, если сталкиваются с ним, останавливаются, увеличиваются в размерах, и также уменьшаются и исчезают.
+Для каждого уровня определенная цель – сколько шариков должно быть «выбито».Реализация.
+Для начала был создан интерфейс GameConstants, в который были размещены все основные константы. Для всех классов было указано implements GameConstants:Интерфейс GameConstants public interface GameConstants {
+          public final int DEFAULT_WIDTH = 600;//Ширина игрового поля
+          public final int DEFAULT_HEIGHT = 300; //Высота игрового поля
+          public final int DELAY = 8; //Задержка между «кадрами» игры
+          public final int BASERADIUS=5; //Начальный радиус шариков
+          public final int LIFETIME=1300; //Время «жизни» шарика
+          public final int MAXRADIUS=25; //Максимальный радиус шарика
+          public final int STARTQNTBALLS=10; //Количество шариков на первом уровне
+}
+
+Затем был создан класс Ball. У каждого объекта данного класса, есть свой набор координат по осям x и y, переменные dx и dy, в которых записывается приращение координаты в единицу времени (по сути — скорость), значения радиуса и приращения радиуса, а также цвет и уникальный идентификатор. Идентификатор пригодится позже, когда будем отслеживать столкновения.
+Также у каждого шарика есть переменная inAction характеризующая его текущее состояние, а именно 0 — до столкновения, 1 — столкновение и рост, 2 — жизнь и уменьшение размера.
+Еще в класс добавлен таймер, назначение которого — отслеживать время «жизни» шарика, начиная с того момента, как был достигнут максимальный размер. По истечении времени указанного в вышеприведённом интерфейсе (LIFETIME), приращение размера станет отрицательным, и по достижении нулевого размера объект будет удален.Класс Ball public class Ball implements GameConstants {
+		
+	private int inAction; 	// Состояние шарика
+	private int x;		// координаты по x и y
+	private int y;
+	private int dx;		//ускорение по осям x и y
+	private  int dy;
+	private  int radius;	//радиус
+	private  int dRadius;	//приращение радиуса
+	private Color color;	//цвет
+	private static int count;
+	public final int id=count++; // идентификатор (номер) шарика
+	private static int score; // счёт
+	private Timer gameTimer;
+	private TimerTask gameTimerTask; //таймер отслеживающий время жизни шарика
+	
+//конструктор Ball
+	Ball(int x, int y, int dx, int dy, int radius, Color color, int inAction, int dRadius){
+		this.x=x;
+		this.y=y;
+		this.dx=dx;
+		this.dy=dy;
+		this.radius=radius;
+		this.color=color;
+		this.inAction=inAction;
+		this.dRadius=dRadius;
+		gameTimer = new Timer();
+		}
+
+//функция отвечающая за отрисовку шарика
+public Ellipse2D getShape(){
+		return new Ellipse2D.Double(x-radius, y-radius, radius*2, radius*2);
+	}
+
+//отслеживание движения и столкновения мячиков:
+public void moveBall(BallComponent ballComponent){
+		x+=dx;
+		y+=dy;
+		radius+=dRadius;		
+		if(x&lt;=0+radius){
+			x=radius;
+			dx=-dx;
+		}
+		if (x&gt;=DEFAULT_WIDTH-radius){
+			x=DEFAULT_WIDTH-radius;
+			dx=-dx;
+		}
+		if(y&lt;=0+radius){
+			y=radius;
+			dy=-dy;
+		}
+		if (y&gt;=DEFAULT_HEIGHT-radius){
+			y=DEFAULT_HEIGHT-radius;
+			dy=-dy;
+		}	
+		for(Ball ballVer: ballComponent.listBall){
+                //Столкновение - мы пробегаем по массиву содержащему все объекты Ball, 
+                //и построчно проверяем, не  столкнулся ли «неактивированный» шарик, 
+                //с проверяемым (ballVer), и в каком состоянии находится проверяемый шар
+                //И не является ли он сам собой (для чего и понадобился id)
+
+			if(inAction==0)
+			if((Math.sqrt(Math.pow(x-ballVer.x,2)+Math.pow(y-ballVer.y,2)))&lt;=radius+ballVer.radius &amp;&amp;
+				id!=ballVer.id &amp;&amp; 
+				(ballVer.inAction==1 || ballVer.inAction==2)) {
+								ballComponent.score++;
+								ballComponent.totalScore++;
+								dx=dy=0;
+								inAction=1;
+								ballComponent.setBackground(ballComponent.getBackground().brighter());
+				}
+			
+			if(inAction==1){
+				dRadius=1;
+				if (radius&gt;=MAXRADIUS){
+					inAction=2;
+					dRadius=0;
+			//запускается таймер, который по прошествии времени жизни, начнёт уменьшать радиус шарика
+					gameTimerTask = new gameTimerTask(this);
+					gameTimer.schedule(gameTimerTask, LIFETIME);				
+				}		
+			}
+                //Если радиус достиг нуля - мы удаляем шарик из списка			
+			if(inAction==2 &amp;&amp; radius&lt;=0){
+				ballComponent.listBall.remove(this);
+			}}}
+
+//таймер, запускаемый по истечении LIFETIME, если радиус шарика достиг максимального:
+class gameTimerTask extends TimerTask{
+
+		private Ball ballTimer;
+				
+		public gameTimerTask(Ball ball) {
+			// TODO Auto-generated constructor stub
+			this.ballTimer = ball;
+			}
+		public void run() {
+			// TODO Auto-generated method stub
+			ballTimer.dRadius=-1;
+			}
+	}
+}
+
+В функции moveBall, отслеживается положение шарика, и его размер. Для этого, к координате, прибавляется величина скорости, которая в приведенном ниже классе BallGame, задается как случайная величина, а к значению базового радиуса добавляется его приращение (задается равным нулю).   x+=dx;
+   y+=dy;
+   radius+=dRadius;
+
+Класс BallComponent наследует JPanel, и отвечает за отрисовку непосредственно игрового поля.Также в нем создается список, в который помещаются объекты типа Ball, и ведется счет. По истечении времени жизни объекта, он удаляется из списка.Класс BallComponentpublic class BallComponent extends JPanel implements GameConstants {
+	List&lt;Ball&gt; listBall =  new CopyOnWriteArrayList&lt;&gt;();
+	boolean startClick;
+	public int score=0;
+	public int totalScore=0;
+
+	//добавляем объект Ball в список
+	public void addBall(Ball b){
+		listBall.add(b);
+	}
+	
+	public void paintComponent(Graphics g){
+		super.paintComponent(g);
+		Graphics2D g2d = (Graphics2D)g;
+		for(Ball ball: listBall){
+			g2d.setColor(ball.getColor());
+			g2d.fill(ball.getShape());
+		}
+	}
+	
+public Dimension getPreferredSize() {
+	return new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+}}
+
+Далее, в лучших традициях учебных примеров их Хорстманна и Корнелла был создан основной класс BallGame, который из которого вызывался класс BallGameFrame():Класс BallGamepublic class BallGame implements GameConstants {
+	public static void main(String[] args) {
+		EventQueue.invokeLater(new Runnable() {		
+			public void run() {
+				JFrame ballFrame = new BallGameFrame();
+				ballFrame.setVisible(true);
+			}});
+	}}
+ 
+Класс BallGameFrame, наследующий JFrame, создает внешнюю оболочку для игрового поля, то есть отвечает за размещение элементов, отработку слушателей событий мыши, вывод информационных сообщений. А также он содержит функцию startGame(), вызываемую по щелчку мыши. Данная функция запускает поток, в котором крутится бесконечный игровой цикл.Класс BallGameFrameclass BallGameFrame extends JFrame implements GameConstants{
+	private int level=1; //Первый уровень
+	private int ballQnt;
+	private BallComponent ballComponent;
+	private MousePlayer mousePlayerListener;
+
+	//конструктор	
+	public BallGameFrame() {
+		ballQnt=STARTQNTBALLS;
+		setTitle("BallGame");
+		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		ballComponent = new BallComponent();
+		ballComponent.setBackground(Color.DARK_GRAY);
+		mousePlayerListener = new MousePlayer();
+		add(ballComponent, BorderLayout.CENTER);
+		final JPanel buttonPanel = new JPanel();		
+		final JButton startButton = new JButton("Начать игру.");
+		buttonPanel.add(startButton);
+		final JLabel scoreLabel = new JLabel();
+		buttonPanel.add(scoreLabel);
+		startButton.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				ballComponent.addMouseListener(mousePlayerListener);
+				ballComponent.addMouseMotionListener(mousePlayerListener);
+				startButton.setVisible(false);
+				ballComponent.setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
+				startGame(scoreLabel, ballQnt);				
+			}});
+		add(buttonPanel, BorderLayout.SOUTH);
+		pack();	
+	}
+public void startGame(JLabel scoreLabel, int ballQnt){		
+		Runnable r = new BallRunnable(ballComponent, scoreLabel, level, ballQnt);
+		Thread t = new Thread(r);
+		t.start();
+		}
+// внутренний Класс MousePlayer, для отработки событий от мыши:
+class MousePlayer extends MouseAdapter{
+		public void mouseClicked(MouseEvent e) { //Создаем шарик игрока
+			Random random = new Random();
+			//Создаем шарик игрока, с приращением радиуса равным единице
+                        //и приращением координат (скоростями), равными нулю
+			Ball ball = new Ball(e.getX(), 
+					 e.getY(),
+					 0,
+					 0,
+					 BASERADIUS, 
+					 new Color(random.nextInt(255),random.nextInt(255),random.nextInt(255)),
+					 1,
+					 1);
+			ballComponent.startClick=true;
+			ballComponent.addBall(ball);
+			//Удаляем слушателя мыши, чтобы пользователь не мог накликать еще шариков, и приводим курсор мыши в первоначальное положение
+			ballComponent.removeMouseListener(mousePlayerListener);
+			ballComponent.removeMouseMotionListener(mousePlayerListener);
+			ballComponent.setCursor(Cursor.getDefaultCursor());
+	}}}
+
+Класс BallRunnable, в котором происходит основное действие.Класс BallRunnableclass BallRunnable implements Runnable, GameConstants{
+	private BallComponent ballComponent;
+	private JLabel scoreLabel;
+	private int level, ballQnt;
+	private MousePlayer mousePlayerListener;
+	private int goal;
+	
+	public BallRunnable(final BallComponent ballComponent, JLabel scoreLabel, int level, int ballQnt) {
+	
+		this.ballComponent = ballComponent;
+		this.scoreLabel = scoreLabel;
+		this.level=level;
+		this.ballQnt=ballQnt;
+		this.goal=2;
+	}
+	
+	class MousePlayer extends MouseAdapter{
+
+		public void mousePressed(MouseEvent e) {
+			Random random = new Random();
+			Ball ball = new Ball(e.getX(), 
+					 e.getY(),
+					 0,
+					 0,
+					 BASERADIUS, 
+					 new Color(random.nextInt(255),random.nextInt(255),random.nextInt(255)),
+					 1,
+					 1);
+			ballComponent.addBall(ball);
+			ballComponent.startClick=true;
+			ballComponent.removeMouseListener(mousePlayerListener);
+			ballComponent.removeMouseMotionListener(mousePlayerListener);
+			ballComponent.setCursor(Cursor.getDefaultCursor());
+	}}
+	public void run(){
+		while(true){		
+		try{
+			mousePlayerListener = new MousePlayer();
+			ballComponent.addMouseListener(mousePlayerListener);
+			ballComponent.addMouseMotionListener(mousePlayerListener);
+	
+		//меняем внешний вид курсора на крестик
+			ballComponent.setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
+			
+			//сколько осталось шариков в работе
+			int countInWork=1;
+			
+			// Генерация массива шариков
+			//приращения скорости задаются случайно
+			//приращение радиуса равно нулю
+			for (int i=0;i&lt;ballQnt; i++){
+				Random randomX = new Random();
+				Random randomY = new Random();
+				Ball ball = new Ball(randomX.nextInt(DEFAULT_WIDTH), 
+									 randomY.nextInt(DEFAULT_HEIGHT),
+									 randomX.nextInt(2)+1,
+									 randomY.nextInt(2)+1,
+									 BASERADIUS,
+									 new Color(randomX.nextInt(255),randomX.nextInt(255),randomX.nextInt(255)),
+									 0,
+									 0);
+				ballComponent.addBall(ball);		
+			}
+
+			// пока есть активированные шарики
+			while (countInWork!=0){ 
+				countInWork=0;			
+				if(!ballComponent.startClick) {
+					EventQueue.invokeLater(new Runnable() {	
+						public void run() {
+							// TODO Auto-generated method stub
+							scoreLabel.setText("Цель: выбить "+ goal+" шаров из "+ ballQnt);			
+							}
+						}
+					);
+					countInWork=1;
+				}			
+				for(Ball ball: ballComponent.listBall){
+					if((ball.inAction()==1 || ball.inAction()==2)) countInWork++; //если остались активированные шарики 
+					ball.moveBall(ballComponent);
+					ballComponent.repaint();
+				if(ballComponent.startClick){
+				//обновляем информационную строку
+				EventQueue.invokeLater(new Runnable() {	
+						public void run() {
+							scoreLabel.setText("Уровень: "+ level+", Вы выбили "+ballComponent.score+" из "+ballQnt);			
+							}});
+}}
+				Thread.sleep(DELAY);
+			}
+		} catch (InterruptedException ex){
+		ex.printStackTrace();	
+		}
+		ballComponent.listBall.clear();
+		ballComponent.repaint();
+		//Выводим результат		
+		if(ballComponent.score&lt;goal) {
+			EventQueue.invokeLater(new Runnable() {
+				public void run() {
+						scoreLabel.setText("Цель уровня не достигнута!");						
+				}
+			});
+			JOptionPane.showMessageDialog(ballComponent, 
+											"Цель уровня не достигнута. \nНабрано очков: "+
+											ballComponent.totalScore+".\n Попробуйте еще раз.");
+			ballComponent.startClick=false;
+			ballComponent.score=0;
+			ballComponent.setBackground(Color.DARK_GRAY);
+			}
+			else{
+				EventQueue.invokeLater(new Runnable() {
+					public void run() {
+							scoreLabel.setText("Уровень пройден!!!");
+									}
+					});
+			ballComponent.startClick=false;
+			level++;
+			ballQnt++;
+			goal++;
+			ballComponent.setBackground(Color.DARK_GRAY);
+			ballComponent.score=0;
+			JOptionPane.showMessageDialog(ballComponent, "Уровень "+level+".\nЦель: выбить "+ goal+" шаров из "+ ballQnt);
+			}}}
+
+Обратите внимание, что вывод сообщений на экран происходит в отдельном потоке. Подробнее об этом можно прочитать в Хорстманне, глава 14 «Многопоточная обработка», раздел «Потоки и библиотека Swing».
+С каждым уровнем увеличивается общее количество шариков, и цель (сколько нужно выбить). Изначально я сделал, так, чтобы игроку нужно было сначала выбить много шариков (например 8 из 10), но тестирующим это показалось скучно, и игру забрасывали. Поэтому, я решил постепенно повышать градус неадеквата уровень сложности.
+Официальный рекорд — 86 уровень. Сам автор прошел максимум до 15 уровня.
+Засим позвольте откланяться. Жду советов, критики и поддержки.
+      
+    

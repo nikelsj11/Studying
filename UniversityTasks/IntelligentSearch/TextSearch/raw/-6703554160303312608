@@ -1,0 +1,135 @@
+﻿#TITLE:Дайджест интересных материалов из мира веб-разработки и IT за последнюю неделю №174 (23 — 30 августа 2015)
+
+      Предлагаем вашему вниманию подборку с ссылками на полезные ресурсы, интересные материалы и IT-новостиВеб-разработка
+CSS
+Javascript
+Браузеры
+Дизайн
+Новости
+Занимательное
+ Веб-разработка15 тривиальных фактов о правильной работе с протоколом HTTP
+Еженедельная подборка красивых эффектов на CSS/SVG/JS #1
+Стайл гайд для самых маленьких (Varya о SC5 Style Guide)
+Интернет, который мы знаем, построен на хаках (The Internet We Know is Built on Hacks)
+6 советов по работе с Chrome DevTools
+5 инструментов, которые помогут вам сделать быстрее (5 tools to make your website go faster)
+Детальное исследование поведения SVG-фигур, плотно вписанных в свой контейнер (Tight Fitting SVG Shapes, the Present and Future)
+Galen Framework — инструмент для тестирования UI отзывчивых сайтов
+О том, как правильно использовать теги blockquote, cite и q  (In Other Words: Using the blockquote, cite and q elements)
+Что случилось с Веб Компонентами? (What happened to Web Components?)
+TutSet — подборка уроков по веб-дизайну и веб-разработке
+Что новенького в Bootstrap 4 (What’s New in Bootstrap 4)
+Десять наиболее часто встречающихся ошибок веб-разработчиков (10 Common Mistakes Web Developers Make)
+Адаптивные изображения 101, часть 9: ключевые точки (Responsive Images 101, Part 9: Image Breakpoints)
+ CSSКак я использую PostCSS
+Как отрефакторить 17 тысяч строк CSS
+Воображаемый диалог о прогрессивном улучшении (Перевод статьи A fictional conversation about progressive enhancement собществом css-live.ru)
+Понятие критически важного CSS: Часть 1, Часть 2
+Центрирование в CSS: полное руководство
+PostCSS 5.0, свежий релиз, являющийся самым крупным в истории проекта
+What IS Flexbox?
+CSS vs SVG для стилизации чекбоксов и радиокнопок
+Почему вы нуждаетесь в рефакторинге вашего CSS (Why You Need to Refactor Your CSS)
+Будущее лейаутов с помощью CSS: Grid Layouts (The future of layout with CSS: Grid Layouts)
+Делаем художественные края изображений с режимами наложения (Better Image Borders with Blend Modes)
+Шпаргалка по анимационным CSS-переходам (The CSS Transitions Cheatsheet)
+Writ — набор минималистических стилей для создания приемлимо выглядящего HTML
+Эффект курсивного текста с использованием трансформации
+CSS свойства, управляющие веб-типографикой (CSS Properties to Control Web Typography)
+Использование директив &amp;commat;error, &amp;commat;warn, и &amp;commat;debug в Sass (Using Sass’s &amp;commat;error, &amp;commat;warn, and &amp;commat;debug Directives)
+Видео: обзор производительности анимации в CSS (Watch: Reviewing CSS Animation Performance)
+«Будущее CSS» — видео круглого стола с конференции WDCNZ 2015
+ JavaScriptИспользование requestIdleCallback, нового производительного API, позволяющего исполнять задачи во время простоя 
+ES6:ES6 for now: Template strings
+ES6 в деталях: будущее (ES6 In Depth: The Future)
+ES6 шаблоны строк в деталях (ES6 Template Strings in Depth)
+
+Фреймворки:Создание UI компонентов для веб с помощью популярных JavaScript фреймворков (Building A Component-Based Web UI With Modern JavaScript Frameworks)
+Интеграция Angular 1 и Angular 2: гладкий способ обновления (Angular 1 and Angular 2 integration: the path to seamless upgrade)
+Простая валидация форм в AngularJS с модулем ngMessages (Easy Form Validation in AngularJS with ngMessages)
+Десять шагов по быстрому въезду в Ember.js (10 Steps for Ramping into Ember.js Quickly)
+Watch: условная отрисовка в React (Watch: Conditional Rendering in React)
+
+Как контролировать YouTube с помощью JavaScript
+Делаем дырки в безопасности ошибками JS-минифаера (backdooring your javascript using minifier bugs)
+Создание часов в 18 строк кода без зависимостей (Build a Clock in 18 Lines of JavaScript with no Dependencies)
+Введение в MEAN-стэк (MongoDB, Express, AngularJS, Node.js)
+WebRTC видео-чат в 20 строчек кода (часть 1) (WebRTC Video Chat in 20 Lines of JavaScript (Part 1))
+Javascript WYSIWYG редакторы (Javascript WYSIWYG editors)
+gulp-licenser — gulp-плагин, позволяющий автоматически добавлять и обновлять копирайты в файлах проекта.
+Простая техника для lazy-загрузки изображений (Simple Image Lazy Load and Fade)
+Плагины и библиотеки:Представление enquire.js (Introducing enquire.js)
+Tune.js Demo — мини-пианино
+algebra.js — создание, отображение и решение алгебраических уравнений в JavaScript
+randexp.js — генератор случайных строк, созданных по заданным регулярным выражениям
+jQuery lightgallery V1.2.0 — свежий плагин для создания галереи во всплывающем окне, с адаптивностью
+ResizeEnd — добавление jQuery-события, происходящего при изменении размера окна браузера
+Smart Table Scroll — очень быстрая прокрутка таблиц с огромным количеством строк
+wallop — маленькая 4kb библиотека для показа/скрытия всякого на странице
+
+БраузерыЗа что Microsoft Edge ненавидит закладки?
+Firefox станет больше похож на Chrome, Opera и Edge
+В Chrome прекращено автоматическое воспроизведение видео и звука в фоновых вкладках, а с 1 сентября по умолчанию прекратит показ Flash-баннеров
+Обзор Microsoft Edge: в Windows наконец-то хороший браузер
+Mobile Browsing Around The World
+Сравнение производительности браузеров в Windows 10: Edge vs. IE vs. Chrome
+Firefox 40: профилирование производительности JavaScript и больше (Firefox 40: Profiling JavaScript Performance and More)
+Firefox 42 для разработчиков (Developer Edition 42: Wifi Debugging, Win10, Multiprocess Firefox, ReactJS tools, and more)
+Microsoft создала open-source браузер с помощью HTML, JavaScript, и CSS (Microsoft created an open-source browser using HTML, JavaScript, and CSS)
+Блокирование контента в iOS 9 изменит мобильный веб: я уже это попробовал (iOS 9 content blocking will transform the mobile Web: I’ve tried it)
+Сайты с интересным дизайном и функциональностьюЭто — грёбаный сайт.
+Discovery запустил сайт с видео для виртуальной реальности
+weareroyale.com — сайт с занятным фоновым видео и насыщенный анимациями 
+coralie-castot.fr — сайт с нестандартным дизайном и эффектами загрузки
+nerval.ch — креативный сайт-портфолио
+bowhead.tailsandwhales.com — вертикальный промо-сайт со скролл-анимацией
+ ДизайнКак эффективно использовать пустое место в веб-дизайне?
+Ссылка дня: найдите идеальное сочетание в Tinder для шрифтов
+Рисуем фон в стиле 80-х в Photoshop и Illustrator
+Эксперименты с загрузкой — как долго вы будете ждать (Experiments in Loading — How Long Will You Wait?)
+Отзывчивость — это конец игры для веб-дизайна? (Is Responsive the End Game of Web Design)
+Zero UI — будущее интерфейсов (Zero UI — The Future of Interfaces)
+Интерфейсное дело против кнопки «главная страница» (The UX case against the home button)
+Секрет успешного дизайна упаковки пищевых продуктов (The Secret to Successful Food Packaging Design)
+Десять способов, которыми дизайнеры решают проблемы (10 Ways Designers Solve Problems)
+Эволюция обложек журналов с 1937-го до 2015-го (The Evolution of Magazine Covers)
+Flinto для Mac — инструмент для создания интерактивных прототипов
+Создание руководства по стилю в Sketch (Generating a Useful Style Guide with Sketch App)
+Как убрать линии из рисунка: превращение рисунка в цифровую иллюстрацию (How to Remove Lines From a Drawing: Convert a Drawing Into a Digital Painting)
+Типографические паттерны в дизайне рассылочных писем (Typographic Patterns In HTML Email Newsletter Design)
+Шрифт, который наделит каждого скорочтением (The Typeface That Turns Everyone Into an Instant Speed Reader)
+Шесть уникальных геометрических шрифтов, которые необходимы в вашем инструментарии (6 Unique Geometric Fonts You Need in Your Toolkit)
+Font Flame — шрифтовые пары
+SVG PORN — логотипы в SVG формате
+Иллюзия времени (The Illusion of Time)
+Когда лучшая страница политического сайта — это 404 (When the Best Page on a Campaign Website Is the One That's Not There)
+ Подборка бесплатных дизайнерских печенекНаборы UI для вашего дизайна
+Набор UI с Android Material дизайном (Android Material Design UI kit – Free Download)
+iOS 9 GUI для Sketch
+Набор иконок для приложений (65+ Application Icons Set Free &amp; Premium Must Have)
+Набор контурных иконок для веб-сайта (Freebie: The Website Icon Set (36 Icons, AI, EPS &amp; PSD))
+Hack — шрифт предназначенный для написания исходного кода
+ НовостиApple потеряла $158 млрд стоимости
+Рекламные сети Google и «Яндекса» отказались от flash-баннеров в пользу HTML5, Amazon отказался от flash-рекламы
+Instagram отменяет привязку к квадратной форме фотографий и видео
+Суточная аудитория Facebook впервые превысила миллиард человек
+Google запустила конкурента Twitch — сервис для стриминга игр YouTube Gaming
+Microsoft: Windows 10 установлена на 75 миллионах компьютеров
+Инженеры Dropbox представили новый алгоритм сжатия видео и изображений без потерь
+«Яндекс» представил крупное обновление базы панорамных снимков картографического сервиса
+Google запустил Map Maker еще в 45 странах, включая Россию
+Ядру Linux исполнилось 24 года
+Строительство Hyperloop начнётся в следующем году
+ ЗанимательноеСМИ узнали о массовом уходе сотрудников сервиса Google Now из-за разногласий с новым гендиректором Сундаром Пичаи
+Пять ценностей, которые Google прививает своим сотрудникам — рассказ бывшего работника ИТ-гиганта
+Голландский разработчик создал приложение, которое визуализирует радиоволны и сигналы
+В США стартовал эксперимент по имитации полета на Марс продолжительностью в 365 дней
+NASA предлагает пользователям Интернета отправить свои имена на Марс
+О том, как создавали Medium.com
+
+ Просим прощения за возможные опечатки или неработающие/дублирующиеся ссылки. Если вы заметили проблему — напишите пожалуйста в личку, мы стараемся оперативно их исправлять. Дайджест за прошлую неделю.
+Материал подготовили  dersmoll и  alekskorovin.
+
+      
+      
+    

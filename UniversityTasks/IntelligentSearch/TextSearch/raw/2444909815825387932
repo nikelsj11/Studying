@@ -1,0 +1,77 @@
+﻿#TITLE:Wkhtmltopdf + Node.JS
+
+      Создание pdf документов является довольно распространенной задачей. С ней успешно справляется целое семейство библиотек, позволяющих буквально «собрать» pdf по частям или же заполнить его на основе заранее приготовленного шаблона. Данный подход надежен, т.к. мы можен расчитывать на то, что, поменяв текст одной надписи, не исчезнет пагинация на некоторых страницах. С другой стороны добавление новых страниц к pdf занимает определенное время у разработчика и, чем больше различных визуальных элементов, тем больше времени на это уходит.
+Однако, есть и другой путь создания pdf документов: конвертирование из некоторого языка разметки с помощью соотвествующего инструмента. Данный способ будет эффективным и займет меньше времени на внесение изменений в pdf, если выбранный инструмент работает достаточно предсказуемо. Существует несколько подобных решений, но на нашем проекте мы остановили свой выбор на Wkhtmltopdf, которое генерирует pdf документ из HTML. Спустя год использования данного инструмента могу сказать, что выбор был сделан правильный, т.к. все потребности были покрыты с головой.
+В данной статье я хочу поделиться библиотеками, позволяющими упростить работу c wkhtmltopdf в Node.JS.
+На данный момент существует несколько пакетов в npm, позволяющих интегрировать wkhtmltopdf. Однако они имеют свои минусы: Все опции к wkhtmltopdf передаются в виде объекта. Опций у wkhtmltopdf действительно много и нужно постоянно курсировать между документацией и кодом, чтобы сформировать правильный объект, поэтому хотелось бы иметь подсказки от IDE при заколнении опций.
+Не весь функционал wkhtmltopdf покрыт большинстом библиотек. Например, не везде есть возможность формирования pdf докуменов из нескольких источников HTML или нет возможности конфигурировать гененируемое оглавление (table of contents)
+
+В результате были разработаны библиотеки wkhtmltopdf-nodejs-options-wrapper, которая является оберткой для wkhtmltopdf параметров, и wkhtmltopdf-nodejs-pdfapi, предназначенная для создания pdf документов.
+Рассмотрим пример их использования:var wkhtmlToPdfOptions = require('wkhtmltopdf-nodejs-options-wrapper'),
+    PdfApi = require('wkhtmltopdf-nodejs-pdfapi');
+
+var pdfApi = new PdfApi(),
+    request = new wkhtmlToPdfOptions.CreateRequest();
+
+//Добавим главную страницу гугла
+var googlePage = new wkhtmlToPdfOptions.Page();
+googlePage.setInput('http://google.com');
+
+//Добавим главную страницу хабра
+var habrPage = new wkhtmlToPdfOptions.Page();
+habrPage.setInput('http://habrahabr.ru');
+habrPage.getOptions().setZoom(0.5); //уменьшим масштаб до 50%
+
+request.addPage(googlePage);
+request.addPage(habrPage);
+request.getGlobalOptions().setImageDpi(300); //установим разрешение загружаемых изображений в 300dpi
+request.getHeadersAndFooterOptions().setFooterCenter('Footer text'); //в футере будет выводится данный текст
+
+//метод createPdf запустит команду создания pdf и вернет promise 
+pdfApi.createPdf(request, 'result.pdf')
+    .then(function(data, debug) {
+        console.log('Pdf документ готов');
+    }, function(data, debug) {
+        console.log('Произошла ошибка: ' + data);
+    });
+
+Как видно из примера — для создания pdf документа необходимо создать объект CreateRequest, заполнить его нужными данными и передать в pdfApi.
+IDE (WebStorm в моем случае) подсказывает какие методы можно использовать: 
+Данного функционала уже достаточно для использования на сервере, но было бы еще полезнее иметь возможность запуска создания pdf из клиента. Для этого нам необходимо иметь веб сервис, который бы принимал запросы и отдавал готовые pdf файлы. 
+В качестве такого сервиса можно воспользоваться WebSocket сервером wkhtmltopdf-nodejs-ws-server, который легко запускается следующим образом:var WsServer = require('wkhtmltopdf-nodejs-ws-server');
+var server = new WsServer(3000); // &lt;- сервер будет "слушать" запросы по адресу *:3000
+server.start();
+
+Клиентский код может выглядеть следующим образом://необходимо воспользоваться webpack или browserify, чтобы подключить библиотеки с помощью &lt;b&gt;require&lt;/b&gt;
+var wkhtmlToPdf = require('wkhtmltopdf-nodejs-options-wrapper'),
+    io = require('socket.io-client');
+
+var socket = io('http://ip_адрес_сервера:3000');
+
+var page = new wkhtmlToPdf.Page(),
+    request = new wkhtmlToPdf.CreateRequest();
+
+page.setInput('http://google.com'); //снова сгенерируем pdf из главной страницы гугла
+
+request.addPage(page);
+request.getGlobalOptions().setPageSize('Letter');
+
+socket.on('pdf:create:success', function(response) {
+    console.log('Pdf created: http://ip_адрес_сервера:3000/result_' + response.handle + '.pdf');
+});
+
+socket.on('pdf:create:fail', function(response) {
+    console.log('Pdf creation failed!');
+    console.log(response);
+});
+
+socket.emit('create', request.toObject());
+
+Всё. Этого уже достаточно для создания pdf документов.
+Надеюсь, npm пакеты и примеры, приведенные в статье, будут полезны.
+Спасибо за внимание.
+P.S. Документация: wkhtmltopdf-nodejs-options-wrapper, wkhtmltopdf-nodejs-pdfapi, wkhtmltopdf-nodejs-ws-server
+
+      
+      
+    

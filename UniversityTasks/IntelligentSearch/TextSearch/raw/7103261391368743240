@@ -1,0 +1,182 @@
+﻿#TITLE:Автоматизация тестирования Java EE веб-сервисов с помощью SoapUI и Arquillian
+
+      Одним из преимуществ веб-сервисов является относительная простота тестирования. Действительно, в простейшем случае все, что нам нужно для проверки работы веб-сервиса – это отправить правильно сформированный HTTP-запрос любым удобным способом и проверить, что вернулось в ответ. С помощью SoapUI – инструмента для всевозможных видов тестирования веб-сервисов (более подробно о возможностях можно почитать на официальном сайте) – этот процесс можно сделать еще удобнее, автоматизировав его: мы можем создать набор тестов, указав в нем, какие запросы следует отправлять, и задав набор правил, которым должны удовлетворять ответы от сервиса. Но, тем не менее, эти тесты мы по прежнему должны будем запускать руками, а душа жаждет полной автоматизации. Действительно, почему бы не запускать эти тесты автоматически при сборке приложения (на CI-сервере или прямо на машине разработчика)?DisclaimerЕсли вы гуру веб-сервисов и Java EE разработки, то наверняка многое в этой статье покажется вам очевидным, но мне в свое время не удалось найти в открытом доступе полноценной инструкции по тому, как это можно реализовать, и информацию (зачастую устаревшую) пришлось собирать по частям из разных статей и руководств. Поэтому я решил объединить все в рамках этой статьи.Возможные альтернативы
+Прежде чем пытаться автоматизировать запуск SoapUI-тестов, давайте разберемся, какие у нас есть альтернативы. А их по крайней мере две (возможно, для вас какая-то из них окажется более подходящей, чем то, что будет описываться далее в статье):Если ваш сервис по совместительству является EJB-бином, что довольно разумно, то тестировать можно именно вызов метода бина, соответствующего операции веб-сервиса. Плюсами такого подхода является относительная простота (работа с привычными java-объектами, отсутствие лишней сущности в виде SoapUI) и то, что у нас появляется доступ к управлению транзакциями (мы можем в начале теста открыть транзакцию, а по завершении откатить и таким образом всегда иметь «чистую» тестовую базу данных). К минусам можно отнести то, что в этом случае не покрываются такие этапы работы сервиса, как маппинг данных из XML в DTO и обратно, где тоже могут возникать ошибки.
+Можно сгенерировать клиентские классы для веб-сервиса и реализовать отправку запросов и проверку результатов прямо в java-коде. В принципе, для функциональных тестов это хорошая альтернатива SoapUI, возможно несколько менее декларативная.
+Ближе к делу
+Мы будем использовать Maven как систему сборки и управления проектом и JUnit в качестве фреймворка для тестирования, а наше приложение будет работать на сервере WildFly. Хотя, это не столь принципиально: тоже самое можно было бы сделать, используя TestNG и какой-нибудь другой более или менее распространенный сервер приложений.Подопытный
+Итак, для начала напишем простенький сервис, который, собственно, и будем тестировать:@WebService(name = "Greeter", serviceName = "Greeter", portName = "Greeter", targetNamespace = "my/namespace")
+public class Greeter {
+    @WebMethod
+    public String hello(String name) {
+        return "Hello, " + name;
+    }
+}
+SoapUI
+Далее, создадим в SoapUI проект и добавим туда тест, который будет проверять, что если операции hello нашего веб-сервиса передать «world», то она нам вернет «Hello, world». Не будем вдаваться в подробности этого процесса, поскольку информацию на эту тему легко найти в сети, например, на официальном сайте SoapUI (тут и тут).
+Не забудем после этого сохранить SoapUI-проект с именем Greeter-soapui-project.xml в папку с тестовыми ресурсами нашего основного проекта.Arquillian и JUnit
+Теперь самое интересное: нужно сделать так, чтобы при сборке, на этапе тестирования, наш сервис деплоился на сервер приложений, и после этого запускались SoapUI-тесты, созданные нами ранее. С этим нам поможет Arquillian – замечательный фреймворк, призванный сделать тестирование Java EE приложений чуть приятнее (знакомство можно начать с Getting Started Guide на официальном сайте).
+Добавим зависимости для всего этого зоопарка в наш pom-файл:    &lt;repositories&gt;
+        &lt;repository&gt;
+            &lt;id&gt;soapui&lt;/id&gt;
+            &lt;url&gt;http://www.soapui.org/repository/maven2&lt;/url&gt;
+        &lt;/repository&gt;
+    &lt;/repositories&gt;
+
+    &lt;dependencyManagement&gt;
+        &lt;dependencies&gt;
+            &lt;!-- BOM с указанием версий артефактов для Arquillian --&gt;
+            &lt;dependency&gt;
+                &lt;groupId&gt;org.jboss.arquillian&lt;/groupId&gt;
+                &lt;artifactId&gt;arquillian-bom&lt;/artifactId&gt;
+                &lt;version&gt;1.1.8.Final&lt;/version&gt;
+                &lt;scope&gt;import&lt;/scope&gt;
+                &lt;type&gt;pom&lt;/type&gt;
+            &lt;/dependency&gt;
+        &lt;/dependencies&gt;
+    &lt;/dependencyManagement&gt;
+
+    &lt;dependencies&gt;
+        ...
+        &lt;dependency&gt;
+            &lt;groupId&gt;junit&lt;/groupId&gt;
+            &lt;artifactId&gt;junit&lt;/artifactId&gt;
+            &lt;version&gt;4.12&lt;/version&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+
+        &lt;!-- Зависимость для интеграции Arquillian с JUnit.
+             При необходимости мы могли бы аналогично указать интеграцию с TestNG --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.jboss.arquillian.junit&lt;/groupId&gt;
+            &lt;artifactId&gt;arquillian-junit-container&lt;/artifactId&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+
+        &lt;!-- Arquillian-адаптер для сервера приложений WildFly-9.0.1.Final.
+             Адаптеры есть для большинства популярных серверов, поэтому, в зависимости от потребности,
+             можно указать адаптер для другого сервера --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.wildfly.arquillian&lt;/groupId&gt;
+            &lt;artifactId&gt;wildfly-arquillian-container-managed&lt;/artifactId&gt;
+            &lt;version&gt;1.0.1.Final&lt;/version&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+
+        &lt;!-- Зависимость от SoapUI для запуска тестов из SoapUI-проекта --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;com.smartbear.soapui&lt;/groupId&gt;
+            &lt;artifactId&gt;soapui&lt;/artifactId&gt;
+            &lt;version&gt;5.1.3&lt;/version&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+
+Отдельно стоит упомянуть про адаптеры для контейнеров/серверов приложений. Более или менее полный список адаптеров приведен на вики проекта, там же можно посмотреть, какие параметры конфигурации есть для каждого отдельно взятого адаптера. Однако этот список, по всей видимости, не поддерживается (последнее изменение было в августе 2014), поэтому информацию об адаптерах для более свежих версий контейнеров нужно искать отдельно. В целом, все адаптеры можно разделить на три класса:адаптеры embedded контейнеров,
+адаптеры remote контейнеров
+и адаптеры managed контейнеров.
+
+Managed контейнеры наиболее полезны в CI-окружении, посколькув отличии от embedded, являются полноценными контейнерами, что снижает вероятность получить поведение, отличное от того, что будет на продуктиве;
+в отличии от remote (пожалуй, это единственное принципиальное различие между ними), предоставляют возможность управления своим жизненным циклом, т.е. в начале выполнения тестов контейнер может быть запущен, а после окончания – остановлен.
+
+Поэтому мы остановим свой выбор именно на managed варианте адаптера. Но, помимо CI-окружения, мы хотим запускать тесты и на машинах разработчиков, где сервер может быть запущен еще до начала выполнения тестов. По умолчанию Arquillian будет ругаться на то, что контейнер уже запущен, и, чтобы успокоить его, нам нужно выставить параметр allowConnectingToRunningServer в true, для этого создадим в папке с тестовыми ресурсам конфигурационный файл arquillian.xml следующего содержания:&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;arquillian xmlns="http://jboss.org/schema/arquillian"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://jboss.org/schema/arquillian http://www.jboss.org/schema/arquillian/arquillian_1_0.xsd"&gt;
+    &lt;container qualifier="jbossas" default="true"&gt;
+        &lt;configuration&gt;
+            &lt;property name="allowConnectingToRunningServer"&gt;true&lt;/property&gt;
+        &lt;/configuration&gt;
+    &lt;/container&gt;
+&lt;/arquillian&gt;
+
+Для запуска сервера Arquillian должен знать путь до инсталляции WildFly. По умолчанию он берется из переменной окружения JBOSS_HOME (но его можно переопределить в arquillian.xml), поэтому не забудем задать ей нужное значение.
+Теперь, когда мы указали все зависимости и сконфигурировали Arquillian, можно наконец переходить к написанию тестового класса, который и будет выполнять всю работу:// Указываем Arquillian в качестве JUnit раннера
+@RunWith(Arquillian.class)
+public class GreeterIT {
+    /*
+    Метод, помеченный аннотацией Deployment, формирует архив, который Arquillian будет деплоить
+    в контейнер перед выполнением тестов.
+    По умолчанию для архива создается обертка, позволяющая выполнить тесты в рамках контейнера.
+    В нашем случае в этом необходимости нет, тесты должны запускаться на стороне клиента,
+    поэтому выставляем testable в false.
+    */
+    @Deployment(testable = false)
+    public static Archive&lt;?&gt; createDeployment() {
+        /*
+        ShrinkWrap позволяет филигранно создавать микродеплойменты, изолируя части приложения,
+        которые мы хотим протестировать, и уменьшая время деплоя. Но, к сожалению, иногда
+        (особенно в больших приложениях с кучей зависимостей) сложно выделить часть для микродеплоймента,
+        в таком случае можно просто взять архив, заботливо собранный Maven-ом.
+        */
+        return ShrinkWrap.createFromZipFile(WebArchive.class, new File("target/ws-autotesting.war"));
+    }
+
+    @Test
+    public void testGreeter() throws Exception {
+        SoapUITestCaseRunner runner = new SoapUITestCaseRunner();
+        // Указываем SoapUI путь к файлу проекта
+        runner.setProjectFile("src/test/resources/Greeter-soapui-project.xml");
+        // просим его создавать отчет в формате JUnit
+        runner.setJUnitReport(true);
+        // и еще печатать отчет в консоль
+        runner.setPrintReport(true);
+        // и складывать файлы с отчетами в стандартный для failsafe каталог
+        runner.setOutputFolder("target/failsafe-reports");
+        runner.run();
+    }
+}
+
+Нужно отметить, что в SoapUI-проекте в качестве хоста у нас указан localhost, и веб-сервис во время тестов деплоится на локальный managed сервер, поэтому все будет работать корректно. Но если бы мы деплоили на удаленный сервер, то нам нужно было бы переопределить адрес, по которому SoapUI должен слать запросы. В таком случае метод testGreeter стал бы выглядеть так:@Test
+public void testGreeter(@ArquillianResource URL serverUrl) throws Exception {
+    ...
+    runner.setHost(serverUrl.getHost() + ":" + serverUrl.getPort());
+    ...
+}
+Failsafe
+Теперь осталось только настроить Maven так, чтобы он мог запускать тесты в процессе сборки. С этим нам поможет плагин Failsafe. Наименование нашего тестового класса оканчивается на «IT», что соответствует конвенции именования интеграционных тестов, запускаемых Failsafe, поэтому остается только сконфигурировать плагин в нашем pom-файле:&lt;properties&gt;
+    &lt;skipITs&gt;true&lt;/skipITs&gt;
+&lt;/properties&gt;
+...
+&lt;build&gt;
+    &lt;plugins&gt;
+        &lt;plugin&gt;
+            &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+            &lt;artifactId&gt;maven-failsafe-plugin&lt;/artifactId&gt;
+            &lt;version&gt;2.18.1&lt;/version&gt;
+            &lt;configuration&gt;
+                 &lt;!-- Выполнять тесты последовательно, форкая для каждого новую VM --&gt; 
+                &lt;forkCount&gt;1&lt;/forkCount&gt;
+                &lt;reuseForks&gt;false&lt;/reuseForks&gt;
+
+                &lt;redirectTestOutputToFile&gt;false&lt;/redirectTestOutputToFile&gt;
+                &lt;!-- Будем пропускать выполнение тестов, если явно не указан профиль it
+                     (т.к. интеграционные тесты могут выполняться очень долго)--&gt;
+                &lt;skipITs&gt;${skipITs}&lt;/skipITs&gt;
+            &lt;/configuration&gt;
+            &lt;executions&gt;
+                &lt;execution&gt;
+                    &lt;goals&gt;
+                        &lt;goal&gt;integration-test&lt;/goal&gt;
+                        &lt;goal&gt;verify&lt;/goal&gt;
+                    &lt;/goals&gt;
+                &lt;/execution&gt;
+            &lt;/executions&gt;
+        &lt;/plugin&gt;
+        ...
+    &lt;/plugins&gt;
+&lt;/build&gt;
+
+&lt;profiles&gt;
+    &lt;profile&gt;
+        &lt;id&gt;it&lt;/id&gt;
+        &lt;properties&gt;
+            &lt;skipITs&gt;false&lt;/skipITs&gt;
+        &lt;/properties&gt;
+    &lt;/profile&gt;
+&lt;/profiles&gt;
+Вот и все!
+Теперь Maven будет автоматически запускать выполнение тестов в CI-окружении при сборке с профилем it, а разработчики могут наслаждаться видом green bar в любимой IDE.
+Все исходники из статьи можно найти на github.
+      
+    

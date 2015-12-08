@@ -1,0 +1,255 @@
+﻿#TITLE:Безопасная авторизация с PHPixie 3
+
+      
+Сегодня вышел самый долгожданный компонент PHPixie 3 — Auth для авторизации пользователей. Авторизация это наиболее критическая часть любого приложения, сделать ее правильно трудно, а ошибки могут скомпрометировать множество пользователей, особенно если речь идет об оупенсорсе. Использование устарелых hash-функций, криптографически небезопасных генераторов случайных чисел, неправильная работа с кукисами встречаются слишком часто. Я уже когда-то писал о старой уязвимости в Laravel, которую кстати полностью так не исправили. Поэтому в PHPixie Auth я очень внимательно отнёсся к аутентификации, особенно к долгим сессиям и кукисам.
+Кстати в конце статьи у меня для вас есть очень радостная новость (спойлер: PHPixie теперь член PHP-FIG)
+Что делает PHPixie Auth безопасным:использование password_hash() из PHP 5, и пакета компатибильности для более старых версий
+аналогично с криптографически безопасным random_bytes() из PHP 7
+следование защищенному методу работы с кукисами из jaspan.com/improved_persistent_login_cookie_best_practice
+
+Последний пункт наиболее интересный и среди PHP фреймворков не имеет аналогов из коробки. Суть заключается в отдельной таблице для хранения токенов логина.  При логине создается пара случайных строк: идентификатор серии и пароль, которые отдаются пользователю в форме куки
+ Создается хеш серии с паролем и записывается в базу вместе с идентификатором юзера и сроком годности
+ При повторном обращении на сайт хеш с куки сравнивается с хешем в базе, и если они совпадают то происходит логин, старый токен удаляется и пользователю создается новый, но с той же серией
+ Если хеш не совпал, значит куки кто-то украл или пробует подобрать. В таком случае удаляются все токены с той же серией
+
+Такой подход позволяет пользователю быть одновременно залогиненным на нескольких устройствах (одно устройство — одна серия). Например Laravel просто сохраняет токен в таблице пользователей, и как результат у пользователя токен может быть только один на все устройства.Конфигурация
+Как и другие компоненты PHPixie, Auth можно использовать и без фреймворка, но для простоты изложения я опишу как раз этот случай.
+Во-первых вам понадобится репозиторий пользователей, каждый бандл может предоставлять свои репозитории, из которых мы выберем нужные уже в конфиг файле. Если вы используете ORM для работы с пользователями, то с Auth поставляется готовый враппер:namespace Project\App\ORMWrappers\User;
+
+// Враппер репозитория
+class Repository extends \PHPixie\AuthORM\Repositories\Type\Login
+{
+    //Есть поддержка логина по нескольким полям
+    // например по юзернейму и емейлу
+    protected function loginFields()
+    {
+         return array('username', 'email');
+    }
+}
+namespace Project\App\ORMWrappers\User;
+
+// Враппер сущности
+class Entity extends \PHPixie\AuthORM\Repositories\Type\Login\User
+{
+    // указываем поле с хешем пароля
+    protected function passwordHash()
+    {
+         return $this-&gt;password;
+    }
+}
+
+Не забываем зарегистрировать их в ORMWrappers.phpnamespace Project\App;
+
+class ORMWrappers extends \PHPixie\ORM\Wrappers\Implementation
+{
+    protected $databaseEntities = array('user');
+    protected $databaseRepositories = array('user');
+
+    public function userEntity($entity)
+    {
+        return new ORMWrappers\User\Entity($entity);
+    }
+    
+    public function userRepisitory($repository)
+    {
+        return new ORMWrappers\User\Repository($repository);
+    }
+}
+
+Теперь зарегистрируем этот репозиторий в бандле:namespace Project\App;
+
+class AuthRepositories extends \PHPixie\Auth\Repositories\Registry\Builder
+{
+    protected $builder;
+
+    public function __construct($builder)
+    {
+        $this-&gt;builder = $builder;
+    }
+
+    protected function buildUserRepository()
+    {
+        $orm = $this-&gt;builder-&gt;components()-&gt;orm();
+        return $orm-&gt;repository('user');
+    }
+}
+namespace Project\App;
+
+class Builder extends \PHPixie\DefaultBundle\Builder
+{
+    protected function buildAuthRepositories()
+    {
+        return new AuthRepositories($this);
+    }
+}
+
+Также необходимо создать таблицу для хранения токенов (при использовании MongoDB все будет работать сразу): CREATE TABLE `tokens` (
+  `series` varchar(50) NOT NULL,
+  `userId` int(11) DEFAULT NULL,
+  `challenge` varchar(50) DEFAULT NULL,
+  `expires` bigint(20) DEFAULT NULL,
+  PRIMARY KEY (`series`)
+)
+
+Теперь сам конфиг файл. Самый популярный подход будет выглядеть вот так:// /assets/auth.php
+
+return array(
+    'domains' =&gt; array(
+        'default' =&gt; array(
+
+            // репозиторий user из бандла app
+            'repository' =&gt; 'app.user',
+            'providers'  =&gt; array(
+
+                // включаем поддержку сессий
+                'session' =&gt; array(
+                    'type' =&gt; 'http.session'
+                ),
+
+                // поддержка кукисов (для "remember me")
+                'cookie' =&gt; array(
+                    'type' =&gt; 'http.cookie',
+                    
+                    // при логине сказать провайдеру session
+                    // чтобы тот запомнил юзера
+                    'persistProviders' =&gt; array('session'),
+                    
+                    // где сохранять токены
+                    'tokens' =&gt; array(
+                        'storage' =&gt; array(
+                            'type'            =&gt; 'database',
+                            'table'           =&gt; 'tokens',
+                            'defaultLifetime' =&gt; 3600*24*14 // две недели
+                        )
+                    )
+                ),
+                
+                // поддержка логина паролем
+                'password' =&gt; array(
+                    'type' =&gt; 'login.password',
+                    
+                    // запомнить пользователя в сессии.
+                    // заметьте что в этом массиве нет 'cookies'
+                    // ведь мы будем делать "remember me" логин
+                    // не всегда, а только когда юзер сам попросит
+                    'persistProviders' =&gt; array('session')
+                )
+            )
+        )
+);
+
+Все провайдеры независимы один от другого, что позволяет легко изменить функционал. Например если вы хотите использовать только куки, без сессий, и при этом отключить обновление токена на каждом запросе, то можете сделать вот так:// /assets/auth.php
+
+return array(
+    'domains' =&gt; array(
+        'default' =&gt; array(
+               'cookie' =&gt; array(
+                    'type' =&gt; 'http.cookie',
+
+                    // где сохранять токены
+                    'tokens' =&gt; array(
+                        'storage' =&gt; array(
+                            'type'                 =&gt; 'database',
+                            'table'                =&gt; 'tokens',
+                            'defaultLifetime' =&gt; 3600*24*14,
+                            'refresh'             =&gt; false
+                        )
+                    )
+                ),
+                
+                'password' =&gt; array(
+                    'type' =&gt; 'login.password',
+                    'persistProviders' =&gt; array('cookie')
+                )
+            )
+        )
+);
+Использование
+Cоздадим простенький процессор, чтобы попробовать как это все вместе работает:namespace Project\App\HTTPProcessors;
+
+class Auth extends \PHPixie\DefaultBundle\Processor\HTTP\Actions
+{
+    protected $builder;
+
+    public function __construct($builder)
+    {
+        $this-&gt;builder = $builder;
+    }
+
+    // Смотрим залогинен ли пользователь в домене
+    public function defaultAction($request)
+    {
+        $user = $this-&gt;domain()-&gt;user();
+
+        return $user ? $user-&gt;username : 'not logged';
+    }
+    
+    // екшн для добавления пользователя в базу
+    public function addAction($request)
+    {
+        $query = $request-&gt;query();
+        $username = $query-&gt;get('username');
+        $password = $query-&gt;get('password');
+
+        $orm = $this-&gt;builder-&gt;components()-&gt;orm();
+        $provider = $this-&gt;domain()-&gt;provider('password');
+
+        $user = $orm-&gt;createEntity('user');
+
+        $user-&gt;username     = $username;
+
+        // хешыруем пароль используя провайдер
+        $user-&gt;passwordHash = $provider-&gt;hash($password);
+
+        $user-&gt;save();
+
+        return 'added';
+    }
+    
+    // Логиним пользователя по паролю
+    public function loginAction($request)
+    {
+        $query = $request-&gt;query();
+        $username = $query-&gt;get('username');
+        $password = $query-&gt;get('password');
+
+        $provider = $this-&gt;domain()-&gt;provider('password');
+
+        $user = $provider-&gt;login($username, $password);
+        
+        if($user) {
+
+              // generate persistent cookie
+              $provider = $this-&gt;domain()-&gt;provider('cookie');
+              $provider-&gt;persist();
+        }
+        return $user ? 'success' : 'wrong password';
+    }
+    
+    // логаут
+    public function logoutAction($request)
+    {
+        $this-&gt;domain()-&gt;forgetUser();
+        return 'logged out';
+    }
+     
+    protected function domain()
+    {
+        $auth = $this-&gt;builder-&gt;components()-&gt;auth();
+        return $auth-&gt;domain();
+    }
+}
+
+Теперь заходим по урлах и смотрим результат: /auth — пользователь не залогинен
+ /auth/add?username=jigpuzzled&amp;password=5 — создаем пользователя
+ /auth/login?username=jigpuzzled&amp;password=5 — логинимся
+ /auth — проверяем логин
+ /auth/logout — логаут
+
+Вы уже заметили что как и в конфиг файле, так и в процессоре встречается понятие домена. Домен это отдельный инстанс аутентификации со своим репозиторием и провайдерами. В большинстве случаев у вас будет только один домен. Несколько доменов понадобятся когда у вас будут отдельные секции сайта с разными логинами, например фронтенд позволяет пользователям зайти на сайт через логин фейсбука, а вот бекенд только через логин и пароль.Свои провайдеры
+Со временем вам наверняка понадобиться добавить свой провайдер логина, например для авторизации через социальные сети. Для этого вам понадобится сделать свой строитель провайдеров ( например по аналогии с Login) и зарегистрировать его как расширение. Для подробного описания я напишу отдельную статью но этих двух ссылок должно быть достаточно для начала.PHPixie теперь член в PHP-FIG
+Спасибо  SamDark PHPixie уже от завтра будет членом PHP-FIG! Полный тред голосования можно увидеть тут. И еще огромное спасибо всем пользователям фреймворка, так как именно популярность и количество загрузок один из главных критериев отбора ^__^
+
+      
+      
+    

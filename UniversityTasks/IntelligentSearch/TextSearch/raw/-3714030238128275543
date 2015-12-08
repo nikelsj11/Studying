@@ -1,0 +1,155 @@
+﻿#TITLE:Тестирование на Android: Robolectric + Jenkins + JaСoСo
+
+      Тестирование Android приложений — тема большая и емкая, говорить о ней можно бесконечно. Мы в Rambler&amp;Co автотесты любим, пишем и активно используем для всех наших приложений. В данной статье мы расскажем, как получать и анализировать результаты тестирования android (и не только) приложений. Покажем как настроить Robolectric, JaCoCo и Jenkins, чтобы было вот так:Robolectric
+Robolectric — это библиотека, которая позволяет запускать тесты для android-приложений на локальной JVM. Да, да, именно так, не нужно ждать пока загрузится и установится apk, пока запустится приложение на телефоне, просто нажимаете запустить и JVM быстро прокручивает все тесты. Android среда эмулируется, есть доступ к основным функциям. 
+Robolectric активно развивается, но в ней все еще есть множество проблем, поэтому мы используем robolectric для тестирования бизнес объектов, логики приложения, хранения и обработки данных. Там, где чистого jUnit уже мало, а реальный девайс все еще не нужен. Для ui тестирования мы рекомендуем Espresso от Google. 
+В сети достаточно мало материалов про эту замечательную библиотеку на русском языке, поэтому приложим небольшую инструкцию по настройке.Установка
+С выходом версии 3.0 установка библиотеки умещается в одну строчку (раньше требовался еще и плагин), добавить в dependencies:testCompile 'org.robolectric:robolectric:3.0'
+
+Обратите внимание, что мы указали testCompile, а не androidTestCompile. testCompile указывает, что данные зависимости нужны для Unit Tests, а androidTestCompile – для Android Instrumentation Test. Выбираем в окошке build Variants, Test Artifact — Android Instrumentation Test, ждем, пока обновится студия, и вуаля… тесты пропали! Что же делать? Build Variants
+Дело в том, что для unit тестов (по умолчанию) используется src/test, а для android test — src/androidTest. Создаем в папке src\ следующие папки: \test\java и \test\resources. Первая используется для тестов, вторая для ресурсов. Вот пример доступ к ресурсам:InputStream stream = getClass().getClassLoader().getResourceAsStream("habr.txt");
+Первый тест
+Писать тесты под robolectric очень просто: создаем тесты, пишем код, используем аннотации. Доступ к активити через setupActivity\buildActivity. Более подробно со всеми особенностями можно ознакомиться на сайте, robolectric.org/writing-a-test 
+@RunWith(RobolectricTestRunner.class)
+public class MyActivityTest {
+
+  @Test
+  public void clickingButton_shouldChangeResultsViewText() throws Exception {
+    MyActivity activity = Robolectric.setupActivity(MyActivity.class);
+
+    Button button = (Button) activity.findViewById(R.id.button);
+    TextView results = (TextView) activity.findViewById(R.id.results);
+
+    button.performClick();
+    assertThat(results.getText().toString()).isEqualTo("Robolectric Rocks!");
+  }
+}
+
+Еще один пример (www.vogella.com)package com.vogella.android.test.robolectric;
+
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.*;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+
+import com.example.BuildConfig;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricGradleTestRunner;
+import org.robolectric.annotation.Config;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.shadows.ShadowToast;
+
+import android.content.Intent;
+import android.widget.Button;
+
+@RunWith(RobolectricGradleTestRunner.class)
+@Config(constants = BuildConfig.class, sdk = 21, manifest = "src/main/AndroidManifest.xml")
+public class MyActivityTest {
+
+  private MainActivity activity;
+
+  @Test
+  public void shouldHaveHappySmiles() throws Exception {
+    String hello = new MainActivity().getResources().getString(R.string.hello_world);
+    assertThat(hello, equalTo("Hello world!"));
+  }
+
+  @Before
+  public void setup()  {
+    activity = Robolectric.buildActivity(MainActivity.class)
+        .create().get();
+  }
+  @Test
+  public void checkActivityNotNull() throws Exception {
+    assertNotNull(activity);
+  }
+  
+  @Test
+  public void buttonClickShouldStartNewActivity() throws Exception 
+  {
+      Button button = (Button) activity.findViewById(R.id.button2);
+      button.performClick();
+      Intent intent = Robolectric.shadowOf(activity).peekNextStartedActivity();
+      assertEquals(SecondActivity.class.getCanonicalName(), intent.getComponent().getClassName());
+  }
+  
+  @Test
+  public void testButtonClick() throws Exception {
+    MainActivity activity = Robolectric.buildActivity(MainActivity.class)
+        .create().get();
+    Button view = (Button) activity.findViewById(R.id.button1);
+    assertNotNull(view);
+    view.performClick();
+    assertThat(ShadowToast.getTextOfLatestToast(), equalTo("Lala"));
+  }
+  
+  
+  
+
+} 
+
+
+Примеры тестов robolectric (от команды robolectric):github.com/robolectric/robolectric-samples
+Примеры тестов robolectric + espresso:github.com/robolectric/deckard Запуск тестов
+Для запуска тестов нам необходима новая конфигурация. Щелкаем правой кнопкой мыши на тесте, выбираем Create «testName», если нужно, меняете конфигурацию, нажимаете «ОК», тест готов. Внимание, возможно потребуется дописать к working directory папку приложения (\app).Можно запускать все тесты, или тесты из отдельного пакета. Создание конфигурации 
+Далее запускаем тест:Запуск тестаИ получаем результат в run – окошке:Результаты тестаЗапуск всех тестов из консоли: 
+gradlew test
+JaCoCo
+Упоминаний про этот замечательный инструмент в рунете также очень мало, исправляем.
+JaCoCo используется для расчета и отображения покрытия кода тестами.
+Например как на скриншоте:JaCoCo покрытие кода тестами
+Сайт: www.eclemma.org/jacoco 
+Для добавления библиотеки в android, необходимо обновить ваш файл gradle:apply plugin: 'jacoco'
+
+jacoco {
+    toolVersion = "0.7.1.201405082137"
+}
+
+def coverageSourceDirs = [
+        '../app/src'
+]
+
+task jacocoTestReport(type: JacocoReport, dependsOn: "testDebug") {
+    group = "Reporting"
+    description = "Generate Jacoco coverage reports"
+
+    classDirectories = fileTree(
+            dir: '../app/build/intermediates/classes',
+            excludes: ['**/R.class',
+                       '**/R$*.class',
+                       '**/*$ViewInjector*.*',
+                       '**/BuildConfig.*',
+                       '**/Manifest*.*']
+    )
+
+    additionalSourceDirs = files(coverageSourceDirs)
+    sourceDirectories = files(coverageSourceDirs)
+    executionData = files('../app/build/jacoco/testDebug.exec')
+
+    reports {
+        xml.enabled = true
+        html.enabled = true
+    }
+}
+
+Будьте внимательны при указании executionData. Это место хранения exec файла, который содержит все данные о покрытии кода тестами. 
+Теперь можно проверить работу командой gradlew jacocoTestReport. Отчеты о должны быть в папке: build\reports\tests
+Если не запускается, выполните команду: 
+gradlew clean assemble test jacocoTestReport
+Результаты тестов представляются в виде html отчета, скриншоты:Пример отчетов
+Для Jenkins добавляется тренд покрытия кода:Пример отчетов JenkinsНастройка Jenkins
+Предполагается, что у вас уже есть настроенный Jenkins. Если же нет, то вот хорошая статья про первоначальную настройку: habrahabr.ru/post/205308 
+Немного «прокачаем» наш Jenkins: научим его запускать тесты, строить отчеты и проверять процент покрытия кода:Jenkins без плагиновJenkins с плагинамиНастройка обработки результатов
+1) Включаем заархивировать артефакты и плагин Publish html reports
+2) Настраиваем jUnit plugin (или xUnit Plugin). 
+3) Включаем JaCoCo Plugin. Нам нужно указать пути для exec файлов, к классам и ресурсам. Почти тоже самое, что мы указывали в build.gradle Настройка Publish html reports и сохранения артефактов Настройка jUnit test result report и JaCoCo Plugin
+Использование этих инструментов, позволит вам сократить время и уменьшить издержки при написании и анализе тестов. Спасибо за внимание!
+
+      
+      
+    

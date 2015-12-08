@@ -1,0 +1,327 @@
+﻿#TITLE:Как организовать тестирование БД в dUnit
+
+      Как известно, в xUnit-фреймворках, простейший test-case состоит из последовательности вызовов SetUp, TestSomething, TearDown. И довольно часто в unit-тестировании требуется подготовить какие-то ресурсы перед основными тестами. Типичный пример этого — соединение с базой данных. И логика подсказывает нам, что было бы весьма затратно, запуская несколько тестов, перед каждым устанавливать соединение с БД в SetUp, и отключаться в TearDown.Пример модуля...
+type
+  TTestDB1 = class(TTestCase)
+  protected
+  public
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure TestDB1_1;
+    procedure TestDB1_2;
+  end;
+...
+implementation
+...
+procedure TTestDB1.SetUp;
+begin
+  inherited;
+  // connect to DB
+end;
+
+procedure TTestDB1.TearDown;
+begin
+  // disconnect from DB
+  inherited;
+end;
+...
+initialization
+  RegisterTest(TTestDB1.Suite);
+end.
+
+Схема вызовов будет такая:-- TTestDB1.SetUp
+---- TTestDB1.TestDB1_1
+-- TTestDB1.TearDown
+-- TTestDB1.SetUp
+---- TTestDB1.TestDB1_2
+-- TTestDB1.TearDown
+К тому же с БД может статься, что перед тем, как к БД подключиться, её нужно создать с требуемой структурой.
+Для решения такой задачи в dUnit есть класс TTestSetup (описан в модуле TTestExtensions).
+Он, по сути, реализует тот же интерфейс ITest, что и TTestCase, то есть ту же схему: SetUp, Test..., TearDown, только вместо вызова тестов происходит вызов всего test-case'а, указанного при его создании. Т.е. видоизменив модуль:uses
+  ...
+  TestExtensions;
+
+type
+  TTestDBSetup = class(TTestSetup)
+  public
+    procedure SetUp; override;
+    procedure TearDown; override;
+  // published-методы в TTestSetup не запускаются
+  end;
+
+  TTestDB1 = ...
+...
+implementation
+...
+initialization
+  RegisterTest(TTestDBSetup.Create(TTestDB1.Suite));
+end.
+
+получим схему вызовов:-- TTestDBSetup.SetUp
+
+---- TTestDB1.SetUp
+------ TTestDB1.TestDB1_1
+---- TTestDB1.TearDown
+
+---- TTestDB1.SetUp
+------ TTestDB1.TestDB1_2
+---- TTestDB1.TearDown
+
+-- TTestDBSetup.TearDown
+
+По сути, это схема suite + test-cases. Таким образом, устанавливая соединение к БД в TTestDBSetup.SetUp, мы сделаем это лишь однажды перед запуском TestDB1_1 и TestDB1_2.
+Это доcтаточно понятно, когда у нас только один test-case с тестами, требующий соединения с БД. Но что делать, когда мы хотим создать второй test-case, которому также нужно соединение с БД (назовём его TTestDB2 с методами TestDB2_1, TestDB2_2, и т.д)?
+Конструктор TTestSetup.Create описан так:constructor TTestSetup.Create(ATest: ITest; AName: string = '');
+
+То есть «включать» в suite можно только лишь один test-case. Если мы напишем так:  RegisterTest(TTestDBSetup.Create(TTestDB1.Suite));
+  RegisterTest(TTestDBSetup.Create(TTestDB2.Suite));
+
+То получим вызовы по схеме:-- TTestDBSetup.SetUp
+
+---- TTestDB1.SetUp
+------ TTestDB1.TestDB1_1
+---- TTestDB1.TearDown
+
+---- TTestDB1.SetUp
+------ TTestDB1.TestDB1_2
+---- TTestDB1.TearDown
+
+-- TTestDBSetup.TearDown
+
+-- TTestDBSetup.SetUp
+
+---- TTestDB2.SetUp
+------ TTestDB2.TestDB2_1
+---- TTestDB2.TearDown
+
+---- TTestDB2.SetUp
+------ TTestDB2.TestDB2_2
+---- TTestDB2.TearDown
+
+-- TTestDBSetup.TearDown
+
+Это не то, что мы хотим. Мы ведь хотим подключиться к БД лишь единожды.
+Тут и начинается, собственно, то, что побудило меня написать эту статью. Обратим внимание на второй вариант метода RegisterTest:procedure RegisterTest(SuitePath: string; test: ITest);
+begin
+  assert(assigned(test));
+  if __TestRegistry = nil then CreateRegistry;
+  RegisterTestInSuite(__TestRegistry, SuitePath, test);
+end;
+
+Что за SuitePath? Смотрим RegisterTestInSuite:Скрытый текстprocedure RegisterTestInSuite(rootSuite: ITestSuite; path: string; test: ITest);
+...
+begin
+  if (path = '') then
+  begin
+    // End any recursion
+    rootSuite.addTest(test);
+  end
+  else
+  begin
+    // Split the path on the dot (.)
+    dotPos := Pos('.', Path);
+    if (dotPos &lt;= 0) then dotPos := Pos('\', Path);
+    if (dotPos &lt;= 0) then dotPos := Pos('/', Path);
+    if (dotPos &gt; 0) then
+    begin
+      suiteName := Copy(path, 1, dotPos - 1);
+      pathRemainder := Copy(path, dotPos + 1, length(path) - dotPos);
+    end
+    else
+    begin
+      suiteName := path;
+      pathRemainder := '';
+    end;
+...
+
+И видим, что SuitePath разбивается на части, а разделитель этих частей — точка, т.е. это некий «путь suite», в который добавляется регистрируемый test-case.
+Пробуем TestDB2 зарегистрировать так (чтобы добавить TTestDB2 «дочерним узлом» в TTestDBSetup):RegisterTest('Setup decorator ((d) TTestDB1)', TTestDB2.Suite);
+
+Не получилось:
+Смотрим опять код RegisterTestInSuite:Скрытый текстprocedure RegisterTestInSuite(rootSuite: ITestSuite; path: string; test: ITest);
+...
+begin
+...
+      currentTest.queryInterface(ITestSuite, suite);
+      if Assigned(suite) then
+      begin
+...
+
+Видим, что test-case добавляется в ITestSuite, а TTestSetup не реализует этот интерфейс. Как же быть?
+Тут подглядываем, например, в библиотеку IndySoap (в ней есть тесты dUnit, организованные по группам) и видим там примерно следующее (запишем сразу применительно к нашим тестам):...
+function DBSuite: ITestSuite;
+begin
+  Result := TTestSuite.Create('DB tests');
+  Result.AddTest(TTestDB1.Suite);
+  Result.AddTest(TTestDB2.Suite);
+end;
+...
+initialization
+  RegisterTest(TTestDBSetup.Create(DBSuite));
+
+То есть мы создаём suite из наших test-case'ов, а уже этот suite добавляем в TTestSetup.
+И вроде бы, всё работает, и всё хорошо. На этом можно бы и закончить.
+Но если (точнее, «когда») мы будем добавлять ещё тесты БД (назовём их, TTestDB3), то нам придётся добавлять их и в DBSuite:...
+function DBSuite: ITestSuite;
+begin
+  ...
+  Result.AddTest(TTestDB3.Suite);
+end;
+...
+
+Кроме того, по-хорошему, их надо выносить в отдельный модуль, а уже этот модуль добавлять в модуль с функцией DBSuite. Это изменение DBSuite лично мне не очень нравится (к тому же, визуально в иерархии тестов добавляется «лишний» узел «DB tests», хотя TTestDB1/TTestDB2 могли бы «принадлежать» сразу TTestDBSetup). Я хочу лишь добавить модуль тестов в проект и они «автоматически» добавились бы в TTestDBSetup.
+Что ж, сделаем как хотим. Во-первых, мне не нравится имя Setup'а вида «Setup decorator ((d)...». К тому же, потом, когда мы будем регистрировать другие тесты в этот Setup, мы будем использовать это имя. Поменяем. Для этого обратим внимание на следующее:function TTestSetup.GetName: string;
+begin
+  Result := Format(sSetupDecorator, [inherited GetName]);
+end;
+
+И на параметр AName вconstructor TTestSetup.Create(ATest: ITest; AName: string = '');
+
+Который в итоге присваиваетсяconstructor TAbstractTest.Create(AName: string);
+...
+  FTestName := AName;
+...
+
+Так что, если мы переопределим...
+TTestDBSetup = ...
+  public
+    function GetName: string; override;
+...
+implementation
+
+...
+function TTestDBSetup.GetName: string;
+begin
+  Result := FTestName;
+end;
+...
+initialization
+  RegisterTest(TTestDBSetup.Create(DBSuite, 'DB'));
+
+То получим:
+Теперь хочется регистрировать test-case'ы сразу при подключении модуля в проект. То есть так:unit uTestDB3;
+...
+initialization
+  RegisterTest('DB', TTestDB3.Suite));
+
+Для этого надо (вспомним RegisterTestInSuite), чтобы TTestDBSetup реализовывал интерфейс ITestSuite....
+ ITestSuite = interface(ITest)
+    ['{C20E38EF-7369-44D9-9D84-08E84EC1DCF0}']
+
+    procedure AddTest(test: ITest);
+    procedure AddSuite(suite : ITestSuite);
+  end;
+
+Там всего-то два метода:...
+  TTestDBSetup = class(TTestSetup, ITestSuite)
+  public
+    procedure AddTest(test: ITest);
+    procedure AddSuite(suite : ITestSuite);
+  end;
+...
+implementation
+...
+procedure TTestDBSetup.AddTest(test: ITest);
+begin
+  Assert(Assigned(test));
+
+  FTests.Add(test);
+end;
+
+procedure TTestDBSetup.AddSuite(suite: ITestSuite);
+begin
+  AddTest(suite);
+end;
+...
+
+Получилось!
+Однако, при запуске (F9, кстати) оказывается, что тесты TTestDB3 не выполняются:
+Чтобы понять почему, посмотрим на реализацию:procedure TTestDecorator.RunTest(ATestResult: TTestResult);
+begin
+  FTest.RunWithFixture(ATestResult);
+end;
+
+Т.е. тесты запускаются только те (FTest), которые были заданы при создании TTestDBSetup:Скрытый текстconstructor TTestDecorator.Create(ATest: ITest; AName: string);
+begin
+  ...
+  FTest := ATest;
+  FTests:= TInterfaceList.Create;
+  FTests.Add(FTest);
+end;
+
+А которые мы добавили позже (FTests) — нет. Запустим и их, переопределив RunTest:...
+  TTestDBSetup = ...
+  protected
+    procedure RunTest(ATestResult: TTestResult); override;
+...
+  end.
+...
+procedure TTestDBSetup.RunTest(ATestResult: TTestResult);
+var
+  i: Integer;
+begin
+  inherited;
+  // пропустим первый элемент, т.к. это FTest
+  for i := 1 to FTests.Count - 1 do
+    (FTests[i] as ITest).RunWithFixture(ATestResult);
+end;
+
+Запускаем:
+Вот теперь, вроде, всё ок. Однако, если приглядеться, то увидим, что в статистике количество тестов — 4, а было запущено — 6. Очевидно, наши добавленные тесты не учитываются. Непорядок.
+Наведём красоту:Скрытый текст
+...
+  TTestDBSetup = ...
+  protected
+...
+    function CountTestInterfaces: Integer;
+    function CountEnabledTestInterfaces: Integer;
+  public
+...
+    function CountTestCases: Integer; override;
+    function CountEnabledTestCases: Integer; override;
+  end;
+...
+
+function TTestDBSetup.CountTestCases: Integer;
+begin
+  Result := inherited;
+  if Enabled then
+    Inc(Result, CountTestsInterfaces);
+end;
+
+function TTestDBSetup.CountTestInterfaces: Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  // skip FIRST test case (it is FTest)
+  for i := 1 to FTests.Count - 1 do
+    Inc(Result, (FTests[i] as ITest).CountTestCases);
+end;
+
+function TTestDBSetup.CountEnabledTestCases: Integer;
+begin
+  Result := inherited;
+  if Enabled then
+    Inc(Result, CountEnabledTestInterfaces);
+end;
+
+function TTestDBSetup.CountEnabledTestInterfaces: Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  // skip FIRST test case (it is FTest)
+  for i := 1 to FTests.Count - 1 do
+    if (FTests[i] as ITest).Enabled then
+      Inc(Result, (FTests[i] as ITest).CountTestCases);
+end;
+...
+
+Здесь CountEnabledTestCases и CountEnabledTestInterfaces — вспомогательные функции.Nota bene. В GUI варианте учитывается CountEnabledTestCases, а в консольном — CountTestCases.
+Вот теперь порядок.
+Дочитавший до конца читатель может спросить, а стОит ли так заморачиваться вместо использования функции по типу вышеописанной DBSuite? Я и сам об этом сейчас подумал. Но для меня один из плюсов данного решения состоит в том, что переделка одного моего проекта, в котором я, ещё до того, как разобрался с dUnit настолько, делал немного по-другому. И для приведения к такой красивости там понадобится подправить лишь один пару методов (ну и добавить вышеописанное в базовый класс).
+P.S.: Исходные коды примера — github.com/ashumkin/habr-dunit-ttestsetup-demo
+      
+    

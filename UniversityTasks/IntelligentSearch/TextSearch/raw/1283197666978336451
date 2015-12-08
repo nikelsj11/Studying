@@ -1,0 +1,165 @@
+﻿#TITLE:Пишем драйвер пользовательского окружения для uinput на Raspberry Pi
+
+      Ради одного из своих небольших проектов на Raspberry Pi 2 я приобрел емкостной сенсорный дисплей Waveshare с демократичной ценой, скромным разрешением и сомнительной поддержкой. В коробке с дисплеем лежала DVD-R DL, и по заявлениям продавца, там лежали образы систем на базе Raspbian. Прочитать их мне не удалось, поиск решений в интернете подсказал, что драйвер, который там лежал, был и так не самым лучшим решением (уже скомпилированное ядро без исходников).
+В процессе поиска я наткнулся на проект одного парня из дружественного Китая. Благодаря нему я смог прийти к своему решению.В чем, собственно, дело
+Дело в том, что компания предоставила только двоичный драйвер для своего дисплея, слинковав его с raspbian'овским ядром. Это хорошо, до тех пор, пока вы остаетесь на родном ядре и не хотите ничего менять и не вести серьезную embedded-разработку. Но как только вместо Debian'a вы перейдете на buildroot, смените компилятор, пересоберете свое ядро и так далее — у вас не останется никакого драйвера, совместимого с вашей новоиспеченной операционкой вообще.
+В таких случаях выручает драйвер пользовательского окружения, который представляет собой программу, которая передает модулю ядра данные в понятном линуксу виде.Поиск решения
+Если мы посмотрим в лог dmesg, то увидим интересные нам строчки:[    3.518144] usb 1-1.5: new full-speed USB device number 4 using dwc_otg
+[    3.606036] udevd[174]: starting version 175
+[    3.631476] usb 1-1.5: New USB device found, idVendor=0eef, idProduct=0005
+[    3.641195] usb 1-1.5: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[    3.653540] usb 1-1.5: Product: By ZH851
+[    3.659956] usb 1-1.5: Manufacturer: RPI_TOUCH
+[    3.659967] usb 1-1.5: SerialNumber: \xffffffc2\xffffff84\xffffff84\xffffffc2\xffffffa0\xffffffa0B54711U335
+[    3.678577] hid-generic 0003:0EEF:0005.0001: hiddev0,hidraw0: USB HID v1.10 Device [RPI_TOUCH By ZH851] on usb-bcm2708_usb-1.5/input0
+
+Господин derekhe с гитхаба указал на флаг сборки ядра (ядра у меня, к сожалению, не было):CONFIG_USB_EGALAX_YZH=y
+
+Это позволяет прийти к заключению о том, что устройство является (или имитирует) клоном сенсора eGalaxy, а Waveshare просто перебили USB VendorId:ProductId. Так или иначе ядро создает устройство типа hidraw, в которое сенсорный экран плюет данные по 25 байт.i@raspberrypi ~ $ sudo xxd -c 25 /dev/hidraw0
+0000000: aa01 01bf 00bc bb01 0056 0019 018c 00ef 00b4 02ce 01d7 0182 cc  .........V...............
+00000af: aa01 01bf 00bc bb01 0056 0019 018c 00ef 00b4 02ce 01d7 0182 cc  .........V...............
+...
+00000fa: aa00 0000 0000 bb00 0000 0000 0000 0000 0000 0000 0000 0000 00  .........................
+
+Потыкав пальцами в экран можно разобрать формат сообщения:a[0]: 0xAA — начало сообщения
+a[1]: 0x01 — нажатие есть, 0x00 — нажатия нет
+a[2, 3]: X1
+a[4, 5]: Y1
+a[6]: 0xBB — разделитель
+a[7]: флаговая переменная, где наличие i-того бита начиная с младшего отвечает на нажатие i-той точки
+a[8, 9]: Y2
+a[10, 11]: X2
+a[12, 13]: Y3
+a[14, 15]: X3
+a[16, 17]: Y4
+a[18, 19]: X4
+a[20, 21]: Y5
+a[22, 23]: X5
+a[24]: 0xCC — разделитель
+
+Найденный драйвер может и быстрое решение, но мне не понравился по следующим причинам:Мне кажется писать драйверы на интерпретируемом языке в Embedded не лучшей идей
+Драйвер имитирует поведение мыши, и игнорирует мультитач
+
+Было принято решение устроить себе челендж и написать свой драйвер для uinput на C с мультитачем и udev'ом.Для ленивых: исходники сырой версии драйвера лежат тут.Решение проблемы
+Прежде всего нужно осознавать, что все, что втыкается в USB можно и выткнуть, а поэтому нужно учитывать горячее подключение к порту. 
+В линуксе есть замечательная библиотека libudev, которая позволяет произвести перечисление подключенных устройств и мониторить добавление/удаление устройств.
+Один из недостатков нашего случая — драйвер hidraw не несет информации о VendorId:ProductId устройства USB, к которому он привязан. Поэтому нужно делать перечисление устройств по драйверу hidraw, а затем искать родительское USB-устройство с указанными нами идентификаторами.Важно: если мы хотим проверить уже подключенные устройства и следить за добавлением/удалением, необходимо выполнить действия в следующем порядке (и никак иначе):Инициализировать udev_monitor
+Запросить перечисление подключенных устройств udev_enumerate_get_list_entry
+Запустить цикл опроса udev_monitor
+Получение списка устройств
+С помощью функции udev_enumerate_add_match_subsystem и udev_monitor_filter_add_match_subsystem_devtype мы отсеиваем часть нерелевантных нам устройств. При получении указателя на нужный нам hidraw-девайс, нужно проверить, наш ли он:int try_init_device(struct udev_device *dev) {
+   struct udev_device *devusb = udev_device_get_parent_with_subsystem_devtype(dev, "usb", "usb_device");
+   if (devusb) {
+      if (strcmp(udev_device_get_sysattr_value(devusb, "idVendor"),  DEVICE_ID_VENDOR) == 0 &amp;&amp;
+          strcmp(udev_device_get_sysattr_value(devusb, "idProduct"), DEVICE_ID_PRODUCT) == 0) 
+      {
+         return try_start_device_loop(udev_device_get_devnode(dev));
+      }
+   }
+   return -2;
+}
+
+Если условие выполнено, то мы запускаем в отдельном потоке цикл обработки событий от сенсорного экрана. Цикл считывает данные из /dev/hidraw* и записывает команды в выделенный ему /dev/input/eventXВ документации Linux описано два варианта реализации uinput драйвера для сенсорной панели:
+Тип А:   ABS_MT_POSITION_X x[0]
+   ABS_MT_POSITION_Y y[0]
+   SYN_MT_REPORT
+   ABS_MT_POSITION_X x[1]
+   ABS_MT_POSITION_Y y[1]
+   SYN_MT_REPORT
+   SYN_REPORT
+
+Тип B:   ABS_MT_SLOT 0
+   ABS_MT_TRACKING_ID 45
+   ABS_MT_POSITION_X x[0]
+   ABS_MT_POSITION_Y y[0]
+   ABS_MT_SLOT 1
+   ABS_MT_TRACKING_ID 46
+   ABS_MT_POSITION_X x[1]
+   ABS_MT_POSITION_Y y[1]
+   SYN_REPORT
+
+Поскольку реализовывать второй протокол долго и алгоритмически сложно, будем реализовывать первый. Необходимо объявить характеристики устройства, такие как название, шина, идентификатор вендора и продукта, разрешение по осям и допустимые события для устройства.   struct uinput_user_dev user_dev;
+   memset(&amp;user_dev, 0, sizeof(struct uinput_user_dev));
+   
+   user_dev.absmin[ABS_MT_POSITION_X] = 0;
+   user_dev.absmax[ABS_MT_POSITION_X] = DEVICE_WIDTH;
+   user_dev.absmin[ABS_MT_POSITION_Y] = 0;
+   user_dev.absmax[ABS_MT_POSITION_Y] = DEVICE_HEIGHT;
+   user_dev.id.bustype = BUS_USB;
+   user_dev.id.vendor  = DEVICE_ID_VENDOR_HEX;
+   user_dev.id.product = DEVICE_ID_PRODUCT_HEX;
+   user_dev.id.version = 1;
+
+   strcpy(user_dev.name, "Waveshare multitouch screen");
+
+Поскольку мы работает с multitouch-устройством, то оси у нас соответственно ABS_MT_POSITION_X и ABS_MT_POSITION_Y. После открытия устройства мы заявляем о типах событий:   int abs_axes[] = { 
+        ABS_MT_POSITION_X, 
+        ABS_MT_POSITION_Y
+   };
+   int i;
+
+   for (i = 0; i &lt; 2; ++i) {
+      if (suinput_enable_event(uinput_fd, EV_ABS, abs_axes[i]) == -1) {
+        close(uinput_fd);
+        entry.thread = 0;
+        pthread_exit(NULL);
+        return 0;
+      } 
+   }
+
+Читаем в цикле наш порт и в соответствии с разобранным выше протоколом создаем события для uinput. Для каждой нажатой точки требуется событие ABS_MT_POSITION_X, ABS_MT_POSITION_Y и SYN_MT_REPORT. Если нажатий больше нет, то передается SYN_MT_REPORT. В конце каждого пакета (набор точек или событие о том, что их больше нет) необходимо вызвать SYN_REPORT.Сборка
+Драйвер зависит от libsuinput, pthreads, libudev и компилятора C99. Для сборки все это должно присутствовать в сборочном окружении:gcc -std=c99 -Wall ./waveshare.c -pthread -lsuinput -ludev -o waveshare-touch-driver
+
+Запускаем приложение от имени суперпользователя в фоне:sudo waveshare-touch-driver &amp;
+
+И проверяем созданное устройство (к моей малине ни клавиатуры, ни мыши подключено не было, поэтому /dev/input/event0):Скрытый текстpi@raspberrypi ~ $ evtest /dev/input/event0 
+Input driver version is 1.0.1
+Input device ID: bus 0x3 vendor 0xeef product 0x5 version 0x1
+Input device name: "Waveshare multitouch screen"
+Supported events:
+  Event type 0 (EV_SYN)
+  Event type 3 (EV_ABS)
+    Event code 53 (ABS_MT_POSITION_X)
+      Value      0
+      Min        0
+      Max      800
+    Event code 54 (ABS_MT_POSITION_Y)
+      Value      0
+      Min        0
+      Max      480
+Properties:
+Testing ... (interrupt to exit)
+...
+Event: time 20159.696497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 728
+Event: time 20159.696497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 41
+Event: time 20159.696497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.696497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 595
+Event: time 20159.696497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 154
+Event: time 20159.696497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.696497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 456
+Event: time 20159.696497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 145
+Event: time 20159.696497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.696497, -------------- SYN_REPORT ------------
+Event: time 20159.728497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 728
+Event: time 20159.728497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 41
+Event: time 20159.728497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.728497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 595
+Event: time 20159.728497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 154
+Event: time 20159.728497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.728497, type 3 (EV_ABS), code 53 (ABS_MT_POSITION_X), value 456
+Event: time 20159.728497, type 3 (EV_ABS), code 54 (ABS_MT_POSITION_Y), value 145
+Event: time 20159.728497, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.728497, -------------- SYN_REPORT ------------
+Event: time 20159.760360, ++++++++++++++ SYN_MT_REPORT ++++++++++++
+Event: time 20159.760360, -------------- SYN_REPORT ------------
+
+Устройство функционирует в соответствии со стандартом Linux Kernel.Существующие проблемы
+На данный момент существует две проблемы:Тачскрин довольно глючно отрабатывает отпущенные нажатия, если их отпускать в случайном порядке. Проблема идет от устройства, и я пока не знаю решения для него
+Решение создает тачскрин, а не адаптирует Xorg для работы с ним. Поэтому нужны дополнительные драйвера для адаптации. Однако для приложений Qt в EGLFS этого и не нужно. Достаточно установить переменную окружения QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/eventX, где X — номер вашего тачскрина.
+
+Пример приложения из примеров для Qt 5.5 quick/touchinteractions (прошу прощения за отвратительное качество фото).
+Если найдете ошибки в драйвере/косяки дизайна — буду рад их принять, поскольку это моя первая «серьезная» программа, написанная на С.Еще раз ссылка на гитхаб.
+
+      
+      
+    

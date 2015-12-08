@@ -1,0 +1,79 @@
+﻿#TITLE:Автоматическая сборка модулей ядра при помощи DKMS
+
+      В некоторых случаях ручная сборка модулей ядра нецелесообразна, поскольку удобнее использовать Dynamic Kernel Module Support (DKMS) 
+Технология DKMS позволяет в том числе производить автоматическую сборку модулей системы при обновлении ядра.
+В данной статье рассматривается автоматическое управление при помощи DKMS на примере модулей шины CAN.
+DKMS предполагает, что пакет модуля или совокупности модулей ядра располагается в директории /usr/src/{package_name}-{package-version}
+Кроме исходных текстов модуля/модулей, директория пакета содержит конфиг dkms.conf, а также Makefile, в соответствии с которым производится сборка.
+Создадим для DKMS пакета модулей шины CAN директорию /usr/src/can-dkms-4.1.6-200
+Модули шины CAN расположены в двух различных поддиректориях исходников ядра: net/can
+ drivers/net/can
+
+Скопируем эти поддиректории (сохраняя их структуру) из исходников ядра в директорию нашего пакета can-dkms-4.1.6-200
+Создадим в директории пакета конфиг dkms.conf:PACKAGE_NAME="can-dkms"
+PACKAGE_VERSION="4.1.6-200"
+
+MAKE[0]="make M=$dkms_tree/$PACKAGE_NAME/$PACKAGE_VERSION/build modules"
+BUILT_MODULE_NAME[0]="can"
+BUILT_MODULE_LOCATION[0]="net/can"
+DEST_MODULE_LOCATION[0]="/updates/net/can"
+
+BUILT_MODULE_NAME[1]="can-raw"
+BUILT_MODULE_LOCATION[1]="net/can"
+DEST_MODULE_LOCATION[1]="/updates/net/can"
+
+BUILT_MODULE_NAME[2]="can-bcm"
+BUILT_MODULE_LOCATION[2]="net/can"
+DEST_MODULE_LOCATION[2]="/updates/net/can"
+
+BUILT_MODULE_NAME[3]="can-gw"
+BUILT_MODULE_LOCATION[3]="net/can"
+DEST_MODULE_LOCATION[3]="/updates/net/can"
+
+BUILT_MODULE_NAME[4]="vcan"
+BUILT_MODULE_LOCATION[4]="drivers/net/can"
+DEST_MODULE_LOCATION[4]="/updates/drivers/net/can"
+
+BUILT_MODULE_NAME[5]="can-dev"
+BUILT_MODULE_LOCATION[5]="drivers/net/can"
+DEST_MODULE_LOCATION[5]="/updates/drivers/net/can"
+
+BUILT_MODULE_NAME[6]="kvaser_usb"
+BUILT_MODULE_LOCATION[6]="drivers/net/can/usb"
+DEST_MODULE_LOCATION[6]="/updates/drivers/net/can/usb"
+
+AUTOINSTALL="yes"
+В конфиге указывается имя и версия пакета, команда сборки, список собираемых модулей, а также включается автосборка.
+В директории пакета также необходимо создать Makefile:# net/can
+export CONFIG_CAN            := m
+export CONFIG_CAN_RAW        := m
+export CONFIG_CAN_BCM        := m
+export CONFIG_CAN_GW         := m
+export CONFIG_CAN_VCAN       := m
+
+# drives/net/can
+export CONFIG_CAN_DEV            := m
+export CONFIG_CAN_KVASER_USB     := m
+
+SRC_DIRS := net/can drivers/net/can
+
+modules: $(SRC_DIRS)
+
+$(SRC_DIRS):
+	$(MAKE) -C /lib/modules/`uname -r`/build M="$(M)/$@" subdir-ccflags-y=-DCONFIG_CAN_CALC_BITTIMING
+
+.PHONY: $(SRC_DIRS) modules
+В Makefile задается структура поддиректорий модулей шины CAN, а также список собираемых модулей.
+Таким образом, пакет DKMS для модулей шины CAN создан.
+Далее необходимо зарегистрировать пакет в дереве DKMS:sudo dkms add -m can-dkms -v 4.1.6-200
+После чего создается ссылка /var/lib/dkms/can-dkms/4.1.6-200/source
+Сборка и установка пакета производится командами:sudo dkms build -m can-dkms -v 4.1.6-200
+sudo dkms install -m can-dkms -v 4.1.6-200
+
+В случае необходимости пакет можно удалить из дерева командой:sudo dkms remove -m can-dkms/4.1.6-200 --all
+
+При создании статьи были использованы материалы проекта aur.archlinux.org/packages/linux-can-dkms
+
+      
+      
+    

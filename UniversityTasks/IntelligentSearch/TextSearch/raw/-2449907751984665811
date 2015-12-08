@@ -1,0 +1,94 @@
+﻿#TITLE:Публикация DITA в PDF с использованием DITA Open Toolkit
+
+      Всем привет! Недавно начал пользоваться DITA. Как единственный технический писатель в компании, в общем-то, являюсь первопроходцем в данной технологии.
+Пишу в DITA. В качестве редакторов попробовал Adobe FrameMaker и oXygen. В качестве выходного формата использую PDF. В целом, базовый шаблон вполне удовлетворяет. Однако, есть желание доработать его, например, под требования ГОСТ. В связи с этим начал изучать технологию публикации DITA в PDF. Своими изысканиями решил поделиться с коллегами по цеху в данной и в дальнейших статьях. Итак…Публикация
+Публикация DITA в PDF осуществляется в два этапа (см. рисунок):Преобразование DITA в XSL-FO документ в соответствии с XSLT-шаблоном. 
+Формирование файла PDF на основе XSL-FO документа. 
+
+Рисунок взят из книги: Dave Pawson, XSL-FO. Making XML Look Good in Print, 2002.
+На первом этапе содержимое (поток, flow) исходного документа (текст, картинки, таблицы и т.д.) распределяются по блокам будущего PDF документа. Фактически происходит XSLT преобразование из XML разметки, используемой в DITA, в XML разметку, используемую в XSL-FO.
+XSL-FO (eXtensible Stylesheet Language Formatting Objects) – язык разметки предпечатных макетов, предназначенных для получения печатаемых документов в формате PDF, PostScript или RTF.
+XSL-FO полностью описывает будущий документ – начиная от разметки страниц (поля, колонтитулы и т.п.) заканчивая стилями абзацев, текста, таблиц и т.п. Он позволяет описать для одного документа разные типы страниц (обложка, титульный лист, аннотация, основная часть документа, концевой титульный лист, задняя обложка и т.д.)
+На втором этапе сформированный макет документа (XSL-FO документ) преобразовывается в печатаемый документ. Обычно это PDF.Где искать DITA-OT в редакторе
+Разработка XSLT-шаблона представляет собой достаточно сложную задачу. Для этого требуется знать особенности XSL-FO разметки, языки XSLT и XPath. В DITA-OT уже есть встроенный шаблон публикации DITA в PDF. Он расположен в каталоге «DITA-OT/plugins/org.dita.pdf2».
+В зависимости от используемого XML редактора каталог DITA-OT может располагаться, например:«%Oxygen install dir%/frameworks/dita» для редактора oXygen;
+«%AdobeFrameMaker install dir%/fminit/ditafm» для редактора Adobe FrameMaker;
+«%Serna install dir%/plugins/dita» для редактора Serna.
+
+В общем, для любого редактора, поддерживающего DITA-OT, в его каталоге установки необходимо искать папку «DITA-OT/plugins/org.dita.pdf2».
+Есть также шаблон org.dita.pdf. Это базовая версия, разработанная группой OASIS DITA. Она не поддерживает некоторые возможности PDF. org.dita.pdf2 – более полная версия шаблона, OASIS DITA рекомендует использовать его.Какие в DITA-OT есть папки с настройками
+В каталоге шаблона интересны две папки:cfg – содержит две подпапки:common – содержит настройки локализации (папки index, properties и vars) и графические фрагменты, автоматически помещаемые в документ (папка artwork).
+fo – содержит файл разметки документа (layout-masters.xsl) и настройки стиля (размер страницы, полей, шрифтов, выравнивание и т.д.) в папке attrs.
+
+xsl – содержит набор шаблонов XSLT преобразования DITA в XSL-FO в папке fo.
+
+Для начала нам будет интересна папка /cfg/fo/attrs. В ней, не касаясь XSLT преобразований, можно задать некоторые параметры документа (например, изменить размер шрифта), если нас не устраивают базовые настройки.
+Файл basic-settings.xsl содержит основные настройки страницы. Например, ее размеры:&lt;!-- The default of 215.9mm x 279.4mm is US Letter size (8.5x11in) --&gt;
+&lt;xsl:variable name="page-width"&gt;215.9mm&lt;/xsl:variable&gt;
+&lt;xsl:variable name="page-height"&gt;279.4mm&lt;/xsl:variable&gt;
+
+Или размер шрифта основного текста:&lt;xsl:variable name="default-font-size"&gt;10pt&lt;/xsl:variable&gt;
+
+Файл common-attr.xsl содержит некоторые общие настройки стилей.
+Например, стили заголовков. Они прописаны для шести уровней. Для первого уровня используется следующий набор атрибутов:&lt;xsl:attribute-set name="topic.title" use-attribute-sets="common.title"&gt;
+    &lt;xsl:attribute name="border-bottom"&gt;3pt solid black&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="space-before"&gt;0pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="space-after"&gt;16.8pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="font-size"&gt;18pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="font-weight"&gt;bold&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="padding-top"&gt;16.8pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="keep-with-next.within-column"&gt;always&lt;/xsl:attribute&gt;
+&lt;/xsl:attribute-set&gt;
+
+Для заголовков к рисункам используется следующий набор атрибутов:&lt;xsl:attribute-set name="fig.title" use-attribute-sets="base-font common.title"&gt;
+    &lt;xsl:attribute name="font-weight"&gt;bold&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="space-before"&gt;5pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="space-after"&gt;10pt&lt;/xsl:attribute&gt;
+    &lt;xsl:attribute name="keep-with-previous.within-page"&gt;always&lt;/xsl:attribute&gt;
+&lt;/xsl:attribute-set&gt;
+Файл custom.xsl
+Можно изменять состав атрибутов и их значения. Для этого рекомендуется использовать файл custom.xsl, расположенный в этой же папке. Можно просто скопировать требуемый набор атрибутов (attribute-set) в этот файл, и уже там внести изменения. Никто не запрещает вносить изменения непосредственно в исходные файлы, но все-таки в одном файле хранить их удобнее.
+При формировании документа параметры, содержащиеся в файле custom.xsl, имеют приоритет. Если в файле custom.xsl отсутствуют какие-либо атрибуты, то используются значения, указанные в других файлах. Т.е., если требуется изменить только размер шрифта заголовка, то нет необходимости копировать все атрибуты набора. Можно указать набор с одним атрибутом – font-size.
+Названия атрибутов, в целом, не сильно отличаются от атрибутов каскадных таблиц стилей. Так что, для владеющих базовыми представлениями в этой области найти требуемый атрибут не составит труда.
+Файлы с атрибутами разделены по элементам документа. Некоторые из них:basic-settings.xsl и common-attr.xsl я уже упоминал;
+front-matter-attr.xsl – атрибуты обложки документа (титульного листа);
+glossary-attr.xsl –атрибуты глоссариев;
+index-attr.xsl – атрибуты индексов;
+layout-masters-attr.xsl – атрибуты разметки шаблона документа;
+links-attr.xsl – атрибуты ссылок;
+lists-attr.xsl – атрибуты списков;
+static-content-attr.xsl – атрибуты так называемого статичного содержимого (например, номера страниц);
+tables-attr.xsl – атрибуты таблиц;
+task-elements-attr.xsl – атрибуты топиков типа task;
+toc-attr.xsl – атрибуты оглавления.
+
+Описание каждого файла с атрибутами — это предмет отдельной статьи.Примеры
+В завершение несколько примеров. В примерах указано конкретно, что нужно указать в файле custom.xsl.
+Чтобы установить формат страницы А4:&lt;xsl:variable name="page-width"&gt;210.0mm&lt;/xsl:variable&gt;
+&lt;xsl:variable name="page-height"&gt;297.0mm&lt;/xsl:variable&gt;
+
+Чтобы установить размер шрифта для заголовка 4 уровня:&lt;xsl:attribute-set name="topic.topic.topic.topic.title" use-attribute-sets="base-font common.title"&gt;
+    &lt;xsl:attribute name="font-size"&gt;12pt&lt;/xsl:attribute&gt;
+&lt;/xsl:attribute-set&gt;
+
+Чтобы установить количество уровней заголовков, собираемых в оглавлении, равное 4. В параметре указывается число на 1 большее требуемого (установлено опытным путем).&lt;xsl:param name="tocMaximumLevel" select="5"/&gt;
+
+Чтобы установить поля страницы:
+Внутреннее поле (у переплета) &lt;xsl:variable name="page-margin-inside"&gt;15mm&lt;/xsl:variable&gt;
+
+Внешнее поле &lt;xsl:variable name="page-margin-outside"&gt;15mm&lt;/xsl:variable&gt;
+
+Верхнее поле &lt;xsl:variable name="page-margin-top"&gt;20mm&lt;/xsl:variable&gt;
+
+Нижнее поле &lt;xsl:variable name="page-margin-bottom"&gt;10mm&lt;/xsl:variable&gt;
+
+Чтобы установить выравнивание текста в абзацах по ширине:&lt;xsl:attribute-set name="p" use-attribute-sets="common.block"&gt;
+    &lt;xsl:attribute name="text-align"&gt;justify&lt;/xsl:attribute&gt;
+&lt;/xsl:attribute-set&gt;
+
+Чтобы установить выравнивание подписей иллюстраций по центру:&lt;xsl:attribute-set name="fig.title" use-attribute-sets="base-font common.title"&gt;
+    &lt;xsl:attribute name="text-align"&gt;center&lt;/xsl:attribute&gt;
+&lt;/xsl:attribute-set&gt;
+
+      
+    

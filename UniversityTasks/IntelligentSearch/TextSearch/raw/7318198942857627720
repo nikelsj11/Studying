@@ -1,0 +1,350 @@
+﻿#TITLE:Написание Unit-тестов. Mocking объектов
+
+      Кому нужны модульные тесты? Не Вам — Ваш код идеален. Но все же, Вам просто нужно прочитать эту статью, которая должна больше рассказать о написании модульных тестов на Swift’е. Вдруг это Вам в дальнейшем пригодиться.
+Модульное тестирование являются отличным способом для написания безупречного кода; тестирование поможет Вам найти большинство ошибок на ранней стадии написания проекта. Как показывает опыт: если у Вас возникают трудности при тестировании кода, тогда у Вас возникнут сложности с его поддержкой или отладкой. 
+Модульное тестирование работает с изолированными “микрокомпонентами”. Зачастую Вам нужно «мокировать» классы – то есть обеспечить фейк функциональной реализацией, чтобы изолировать специфический микрокомпонент, таким образом, он сможет быть протестирован. В Objective-C существует несколько сторонних фреймворков, которые помогают это реализовать. Но они еще не доступны в Swift’е. 
+В этом руководстве Вы научитесь, писать свои собственные mock-обьекты, fakes и stub'ы, чтобы покрыть тестами давольно простое приложение, которое поможет вам запомнить дни рождения ваших друзей. Давайте начнемЗагрузите стартовый проект это – приложение для хранения контактов. Вы не будете работать над функциональностью базового приложения; скорее, вы напишете для него несколько тестов, чтобы убедиться, что приложение работает должным образом.
+Скомпилируйте и запустите приложение, и затем проверьте, как оно работает. Нажмите кнопку plus и затем добавьте John Appleseed в общий список контактов:
+Для хранения контактов, приложения использует Core Data.
+Не паникуйте! Вам не нужен опыт работы с Core Data для этого урока; для этого Вам не нужно иметь никаких специальных навыков.Преимущества и недостатки модульного тестирования
+Когда дело дойдет до написания тестов, Вы столкнетесь как с хорошими, так и с плохими новостями. Плохие новости заключаются в том, что в модульном тестировании существует следующее недостатки:Большое количество кода: В проектах с большим тестовым охватом у Вас, возможно, будет больше тестов, чем функционального кода.
+Больше поддержки: Чем больше кода, тем больше его нужно поддерживать.
+Никакого верного решения: Модульное тестирование не гарантируют, и не может гарантировать, что ваш код будет без ошибок.
+Занимает больше времени:  Написание тестов занимает некоторое время – время, которое вы могли бы провести за изучением новой информации на habrahabr.ru!
+
+Хотя и нет идеального решения, есть светлая сторона – написание тестов имеет следующие преимущества:Уверенность: Вы можете убедиться, что ваш код работает.
+Быстрые отзывы: Вы можете использовать модульное тестирование для быстрой проверки кода, который спрятан под многими слоями навигации, – слишком большими компонентами, которые нужно проверять вручную.
+Модульность: Модульное тестирование помогает Вам сосредоточить внимание на написании более модульного кода.
+Ориентированность: Написания тестов для микрокомпонентов поможет Вам сосредоточить внимание на маленьких деталях. 
+Регрессия: Убедитесь, что ошибки, которые вы исправили ранее, остаются исправленными — и не нарушены последующими исправления.
+Рефакторинг: Пока Xcode не станет достаточно умным, чтобы переписывать код самостоятельно, Вам будет нужно модульное тестирование для проверки рефакторинга.
+Документация: Модульное тестирование описывает то, что Вы думаете, код должен делать; он является другим способом написание кода.
+Базовая структура приложений
+Большое количество кода в приложения основывается на шаблоне Master-Detail Application с включенной Core Data. Но есть некоторые существенные улучшения по шаблону кода. Откройте проект в Xcode и посмотрите на навигатор проекта:
+Примите во внимание следующие детали:У Вас есть файл Person.swift и файл PersonInfo.swift. Класс Person это наследник NSManagedObject, который содержит некоторую основную информацию о каждом человеке. Структура PersonInfo содержит такую же информацию, но может обновляться с адресной книги.
+Папка PeopleList имеет три файла: контроллер представления, провайдер данных и протокол провайдера данных.
+
+Коллекция файлов в PeopleList для того что бы избежать больших контроллеров представления. Для того чтобы избежать больших контроллеров представления, Вы можете переложить некоторые обязанности на другие классы, которые подключаются к контроллерам представления посредством простого протокола. Вы можете больше узнать о больших контроллерах представления и том, как их избежать, прочитав эту интересную, хотя и более старую статью.
+В этом случае протокол определён в PeopleListDataProviderProtocol.swift; откройте его и посмотрите. Класс, соответствующий этому протоколу, должен иметь свойства managedObjectContext и tableView, и должен определить методы addPerson(_:) и fetch(). Кроме того, он должен соответствовать протоколу UITableViewDataSource.
+Контроллер представления PeopleListViewController имеет свойство dataProvider, что соответствует протоколу PeopleListDataProviderProtocol. Это свойство установлено в экземпляр PeopleListDataProvider в файле AppDelegate.swift.
+Добавьте новых людей в свой список контактов, используя ABPeoplePickerNavigationController. Этот класс позволяет вам, как разработчику, иметь доступ к контактам пользователя, не нуждаясь в разрешении.PeopleListDataProvider ответственен за заполнение табличного представления и обращение к Core Data.Примечание: Несколько классов и методов в проекте объявлены как публичные; так, что таргет для тестов может получить доступ к классам и методам. Таргет для тестов находится вне модуля приложения. Если вы не добавляете модификатор доступа, классы и методы определяются, как internal. Это означает, что они доступны только в том же модуле. Чтобы получить доступ к ним снаружи модуля (например, от таргета для тестов), Вы должны добавить модификатор доступа public.
+Ну что ж, наступило время для написания нескольких тестов!Написания Mock-обьектов
+Mock-объекты позволяют вам проверить, выполнен ли вызов методов или установлено ли свойство. Например, на viewDidLoad() из PeopleListViewController, табличное представление установлено в свойство tableView из dataProvider.
+Вы напишите тест, чтобы проверить, что же на самом деле происходит.Подготовка приложения к тестированию
+Во-первых, вам нужно подготовить проект для написания тестов.
+Выберите проект в навигаторе проекта, затем выберите Build Settings в таргете тестирования Birthdays. Найдите Defines Module, и измените настройки установив в Yes, как показано ниже:
+Затем выберите папку BirthdaysTests и перейдите к File\New\File…. Выберите iOS\Source\Test Case Class, затем нажмите Next, назовите его PeopleListViewControllerTests, убедитесь, что вы создаёте файл Swift, снова нажмите Next, затем нажмите Create.
+Если Xcode предлагает Вам создавать объединяющий заголовок, выберите No. Это — ошибка в Xcode, которая происходит, когда нет файлов в таргете, и Вы добавляете новый Swift файл.
+Откройте недавно созданный PeopleListViewControllerTests.swift. Импортируйте модуль, который вы только что включили, добавив оператор import Birthdays прямо после других операторов импорта, как показано ниже:import UIKit
+import XCTest
+import Birthdays
+
+Удалите следующие два шаблонных метода:func testExample() {
+  // This is an example of a functional test case.
+  XCTAssert(true, "Pass")
+}
+ 
+func testPerformanceExample() {
+  // This is an example of a performance test case.
+  self.measureBlock() {
+    // Put the code you want to measure the time of here.
+  }
+}
+
+Вам сейчас нужен экземпляр PeopleListViewController, таким образом, Вы сможете использовать его в тестах.
+Добавьте следующую строку в начало PeopleListViewControllerTestsvar viewController: PeopleListViewController!
+
+Затем замените метод setUp() следующим кодом:override func setUp() {
+  super.setUp()
+ 
+  viewController = UIStoryboard(name: "Main", bundle: nil).instantiateViewControllerWithIdentifier("PeopleListViewController") as! PeopleListViewController
+}
+
+Он использует storyboard для создание экземпляра PeopleListViewController, и присваивает его в проперти viewController.
+Выберите Product\Test; Xcode компилирует проект и запускает любые существующие тесты. Хотя у вас ещё нет тестов, это позволит Вам убедиться, что всё настроено правильно. После нескольких секунд Xcode должен сообщить, что все тесты прошли успешно.
+Вы сейчас на пути к созданию вашего первого mock объекта.Написание первого Mock обьекта
+Поскольку вы собираетесь работать с Core Data, добавьте следующий импорт вверх PeopleListViewControllerTests.swift, сразу после строки import Birthdays:import CoreData
+
+Затем, добавьте следующий код в определение класса PeopleListViewControllerTests:class MockDataProvider: NSObject, PeopleListDataProviderProtocol {
+ 
+  var managedObjectContext: NSManagedObjectContext?
+  weak var tableView: UITableView!
+  func addPerson(personInfo: PersonInfo) { }
+  func fetch() { }
+  func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -&gt; Int { return 1 }
+  func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -&gt; UITableViewCell {
+    return UITableViewCell()
+  }
+}
+
+Это похоже на довольно сложный mock-обьект. Однако, это – просто требуемый абсолютный минимум, поскольку вы собираетесь присвоить экземпляр этого mock-класса к свойству PeopleListViewController dataProvider. Ваш mock-класс также должен соответствовать PeopleListDataProviderProtocol, а также протоколу UITableViewDataSource.
+Выберите Product\Test; проект будет скомпилирован повторно, а ваши тесты прошли на Ура. Но теперь у Вас все настроено для первого модульного тестирования с помощью mock обьекта.
+Следует разделить модульное тестирование на три части, назвав их, given, when, и then. ‘Given’ настраивает среду; ‘when’ выполняет код, который вам требуется протестировать; а ‘then’ проверяет ожидаемый результат.
+Ваш тест проверят, что свойство tableView поставщика данных установлено после того, как метод viewDidLoad() был выполнен.
+Добавьте следующий тест в PeopleListViewControllerTests:func testDataProviderHasTableViewPropertySetAfterLoading() {
+  // given
+  // 1
+  let mockDataProvider = MockDataProvider()
+ 
+  viewController.dataProvider = mockDataProvider
+ 
+  // when
+  // 2
+  XCTAssertNil(mockDataProvider.tableView, "Before loading the table view should be nil")
+ 
+  // 3
+  let _ = viewController.view
+ 
+  // then    
+  // 4
+  XCTAssertTrue(mockDataProvider.tableView != nil, "The table view should be set")
+  XCTAssert(mockDataProvider.tableView === viewController.tableView, 
+    "The table view should be set to the table view of the data source")
+}
+
+Вот как работает выше приведённый тест:Создаёт экземпляр MockDataProvider и устанавливает его в свойство контроллера представления для dataProvider.
+Подтверждает, что свойство tableView равно nil до начала теста.
+Имеет доступ к представлению для запуска viewDidLoad().
+Подтверждает, что свойство тестового класса tableView не равно nil и свойство установлено в tableView контроллера представления.
+
+Затем снова выберите Product\Test; как только тесты завершатся, откройте навигатор (Cmd+5 – удобная быстрая клавиша). И Вы должны увидеть следующее:
+Ваше первое тестирование с помощью mock-обьекта прошло успешно!Тестирование метода addPerson(_:)
+Следующее тестирование состоит в том, чтобы убедиться, что выбор контакта из списка вызовет метод addPerson(_:)
+Добавьте следующее свойство в класс MockDataProvider:var addPersonGotCalled = false
+
+Затем замените метод addPerson(_:) на следующий:func addPerson(personInfo: PersonInfo) { addPersonGotCalled = true }
+
+Теперь, когда вы вызовете addPerson(_:), вы зарегистрируете его в экземпляре, присвоив значение true для MockDataProvider.
+Вам придётся импортировать фреймворк AddressBookUI до того, как вы сможете добавить метод для тестирования этого поведение.
+Добавьте следующий импорт в PeopleListViewControllerTests.swift:import AddressBookUI
+
+Теперь добавьте следующий тестовый метод в остальную часть тестовых сценариев:func testCallsAddPersonOfThePeopleDataSourceAfterAddingAPersion() {
+  // given
+  let mockDataSource = MockDataProvider()
+ 
+  // 1
+  viewController.dataProvider = mockDataSource
+ 
+  // when
+  // 2
+  let record: ABRecord = ABPersonCreate().takeRetainedValue()
+  ABRecordSetValue(record, kABPersonFirstNameProperty, "TestFirstname", nil)
+  ABRecordSetValue(record, kABPersonLastNameProperty, "TestLastname", nil)
+  ABRecordSetValue(record, kABPersonBirthdayProperty, NSDate(), nil)
+ 
+  // 3
+  viewController.peoplePickerNavigationController(ABPeoplePickerNavigationController(), 
+    didSelectPerson: record)
+ 
+  // then
+  // 4
+  XCTAssert(mockDataSource.addPersonGotCalled, "addPerson should have been called")
+}
+
+Итак, что происходит здесь?Сначала Вы устанавливаете провайдер данных контроллера представления к экземпляру Вашего фейкового провайдера данных.
+Затем вы создаёте контакт, используя ABPersonCreate().
+Здесь вы вручную вызываете метод делегата peoplePickerNavigationController(_:didSelectPerson:). Обычно вызов методов делегата вручную – это признак плохого кода, но хорошо для целей тестирования.
+Наконец вы подтверждаете, что addPerson(_:) был вызван, проверяя, что addPersonGotCalled имеет значение true .
+
+Выберите Product\Test, чтобы запустить тесты. Так оказывается, это довольно легкое задание!
+Но подождите! Не торопитесь! Откуда вы знаете, что тесты на самом деле проверяют то, что вы думаете, что они тестируют?Проверка ваших тестов
+Быстрый способ проверить, что тест фактически проверяет что-то, состоит в том, чтобы удалить объект, который проверяет тест.
+Откройте PeopleListViewController.swift и закоментируйте следующую строку peoplePickerNavigationController(_:didSelectPerson:):dataProvider?.addPerson(person)
+
+Запустите тесты снова; последний тест, который вы только что написали, должен сейчас завершиться неудачно. Шедеврально – вы знаете, что ваши тесты на самом деле проверяют что-то. Следует проверить свои тесты; по крайней мере, Вы должны проверить самые сложные тесты, чтобы убедиться, что они работают.
+Раскомментируйте строку, чтобы вернуть код в рабочее состояние; запустите тесты снова, чтобы убедиться, что всё работает.Mocking Apple Framework Classes
+Вы могли использовать синглтоны, такие как NSUserDefaults.standardUserDefaults() и NSNotificationCenter.defaultCenter(), но как вы бы протестировали значение которое установлено по умолчанию? Apple не позволяет вам проверить состояние этих классов.
+Вы могли бы добавить тестовый класс, как наблюдателя за ожидаемыми результатом. Но это может замедлить ваши тесты и сделать их ненадежными, так как они зависят от реализации тех классов. Или значение могло бы быть установлено из другой части вашего кода, и вы не проверяли изолированное поведение.
+Чтобы обойти эти ограничения, вы можете использовать mock-обьекты вместо этих синглтонов.Примечание: При замене классов Apple на mock-обьект, очень важно проверить взаимодействие с тем классом, а не с поведением того класса, поскольку детали реализации могут измениться в любой момент.
+Скомпилируйте и запустите приложение; добавьте John Appleseed и David Taylor в список людей и переключите сортировку между «Last Name» и «First Name». Вы увидите, что порядок контактов в списке зависит от сортировки.
+Код, который отвечает за сортировку, находиться в методе changeSort() в PeopleListViewController.swift:@IBAction func changeSorting(sender: UISegmentedControl) {
+    userDefaults.setInteger(sender.selectedSegmentIndex, forKey: "sort")
+    dataProvider?.fetch()
+}
+
+Он добавляет выбранный сегментный индекс для сортировки по ключу в NSUserDefaults и вызывает метод fetch(). Метод fetch() должен прочитать этот новый порядок сортировки с NSUserDefaults и обновить список контактов, продемонстрированный в PeopleListDataProvider:let sortKey = NSUserDefaults.standardUserDefaults().integerForKey("sort") == 0 ? "lastName" : "firstName"
+ 
+let sortDescriptor = NSSortDescriptor(key: sortKey, ascending: true)
+let sortDescriptors = [sortDescriptor]
+ 
+fetchedResultsController.fetchRequest.sortDescriptors = sortDescriptors
+var error: NSError? = nil
+
+if !fetchedResultsController.performFetch(&amp;error) {
+  println("error: \(error)")
+}
+tableView.reloadData()
+}
+PeopleListDataProvider использует NSFetchedResultsController, чтобы произвести выборку данных из Core Data. Чтобы заменить сортировку списка, fetch() создаёт массив с помощью дескрипторов сортировки и устанавливает его в запрос выборки выбранного контроллера результатов. Затем он выполняет выборку, чтобы обновить список и вызвать метод reloadData() для таблицы.
+Вы сейчас добавите тест, чтобы убедиться, что предпочтительный порядок сортировки пользователя правильно установлен в NSUserDefaults.
+Откройте PeopleListViewControllerTests.swift и добавьте следующее определение классов ниже определения класса Mockdataprovider:class MockUserDefaults: NSUserDefaults {
+  var sortWasChanged = false
+  override func setInteger(value: Int, forKey defaultName: String) {
+    if defaultName == "sort" {
+      sortWasChanged = true
+    }
+  }
+}
+MockUserDefaults является подклассом NSUserDefaults; у него есть булевое свойство sortWasChanged со значением по умолчанию false. Он также переопределяет метод setInteger(_:forKey:), который меняет значение sortWasChanged на true.
+Добавьте следующий тест ниже последнего теста в классе PeopleListViewControllerTests:func testSortingCanBeChanged() {
+  // given
+  // 1
+  let mockUserDefaults = MockUserDefaults(suiteName: "testing")!
+  viewController.userDefaults = mockUserDefaults
+ 
+  // when
+  // 2
+  let segmentedControl = UISegmentedControl()
+  segmentedControl.selectedSegmentIndex = 0
+  segmentedControl.addTarget(viewController, action: "changeSorting:", forControlEvents: .ValueChanged)
+  segmentedControl.sendActionsForControlEvents(.ValueChanged)
+ 
+  // then
+  // 3
+  XCTAssertTrue(mockUserDefaults.sortWasChanged, "Sort value in user defaults should be altered")
+}
+
+Вот отчёт об этой проверке:Вы сначала присваиваете экземпляр MockUserDefaults к userDefaults контроллера представления; эта техника известна как внедрение зависимостей.
+Затем создайте экземпляр UISegmentedControl, добавьте контроллер представления в качестве тергета для .ValueChanged.
+Наконец, вы подтверждаете, что setInteger(_:forKey:) mock-объект пользователя по умолчанию был вызван. Заметьте, что вы проверяете, было ли значение на самом деле сохранено в NSUserDefaults.
+
+Запустите свой пакет тестов – все они должны успешно завершиться.
+Что относительно случая, когда у Вас есть действительно сложный API или фреймворк, но Вы действительно хотите протестировать небольшой компонент, не «закапывайтесь» глубоко в фреймворк!
+Именно тогда Вы “подделываете” его, а не создаете! :]Написания Fakes объектовFakes объекты ведут себя подобно полной реализации классов, которые они подделывают. Вы используете их, как заменители классов или структур, с которыми слишком сложно работать.
+В случае приложения вам не требуется добавлять записи и выбирать их с Core Data. Итак, вместо этого вы подделаете Core Data. Звучит немного устрашающи, не так ли?
+Выберите папку BirthdaysTests и перейдите к File\New\File…. Выберите шаблон iOS\Source\Test Case Class и нажмите Next. Назовите ваш класс PeopleListDataProviderTests, нажмите Next и затем Create.
+Снова удалите ненужные тесты в созданном тестовом классе:func testExample() {
+  // ...
+}
+ 
+func testPerformanceExample() {
+  // ...
+}
+
+Добавьте два следующие импорта в новый класс:import Birthdays
+import CoreData
+
+Затем добавьте следующие свойства:var storeCoordinator: NSPersistentStoreCoordinator!
+var managedObjectContext: NSManagedObjectContext!
+var managedObjectModel: NSManagedObjectModel!
+var store: NSPersistentStore!
+ 
+var dataProvider: PeopleListDataProvider!
+
+Свойства содержат основные компоненты, которые используются в стеке Core Data. Чтобы приступить к работе с Core Data, изучите наше руководство Core Data Tutorial: Начало
+Добавьте следующий код в метод setUp():// 1
+managedObjectModel = NSManagedObjectModel.mergedModelFromBundles(nil)
+storeCoordinator = NSPersistentStoreCoordinator(managedObjectModel: managedObjectModel)
+store = storeCoordinator.addPersistentStoreWithType(NSInMemoryStoreType, 
+  configuration: nil, URL: nil, options: nil, error: nil)
+ 
+managedObjectContext = NSManagedObjectContext()
+managedObjectContext.persistentStoreCoordinator = storeCoordinator
+ 
+// 2
+dataProvider = PeopleListDataProvider()
+dataProvider.managedObjectContext = managedObjectContext
+
+Вот что происходит в вышеупомянутом коде:setUp() создаёт контекст управляемых объектов с помощью хранилища в памяти. Обычно Core Data является файлом в файловой системе устройства. Для этих тестов вы создаёте ‘постоянное’ хранилище в памяти устройства.
+Затем вы создаёте экземпляр PeopleListDataProvider и контекст управляемого объекта с хранилищем в памяти, который установлен как managedObjectContext. Это означает, что Ваш новый провайдер данных будет работать как реальный, но не будет добавлять или удалять объекты в Core Data.
+
+Добавьте следующие два свойства в PeopleListDataProviderTests:var tableView: UITableView!
+var testRecord: PersonInfo!
+
+Сейчас добавьте следующий код в конец метода setUp():let viewController = UIStoryboard(name: "Main", bundle: nil).instantiateViewControllerWithIdentifier("PeopleListViewController") as! PeopleListViewController
+viewController.dataProvider = dataProvider
+ 
+tableView = viewController.tableView
+ 
+testRecord = PersonInfo(firstName: "TestFirstName", lastName: "TestLastName", birthday: NSDate())
+
+Это настраивает табличное представление, инстанцируя контроллер представления с storyboard и создает экземпляр PersonInfo, который будет использоваться в тестах.
+Когда тест будет выполнен, Вы должны будете «cбросить" контекст управляемого объекта.
+Замените метод tearDown() следующим кодом:override func tearDown() {
+  managedObjectContext = nil
+ 
+  var error: NSError? = nil
+  XCTAssert(storeCoordinator.removePersistentStore(store, error: &amp;error), "couldn't remove persistent store: \(error)")
+ 
+  super.tearDown()
+}
+
+Этот код устанавливает managedObjectContext в значение nil, чтобы освободить память, и удалить persistent store из store coordinator. Вы можете запустить каждый тест с новым тестовым хранилищем.
+Теперь — Вы можете написать тест! Добавьте следующий тест в свой тестовый класс:func testThatStoreIsSetUp() {
+  XCTAssertNotNil(store, "no persistent store")
+}
+
+Этот тест проверяет, что хранилище не равно nil. Запустите новый тест – всё должно пройти успешно.
+Следующий тест проверит, обеспечивает ли источник данных ожидаемое количество строк.
+Добавьте следующий тест в тестовый класс:func testOnePersonInThePersistantStoreResultsInOneRow() {
+  dataProvider.addPerson(testRecord)
+ 
+  XCTAssertEqual(tableView.dataSource!.tableView(tableView, numberOfRowsInSection: 0), 1, "After adding one person number of rows is not 1") 
+}
+
+Сначала добавьте контакт в тестовое хранилище, затем подтвердите, что количество строк равно 1.
+Запустите тесты – они должны все успешно выполниться.
+Создавая фейковое “постоянное” хранилище, вы обеспечиваете быстрое тестирование и позволяете диску оставаться чистым, таким образом, Вы можете быть уверенны, что, приложение при запуске будет работать, ожидаемо.
+Написал тест Вы также можете проверить количество разделов и строк после того, как вы добавили два или более тестовых контактов; это всё зависит от уровня уверенности, которого вы пытаетесь достичь в проекте.
+Если вы когда-либо работали сразу с несколькими командами над проектом, вы знаете, что не все части проекта готовы в одно и то же время, но вам уже нужно протестировать ваш код. Но как Вы можете протестировать часть своего кода на что-то, что не существует, например веб-сервиса?
+Stub’ы придут вам на помощь!Написание Stub’ов
+Stub’ы подделывают ответ на вызовы метода объекта. Вы будете использовать стабы, чтобы протестировать Ваш код вызова веб-сервиса, который может быть еще в разработке.
+Веб-команде для вашего проекта было поручено создание веб-сервис с той же функциональностью что и приложение. Пользователь создаёт учётную запись на сервисе и может затем синхронизировать данные между приложением и сервисом. Но веб-команда даже не начала свою часть работы, а вы уже почти закончили разработку. Выглядит, как вы должны написать stub для замены серверного веб-компонента.
+В этом разделе вы сосредоточитесь на написание тестов двух методах: один для выборки контактов, добавленных на сайте и один, чтобы добавлять контакты из вашего приложения в веб-сервис. В реальном сценарии вам будет нужен логин и учётная запись и обработка ошибок, но этим мы займемся в другой раз.
+Откройте APICommunicatorProtocol.swift; этот протокол объявляет два метода для получения контактов с веб-сервиса и добавление контактов.
+Вы могли бы переместить экземпляры Person, но для этого будет нужен другой контекст управляемого объекта. Использование структур стало намного проще в этом случае.
+Вы сейчас будете создавать stub’ы для поддержки взаимодействия контроллера представления с экземпляром APICommunicator.
+Откройте PeopleListViewControllerTests.swift и добавьте следующее определение класса в пределах класса PeopleListViewControllerTests:// 1
+class MockAPICommunicator: APICommunicatorProtocol {
+  var allPersonInfo = [PersonInfo]()
+  var postPersonGotCalled = false
+ 
+  // 2
+  func getPeople() -&gt; (NSError?, [PersonInfo]?) {
+    return (nil, allPersonInfo)
+  }
+ 
+  // 3
+  func postPerson(personInfo: PersonInfo) -&gt; NSError? {
+    postPersonGotCalled = true
+    return nil
+  }
+}
+
+Нужно кое-что отметить:Даже если APICommunicator является структурой, имитирующая реализация является классом. В этом случае, более удобно будет использовать класс, потому что Ваши тесты требуют, чтобы Вы видоизменили данные. Это немного проще сделать в классе, чем в структуре.
+Метод getPeople() возвращает то, что хранится в allPersonInfo. Вместо того, чтобы загружать данные из сети, Вы просто храните контактную информацию в простом массиве.
+Метод postPerson(_:) устанавливает значение true для postPersonGotCalled.
+
+Теперь пора протестировать Ваш Stub API, чтобы удостоверится, что все контакты, которые возвращаются из API, добавлены в хранилище, когда Вы вызываете метод addPerson()
+Добавьте следующий тестовый метод в PeopleListViewControllerTests:func testFetchingPeopleFromAPICallsAddPeople() {
+  // given
+  // 1
+  let mockDataProvider = MockDataProvider()
+  viewController.dataProvider = mockDataProvider
+ 
+  // 2
+  let mockCommunicator = MockAPICommunicator()
+  mockCommunicator.allPersonInfo = [PersonInfo(firstName: "firstname", lastName: "lastname", 
+    birthday: NSDate())]
+  viewController.communicator = mockCommunicator
+ 
+  // when
+  viewController.fetchPeopleFromAPI()
+ 
+  // then
+  // 3
+  XCTAssert(mockDataProvider.addPersonGotCalled, "addPerson should have been called")
+}
+
+Вот что происходит в вышеприведённом коде:Сначала вы настраиваете имитирующие объекты mockDataProvider и mockCommunicator, которые вы будете использовать в тесте.
+Затем вы устанавливаете некоторые фейковые контакты и вызываете метод fetchPeopleFromAPI(), чтобы выполнить фейковый сетевой вызов.
+Наконец тестируете метод addPerson(_:).
+
+Скомпилируйте и запустите тесты.И что же дальше? Загрузите финальную версию проекта, эта версия также включает в себя некоторые дополнительные тесты, которые не были освещены в этой статье.
+Вы научились, как писать mock-обьекты, fakes и stub'ы для тестирования микрокомпонентов в своём приложении и разобрались, как работает XCTest в Swift'е.
+В этой статье представлено только начальное понимание тестов; я уверен, что у вас уже появились идеи для написания тестов для своих приложений.
+Для большей информации о модульном тестировании изучите Test Driven Development (TDD) и Behavior Driven Development (BDD). Это методологии разработки приложений (и, откровенно говоря, представляют совершенно новое мышление), где Вы пишете тесты, прежде чем Вы напишете код.
+Модульное тестирование является только одной частью полного тестового пакета; комплексные тестирования – следующий логический шаг. Простым способом, чтобы начать работать с комплексным тестированием является использование UIAutomation. Если вы серьёзны настроены тестировать свои приложения, тогда Вам нужно использовать UIAutomation!
+p.s. Так как статья была написана ранее 09.09.2015 для написания примеров был использован Swift версий 1.2. Я внес в примеры некоторые изменения с связи с выходом новой версий языка Swift. Исходный код проектов можно найти тут и тут.
+      
+    

@@ -1,0 +1,120 @@
+﻿#TITLE:Расширение Yii 1.1 oci8Pdo и бинд параметров CLOB/BLOB
+
+      В моей компании есть проект, который построен на Yii 1.1 и использует базу данных Oracle 9g. Для работы с базой используется расширение oci8Pdo.
+Недавно появилась задача загрузки сканов в базу в поле BLOB. Т.к. автор расширения пишет: The goal of this PDO class is to simulate 99% of the PDO functions that you use in an application.то причин сомневаться в реализации данного функционала было мало.Пробуем загрузить скан:&lt;?php
+    $doc_scan = file_get_contents($file);
+    $db = Yii::app()-&gt;dbOracle;
+    $stmt = $db-&gt;createCommand("update scan_document set DOCUM_SCAN=:doc_xml, DOC_SCAN=:doc_scan where DOCUM_ID=:docum_id");
+    $stmt-&gt;bindParam(':doc_xml', $doc_xml, PDO::PARAM_LOB);
+    $stmt-&gt;bindParam(':doc_scan', $doc_scan, PDO::PARAM_LOB);
+    $stmt-&gt;bindValue(':docum_id', $add-&gt;DOCUM_ID);
+    $stmt-&gt;query();
+?&gt;
+
+Но не тут-то было: ORA-01465: invalid hex number.
+Стали раскуривать проблему и наткнулись на реализацию метода bindParam в классе Oci8PDO_Statement вышеописанного расширения:&lt;?php
+public function bindParam(
+    $parameter,
+    &amp;$variable,
+    $data_type = PDO::PARAM_STR,
+    $length = -1,
+    $driver_options = null
+) {
+	//Not checking for $data_type === PDO::PARAM_INT, because this gives problems when inserting/updating integers into a VARCHAR column.
+    if ($driver_options !== null) {
+        throw new PDOException('$driver_options is not implemented for Oci8PDO_Statement::bindParam()');
+    }
+    
+    if (is_array($variable)) {
+        return oci_bind_array_by_name(
+            $this-&gt;_sth,
+            $parameter,
+            $variable,
+            count($variable),
+            $length
+        );
+    } else {
+        if ($length == -1) {
+            $length = strlen((string)$variable);
+        }
+
+        return oci_bind_by_name($this-&gt;_sth, $parameter, $variable, $length);
+    }
+}
+?&gt;
+
+Аргумент $data_type принимается, но нигде не обрабатывается. Так и получается что CLOB или BLOB записать у нас не выйдет. Деваться было некуда, пришлось допиливать oci8Pdo.
+В класс Oci8PDO который наследуется от PDO добавили константы и метод вытаскивающий ресурс подключения к ДБ:&lt;?php
+	/**
+     * Ananalog constant OCI_B_CLOB
+     *
+     * @const int
+     */
+    const PARAM_CLOB = 112;
+    /**
+     * Ananalog constant OCI_B_BLOB
+     *
+     * @const int
+     */
+    const PARAM_BLOB = 113;
+
+
+    // ..............
+
+
+    /**
+     * Return the resource connection
+     *
+     * @return mixed
+     */
+    public function getDbh() {
+        return $this-&gt;_dbh;
+    }
+?&gt;
+
+
+И немного допилили метод bindParam в классе Oci8PDO_Statement:&lt;?php
+	public function bindParam(
+        $parameter,
+        &amp;$variable,
+        $data_type = PDO::PARAM_STR,
+        $length = -1,
+        $driver_options = null
+    ) {
+    	
+    	// ................
+
+    	if ($data_type == Oci8PDO::PARAM_BLOB) {
+            $clob = oci_new_descriptor($this-&gt;_pdoOci8-&gt;getDbh(), OCI_D_LOB);
+            $res = oci_bind_by_name($this-&gt;_sth, $parameter, $clob, -1, OCI_B_BLOB);
+            $clob-&gt;writeTemporary($variable, OCI_TEMP_BLOB);
+            return $res;
+        } else if ($data_type == Oci8PDO::PARAM_CLOB) {
+            $clob = oci_new_descriptor($this-&gt;_pdoOci8-&gt;getDbh(), OCI_D_LOB);
+            $res = oci_bind_by_name($this-&gt;_sth, $parameter, $clob, -1, OCI_B_CLOB);
+            $clob-&gt;writeTemporary($variable, OCI_TEMP_CLOB);
+            return $res;
+        }
+        else {
+            return oci_bind_by_name($this-&gt;_sth, $parameter, $variable, $length);
+        }
+
+    }
+?&gt;
+
+Теперь обработка CLOB/BLOB проходит успешно:&lt;?php
+
+$doc_scan = file_get_contents($file);
+$db = Yii::app()-&gt;dbOracle;
+$stmt = $db-&gt;createCommand("update scan_document set DOCUM_SCAN=:doc_xml, DOC_SCAN=:doc_scan where DOCUM_ID=:docum_id");
+
+$stmt-&gt;bindParam(':doc_xml', $doc_xml, Oci8PDO::PARAM_CLOB); // Используем наши константы
+$stmt-&gt;bindParam(':doc_scan', $doc_scan, Oci8PDO::PARAM_BLOB); // Используем наши константы
+$stmt-&gt;bindValue(':docum_id', $add-&gt;DOCUM_ID);
+$stmt-&gt;query();
+
+?&gt;
+Итог:
+Допил был организован в пулреквест и отправлен разработчику oci8Pdo yjeroen. Когда гуглилась проблема, было замечено много нерешенных вопросов на эту тему. Надеюсь, мой опыт кому-нибудь поможет.P.S.: Буду рад критике и конструктивным замечаниям в комментах.
+      
+    

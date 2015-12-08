@@ -1,0 +1,98 @@
+﻿#TITLE:Генерируем PDF-файлы в веб-проекте: программа wkhtmltopdf
+
+      При работе над веб-проектом иногда возникает необходимость генерировать PDF-файлы с большими таблицами: прайс-листы на тысячи позиций. Нашлись разные библиотеки для генерации PDF-файла из PHP-скрипта:
+• FPDF 
+• MPDF — основанная на FPDF библиотека, позволяющая генерировать pdf-файл из любого html-кода
+• DOMPDF
+• TCPDF
+и многие разные другие библиотеки. Наиболее мощной и подходящей, к тому же, изначально корректно работающей с кириллицей, оказалась библиотека MPDF, если бы не критичный в нашем случае недостаток: большие таблицы и вообще большие файлы крайне медленно генерировались. Более того, часто генерация не происходила совсем, а скрипт останавливался с ошибкой 504.
+Дальнейший поиск помог найти программу wkhtmltopdf. Сайт программы: http://wkhtmltopdf.org.
+В отличие от php-библиотек, это серверная программа, распространяемая в том числе в виде пакетов и исполняемых файлов для linux, windows и других операционных систем. Программа принимает html-код (в виде веб-адреса, пути к файлу либо строки кода) и генерирует на его основе pdf-файл на сервере.
+Предварительный опыт показал, что на локальном сервере XAMPP под Windows огромная html-таблица на 300-500 страниц преобразуется в pdf-файл за 1-2 секунды! Установка wkhtmltopdf на CentOs 6
+Для работы программе необходим webkit и qt. 
+Итак, установим требуемое окружение и программу на сервер. На нашем сервере установлена CentOs 6. Зайдем на сервер с правами root и выполним следующие команды.
+Получим rpm-пакет программы wkhtmltopdf по ссылке с сайта разработчика и установим ее на рабочем сервере:
+wget http://download.gna.org/wkhtmltopdf/0.12/0.12.2.1/wkhtmltox-0.12.2.1_linux-centos6-i386.rpm
+yum --nogpgcheck localinstall wkhtmltox-0.12.2.1_linux-centos6-i386.rpm
+
+Все зависимости пакетов должны автоматически провериться и удовлетвориться. Если окружение по каким-то причинам не установилось, используйте команды:
+yum install urw-fonts libXext openssl-devel libXrender
+yum install xorg-x11-fonts-cyrillic.noarch xorg-x11-fonts-misc.noarch xorg-x11-fonts-truetype.noarch xorg-x11-fonts-100dpi.noarch xorg-x11-fonts-75dpi.noarch fonts-ISO8859-2.noarch fonts-ISO8859-2-100dpi.noarch fonts-ISO8859-2-75dpi.noarch freefont.noarch
+
+До недавнего времени программа не предоставлялась в виде rpm-пакета, и приходилось копировать бинарный файл и вручную устанавливать все необходимые пакеты.Использование wkhtmltopdf на CentOs 6
+Общий формат запуска программы такой:
+wkhtmltopdf &lt;путь, имя исходного файла.html&gt; &lt;путь, имя выходного файла.pdf&gt;
+
+Кроме того, программа позволяет автоматически встраивать шапку и подвал документа из отдельных html-файлов. Для этого синтаксис такой:
+wkhtmltopdf --header-html &lt;путь,имя шапки.html&gt; --footer-html &lt;путь,имя подвала.html&gt; &lt;путь,имя исходного файла.html&gt; &lt;путь, имя выходного файла.pdf&gt;
+
+Также среди опций запуска программы — настраиваемый размер полей получаемого pdf-файла. В верхнее и нижнее поле программа подставляет шапку и подвал:
+wkhtmltopdf --margin-top 35mm --margin-bottom 27mm --margin-left 10mm --margin-right 10mm  --header-html &lt;путь,имя шапки.html&gt; --footer-html &lt;путь,имя подвала.html&gt; &lt;путь,имя исходного файла.html&gt; &lt;путь, имя выходного файла.pdf&gt;
+
+В этом примере:
+• верхнее поле: 35 мм
+• нижнее поле: 27 мм
+• левое, правое поля: по 10мм
+Приведу также пример кода подвала. В нашем случае автоматически формируются и подставляются в подвал номера страниц. Таким образом, в нашем документе автоматически пронумеруются страницы:
+ &lt;html&gt;&lt;head&gt;&lt;script&gt;
+  function subst() {
+    var vars={};
+    var x=document.location.search.substring(1).split('&amp;');
+    for (var i in x) {var z=x[i].split('=',2);vars[z[0]] = unescape(z[1]);}
+    var x=['frompage','topage','page','webpage','section','subsection','subsubsection'];
+    for (var i in x) {
+      var y = document.getElementsByClassName(x[i]);
+      for (var j=0; j&lt;y.length; ++j) y[j].textContent = vars[x[i]];
+    }
+  }
+  &lt;/script&gt;&lt;/head&gt;&lt;body style="border:0; margin: 0;" onLoad="subst()"&gt;
+
+&lt;div align="right" style="font-family:'Times New Roman', Times, serif; font-size: 14px;"&gt;
+  /&lt;span class="page"&gt;&lt;/span&gt;/
+  &lt;/div&gt;
+
+   &lt;/body&gt;&lt;/html&gt;
+
+Также среди полезных опций запуска программы:
+ — encoding – указание кодировки исходного html-файла, например:
+--encoding windows-1251
+
+ — page-size – указание формата страницы, например:
+--page-size A4
+
+ — orientation – ориентация страницы, например:
+--orientation Landscape
+
+В нашем веб-проекте на php-странице, формирующей pdf-файл, используется такой php-код:
+$tmp=time();
+
+$f=fopen(ABSPATH.'/tmp/'.$tmp.'.html','w');
+fputs($f, $llg);
+fclose($f);
+
+$cd = "cd ".ABSPATH.'/tmp';
+exec($cd);
+$command = "wkhtmltopdf-i386 --margin-top 35mm --margin-bottom 27mm --margin-left 10mm --margin-right 10mm --footer-html ".ABSPATH."/tpl-sm/pl_pdf/pdf_footer.html --header-html ".ABSPATH."/tpl-sm/pl_pdf/pdf_header.html  ".ABSPATH.'/tmp/'.$tmp.'.html'."  ".ABSPATH.'/tmp/'."$tmp.pdf";
+
+exec($command);
+if (file_exists(ABSPATH.'/tmp/'.$tmp.'.pdf')) {
+header('Content-type: application/pdf');
+header('Content-Disposition: attachment; filename="pricelist.pdf"');
+readfile(ABSPATH.'/tmp/'.$tmp.'.pdf');
+}
+unlink(ABSPATH.'/tmp/'.$tmp.'.pdf');
+unlink(ABSPATH.'/tmp/'.$tmp.'.html');
+
+В этом коде:
+• переменная $llg — содержит html-код прайс-листа
+• константа ABSPATH — абсолютный путь к папке веб-проекта на сервере.
+Код делает следующее:
+• Записывает во временный файл html-код прайс-листа;
+• Переходит во временный каталог;
+• Запускает wkhtmltopdf с требуемыми опциями;
+• Если pdf-файл был успешно создан — то возвращает его пользователю в браузер, предлагая скачать файл под именем pricelist.pdf;
+• Удаляет временные html- и pdf-файлы из временного каталога.
+
+      
+      
+    

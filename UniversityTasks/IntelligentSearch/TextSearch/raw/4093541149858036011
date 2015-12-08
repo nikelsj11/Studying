@@ -1,0 +1,305 @@
+﻿#TITLE:Tabris.js — быстро знакомимся и пишем Hello World
+
+      Tabris.js — еще один кросс-платформенный (Android, IOS) мобильный фреймворк. От подавляющего большинства подобных инструментов он отличается тем, что это не обертка над стандартным или Chrome-based WebView. Tabris предоставляет собой набор нативных компонентов, доступный из javascript. Ближайшие аналоги из мне известных это: Telerik Native Script, Appcelerator и React Native.
+Итак, Tabris ушел от малопроизводительного (но такого удобного) HTML5 + WebView и предлагает писать приложения полностью на javascript с единой кодовой базой для IOS и Android платформ. При этом в полной мере можем использовать JS-библиотеки, npm-модули и Cordova plugins — но лишь те, которые не работают с DOM, ведь его-то в нашем приложении и нету.
+Скомпилировать приложение можно: Бесплатно: с публичного репозитория на GitHub
+За 5$/месяц: с публичного/приватного репозитория на GitHub
+За 50$/месяц: GitHub + локальные билды
+
+В любом тарифном плане функционал одинаковый, на код не влияет, влияет только на сборку проекта. Не знаю, как по скорости локальный билд, но их облачный занимает порядка пару минут для простого приложения, что в целом нормально, как по мне.
+Существуют также тарифные планы для компаний (Organization) — ценник начинается от $5,000/год. На этих планах вы получаете также исходники, соответственно можно модифицировать функционал. Подробно на тему работы с исходниками лучше все же узнать в поддержке — не нашел конкретной информации, но в FAQ говорится о написании своих плагинов.
+Для ускорения разработки и дебага можно воспользоваться их приложением для IOS или Android. Вход осуществляется через GitHub, приложение содержит в себе простые примеры, возможность запуска приложения с удаленного сервера (удобно при локальной разработке), а также синхронизирует скрипты, добавленные в Ваш аккаунт на сайте Tabris. Кроме этого, приложение уже содержит в себе некоторые полезные Cordova-плагины: camera, dialogs, device-motion, barcodescanner и другие. Поэтому можно приступать к разработке не заботясь их установкой — отлично для быстрого старта и проверки. Приступаем к разработке
+Прежде, чем что то писать — ознакомимся с документацией. Основной интерес для нас представляют Виджеты (Widgets), которые и есть реализованные нативно компоненты. Основным компонентом в большинстве случаев является Страница (Page), а остальные уже присоединяются к ней, будь-то TextView или ScrollView с множеством элементов внутри.
+Поскольку и на сайте, и внутри приложения множество хорошо документированных примеров, было бы странно просто вывести «Hello World!!». Поэтому сделаем приложение немножко сложнее и немного более эффектное, которое позволит почувствовать разницу с HTML5-based приложением — поиск публичных изображений по Flickr.
+Создание приложения начинается с минимального package.json:{
+  "name": "flickr-search",
+  "description": "Search Flickr public images by tag",
+  "main": "app.js",
+  "dependencies": {
+    "tabris": "^1.2.0"
+  }
+}
+
+Нам потребуется делать запросы к API Flickr, и хотя Tabris содержит в ядре XMLHttpRequest, я все же предпочту отказаться от лишних строчек кода подключением более удобного модуля fetch, а так же добавим Promise. Соответственно, package.json примет следующий вид:{
+  "name": "flickr-search",
+  "description": "Search Flickr public images by tag",
+  "main": "app.js",
+  "dependencies": {
+    "tabris": "^1.2.0",
+    "promise": "^6.1.0",
+    "whatwg-fetch": "^0.9.0"
+  }
+}
+
+После командуем npm install и мы почти готовы к написанию кода. Я рекомендую сразу же поднять локальный сервер и ввести его адрес во вкладке url приложения Tabris. Таким образом можно сразу просматривать приложение по мере написания кода. Если у Вас уже установлен node http-server, можно просто скомандовать http-server в папке с проектом, либо можно установить его локально в проект. Конечно Вы можете использовать Apache и т.п.
+Наше приложение будет одностраничным, ему необходимо иметь строку ввода для поиска, а как результат будем отображать изображение + название. Для строки ввода используем обычный TextInput, а для отображения результатов CollectionView. При инициализации приложение будет выводить рандомные результаты от Flickr (без поиска по тегу), поэтому используем CollectionView with Pull-to-Refresh компонент, дабы пользователь мог обновлять картинки.
+Подключаем модули и создаем необходимую компоновку: Scratch app.jsPromise = require("promise");
+require("whatwg-fetch");
+
+var page = tabris.create("Page", {
+    title: "Flickr Search",
+    topLevel: true
+});
+
+var tagInput = tabris.create("TextInput", {
+    layoutData: {
+        left: 8,
+        right: 8,
+        top: 8
+    },
+    message: "Search..."
+}).on("accept", loadItems).appendTo(page);
+
+var view = tabris.create("CollectionView", {
+    layoutData: {
+        left: 0,
+        top: [tagInput, 8],
+        right: 0,
+        bottom: 0
+    },
+    itemHeight: 200,
+    refreshEnabled: true,
+    initializeCell: function(cell) {
+        var imageView = tabris.create("ImageView", {
+            layoutData: {
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0
+            },
+            scaleMode: 'fill'
+        }).appendTo(cell);
+        var titleComposite = tabris.create("Composite", {
+            background: "rgba(0,0,0,0.8)",
+            top: 0,
+            right: 0,
+            left: 0
+        }).appendTo(cell);
+        var textView = tabris.create("TextView", {
+            layoutData: {
+                left: 30,
+                top: 5,
+                bottom: 5,
+                right: 30
+            },
+            alignment: "center",
+            font: "16px Roboto, sans-serif",
+            textColor: "#fff"
+        }).appendTo(titleComposite);
+        cell.on("change:item", function(widget, item) {
+            imageView.set("image", {
+                src: item.media.m
+            });
+            item.title ? textView.set("text", item.title) : textView.set("text", 'No Title');
+        });
+    }
+}).on("refresh", function() {
+    loadItems();
+}).appendTo(page);
+page.open();
+
+function loadItems() {
+    view.set({
+        refreshIndicator: true,
+        refreshMessage: "loading..."
+    });
+}
+
+Все довольно прозрачно и ясно из кода — создали Страницу (Page), озаглавили её, добавили текстовый инпут для ввода строки поиска и инициализировали CollectionView, разместив его под строкой поиска. 
+Каждой ячейке CollectionView задали высоту и в ячейку «добавили» компонент Изображение (ImageView), Композитный (Composite) и Текстовый (TextView) слои.ImageView мы растянули во всю ширину и высоту ячейки (задав {left: 0, right: 0, top: 0, bottom: 0}), задали режим «заполнения» контейнера ({scaleMode: 'fill'}). 
+Для того, чтобы название картинки было различимо на её фоне, я создал композитный слой с небольшой прозрачностью ({background: «rgba(0,0,0,0.8)»}) и уже на этот слой поместил собственно текст, задав его цвет, размер и выравнивание по центру.
+Также в обработчике change:item мы сделали заготовку для наполнения ячейки данными из API.
+Функция loadItems() пока просто делает видимым индикатор обновления элемента Pull-to-Refresh, поэтому открыв наше приложение и «свайпнув» вниз мы увидим следующее:
+Чтобы «оживить» приложение сделаем запрос к Flickr API. Flickr умеет отдавать данные в разных форматах, и мы бы могли подключить нужную библиотеку и парсить хоть Atom Feed, хоть CSV. 
+Но куда проще работать с JSON, да и не потребуется тянуть лишних зависимостей. Незадача в том, что Flickr отдает JSON-P. Поскольку мы не в браузере, то не можем заинжектить скрипт в &lt;head/&gt; для выполнения, а использовать eval() — тоже не лучший вариант.
+В конкретном случае можно бы использовать и eval() — вероятность получения «вредоносного» кода от Flickr низка, скорость выполнения тоже врядли заметно упадет (не забываем, что такое выполнение кода проходит без разных оптимизаций). 
+Поэтому мне кажется, хорошим тоном будет создать функцию динамически с использованием конструктора Function, в большом проекте это так же позволит избавиться от глобальных функций/переменных, и плюсом мы получаем возможность обработки ошибок с try..catch — а это упрощает отладку и жизнь разработчика в целом. В данном простом приложении наша функция loadItems() принимает вид: function loadItems() {
+    view.set({
+        refreshIndicator: true,
+        refreshMessage: "loading..."
+    });
+    fetch("https://api.flickr.com/services/feeds/photos_public.gne?format=json&amp;jsoncallback=JSON_CALLBACK&amp;tags=" + tagInput.get('text')).then(function(response) {
+        var dyn_function = new Function("JSON_CALLBACK", response._bodyInit);
+        dyn_function(function(json) {
+            if (json.items &amp;&amp; json.items.length) {
+                view.set({
+                    items: json.items,
+                    refreshIndicator: false,
+                    refreshMessage: "refreshed"
+                });
+            } else {
+                navigator.notification.alert('Nothing found with tag: ' + tagInput.get('text'), null, 'Result');
+                view.set({
+                    refreshIndicator: false,
+                    refreshMessage: "refreshed"
+                });
+            }
+        })
+    }).catch(function(error) {
+    console.log('request failed:', error)
+  })
+}
+
+Здесь мы используем navigator.notification.alert(), поскольку знаем, что приложение Tabris уже содержит в себе org.apache.cordova.dialogs. При билде нужно будет добавить плагин в зависимости.
+Запуская loadItems() при инициализации приложения будет произведен поиск с пустым параметром и мы получим рандомные картинки (и так при каждом рефреше с пустым тегом). 
+Давайте теперь анимируем каждый элемент нашей коллекции. Подобные вещи (особенно при скроллинге страницы) на HTML5 ведут себя не очень «плавно» — вот и будет наглядная разница. Создаем простой эффект появления справа с одновременным увеличением прозрачности:function animateFadeInFromRight(widget, delay) {
+    widget.set({
+        opacity: 0.0,
+        transform: {
+            translationX: 150
+        }
+    });
+    widget.animate({
+        opacity: 1.0,
+        transform: {
+            translationX: 0
+        }
+    }, {
+        duration: 500,
+        delay: delay,
+        easing: "ease-out"
+    });
+}
+
+И добавляем эффект к ячейкам CollectionView:cell.on("change:item", function(widget, item) {
+            animateFadeInFromRight(widget, 500);
+            imageView.set("image", {
+                src: item.media.m
+            });
+            item.title ? textView.set("text", item.title) : textView.set("text", 'No Title');
+        });
+
+На этом, пожалуй закончим:Полный листинг app.jsPromise = require("promise");
+require("whatwg-fetch");
+
+var page = tabris.create("Page", {
+    title: "Flickr Search",
+    topLevel: true
+});
+
+var tagInput = tabris.create("TextInput", {
+    layoutData: {
+        left: 8,
+        right: 8,
+        top: 8
+    },
+    message: "Search..."
+}).on("accept", loadItems).appendTo(page);
+
+var view = tabris.create("CollectionView", {
+    layoutData: {
+        left: 0,
+        top: [tagInput, 8],
+        right: 0,
+        bottom: 0
+    },
+    itemHeight: 200,
+    refreshEnabled: true,
+    initializeCell: function(cell) {
+        var imageView = tabris.create("ImageView", {
+            layoutData: {
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0
+            },
+            scaleMode: 'fill'
+        }).appendTo(cell);
+        var titleComposite = tabris.create("Composite", {
+            background: "rgba(0,0,0,0.8)",
+            top: 0,
+            right: 0,
+            left: 0
+        }).appendTo(cell);
+        var textView = tabris.create("TextView", {
+            layoutData: {
+                left: 30,
+                top: 5,
+                bottom: 5,
+                right: 30
+            },
+            alignment: "center",
+            font: "16px Roboto, sans-serif",
+            textColor: "#fff"
+        }).appendTo(titleComposite);
+        cell.on("change:item", function(widget, item) {
+            animateFadeInFromRight(widget, 500);
+            imageView.set("image", {
+                src: item.media.m
+            });
+            item.title ? textView.set("text", item.title) : textView.set("text", 'No Title');
+        });
+    }
+}).on("refresh", function() {
+    loadItems();
+}).appendTo(page);
+
+function loadItems() {
+    view.set({
+        refreshIndicator: true,
+        refreshMessage: "loading..."
+    });
+    fetch("https://api.flickr.com/services/feeds/photos_public.gne?format=json&amp;jsoncallback=JSON_CALLBACK&amp;tags=" + tagInput.get('text')).then(function(response) {
+        var dyn_function = new Function("JSON_CALLBACK", response._bodyInit);
+        dyn_function(function(json) {
+            if (json.items &amp;&amp; json.items.length) {
+                view.set({
+                    items: json.items,
+                    refreshIndicator: false,
+                    refreshMessage: "refreshed"
+                });
+            } else {
+                navigator.notification.alert('Nothing found with tag: ' + tagInput.get('text'), null, 'Result');
+                view.set({
+                    refreshIndicator: false,
+                    refreshMessage: "refreshed"
+                });
+            }
+        })
+    }).catch(function(error) {
+        console.log('request failed:', error)
+    })
+}
+
+function animateFadeInFromRight(widget, delay) {
+    widget.set({
+        opacity: 0.0,
+        transform: {
+            translationX: 150
+        }
+    });
+    widget.animate({
+        opacity: 1.0,
+        transform: {
+            translationX: 0
+        }
+    }, {
+        duration: 500,
+        delay: delay,
+        easing: "ease-out"
+    });
+}
+loadItems();
+page.open();
+
+Для билда нужно создать типичный Cordova config.xml, где можно просто указать нужные плагины (облачный сборщик сам установит необходимые плагины, npm-модули прочитаются из package.json ): &lt;?xml version='1.0' encoding='utf-8'?&gt;
+&lt;widget id="my.flickr_search.app" version="1.0.0"&gt;
+  &lt;name&gt;Flickr Search&lt;/name&gt;
+  &lt;description&gt;
+    Search Flickr public images by tag
+  &lt;/description&gt;
+  &lt;preference name="Fullscreen" value="true" /&gt;
+  &lt;plugin name="cordova-plugin-dialogs" version="1.1.1" /&gt;
+&lt;/widget&gt;
+
+После пушим проект на Github и создаем приложение в админке Tabris, выбрав наш репозиторий:Create App
+После валидации станут доступными настройки билда: Build AppКод на Github
+Файл .apk приложения занимает порядка 10Мб — больше, чем голая Cordova (~2-3Мб), но меньше проекта с Chrome WebView (~19Мб). При этом имеем более производительное приложение на нативных компонентах.
+К плюсам также отнесем скорость разработки и поддержку большого числа js-модулей и cordova plugins. В React Native, например, все еще мало плагинов для работы с «железом». Поскольку Tabris совместим с проектами на Cordova, можно использовать его в «узких» местах — например для больших списков.
+Жаль, что за возможность локального билда придется выложить 50$, но если говорить не об одиночном проекте, то думаю смысл вполне имеется. Тем не менее, в облаке без проблем можно сбилдить приложение все с тем же функционалом.
+Коммьюнити Tabris не так велико, но будет спрос — будет расти.
+В целом — имеем довольно конкурентноспособный фреймворк для разработки мобильных приложений и игр, с хорошей производительностью, который можно рекомендовать как минимум для разработки демок и прототипов, а то и полноценных приложений.
+
+      
+      
+    

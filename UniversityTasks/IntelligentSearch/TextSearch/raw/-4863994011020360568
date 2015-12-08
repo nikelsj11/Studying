@@ -1,0 +1,148 @@
+﻿#TITLE:Дайджест интересных материалов из мира веб-разработки и IT за последнюю неделю №176 (7 — 13 сентября 2015)
+
+      Предлагаем вашему вниманию подборку с ссылками на полезные ресурсы, интересные материалы и IT-новостиВеб-разработка
+CSS
+Javascript
+Браузеры
+Дизайн
+Новости
+Занимательное
+ Веб-разработкаУпрощаем заполнение форм с помощью Autofill
+Верстка писем: Что такое «кинетический email»
+Текущее состояние с Front-End инструментарием – 2015 (The State of Front-End Tooling – 2015)
+Измерение производительности сайта Гуглом (Measure your site's performance on Google)
+Руководство по созданию SVG карт с помощью реальных данных о Земле (A Guide To Building SVG Maps From Natural Earth Data)
+Статистика по использованию WebGL
+htmlblock — плагин для Photoshop, позволяющий добавлять CSS/HTML в макет
+Все о цветах в CSS и HTML (HTML Color Codes)
+Сравнение Angular Material и Material Design Lite (Angular Material vs. Material Design Lite)
+Интервью с Jeffrey Zeldman: откровенный взгляд на жизнь и работу пионера веб-стандартов (Interview with Jeffrey Zeldman: A Candid Look at the Life &amp; Work of a Web Standards Pioneer)
+Is the web platform getting too big? Nicholas C. Zakas в ответ на знаменитую заметку Peter-Paul Koch
+Видео с Frontend Union Conf 2015
+ CSSОбзор атак на клиента с помощью CSS
+Лакомые кускочки Grid-раскладки, часть 3: размеры грид-полос
+Будущее разметки с CSS: разметка с помощью CSS: Grid Layouts (The future of layout with CSS: Grid Layouts)
+Возвращение к корням (Back to the :roots)
+Введение в CSS-тестирование с помощью SonarQube (An Intro to CSS Testing with SonarQube)
+Второй День Рождения PostCSS (PostCSS Second Birthday)
+Стилизация плейсхолдеров с помощьюCSS. Синтаксис, советы, поддержка HTML5 стилей
+Write SVG — плагин PostCSS, позволяющий писать SVG прямо в CSS
+rucksack — рюкзак с CSS сверхспособностями (сделано с PostCSS)
+Sass Style Guide: руководство по написанию лучшего кода на Sass
+Flexy-plexy — мощный, но простой в использовании SCSS-миксин для построения сетки. Кроме всего прочего дружит с веб-компонентами,
+Назад в школу: тетрадка в линеечку с SVG &amp; CSS (Back To School: Ruled Paper &amp; Lined Text using SVG &amp; CSS)
+Видео: рефакторинг медленной анимации (Watch: Refactoring a Slow Animation)
+CSS анимация: инструменты, фреймворки и уроки
+unistyle — модульный и масштабируемый CSS с ES2015 и ES2016
+Jets.js — нативный поисковый CSS движок
+Эффектный вебЕженедельная подборка красивых эффектов на CSS/SVG/JS #3
+Концепт разворачивающейся карточки с анимацией
+Колода карт и визуальные трюки с ней с помощью css/js 
+Постеры с 3д-эффектом наведения с помощью CSS3
+ JavaScriptНовые релизы:Обзор релиз-кандидата React v0.14
+Вышла в свет Node.js v4.0.0. 7 причин перехода на Node v4 уже сейчас
+Чего ждать от jQuery 3.0
+Modernizr 3: новый релиз и веб-сайт (Modernizr 3: A new release and website)
+
+ES6:ES6 сегодня: строки шаблоны (ES6 for Now: Template Strings)
+ES6 карты в деталях (ES6 Maps in Depth)
+ES6 символы в деталях (ES6 Symbols in Depth)
+Имена функций в ES6 (The names of functions in ES6)
+Javascript ES6 шпаргалка — лучшее в ES6 (Javascript ES6 Cheatsheet — the best of JS ES6)
+Управление JS 'this' c помощью стрелочных функций ES6 (Managing JavaScript’s this With ES6 Arrow Functions)
+
+Как работают замыкания (под капотом) в JavaScript
+Комментарии в JS бесполезны? (Are JavaScript Comments Useless?)
+Lovefield: реляционные базы данных на JavaScript
+Желаете изучить JavaScript в 2015?. В статье рассмотрены советы, ссылки на актуальные книги, онлайн-курсы и другие ресурсы
+Основы универсального (изоморфного) JS (The Foundations of Universal (or Isomorphic) JavaScript)
+Быстрый совет от Christian Heilmann: использование шаблона для задержки загрузки изображений
+Промисы в JavaScript юнит тестах: полное руководство (Promises in JavaScript Unit Tests: the Definitive Guide)
+Как я полюбил TypeScript (How I Came To Love TypeScript)
+Параллельная предзагрузка изображений с помощью промисов (Preloading Images in Parallel with Promises)
+Уроки, которые могут извлечь из React разработчики на Backbone (Lessons Backbone Developers Can Learn From React)
+Встречайте Igaro App — потенциально прекраснейший SPA фреймворк (Meet Igaro App — Potentially the Web’s Finest SPA Framework)
+Плагины:Infinite list — бесконечный скроллинг списка для мобильных устройтв 60fps
+nipplejs — виртуальный джойстик для тач-интерфейсов
+Представляем gradStop.js: библиотека для выставления точек равноудаленных цветовых растяжек для AngularJS (Introducing gradStop.js: A JavaScript Library for Equidistant Gradient Stops)
+
+БраузерыBing продвигает браузер Edge в поисковой выдаче по запросам [Chrome] и [Firefox]
+Microsoft рассказывает о преимуществах Edge, когда пользователи ищут Chrome и Firefox в Windows 10
+Mozilla отложила блокирование Firefox-дополнений без цифровой подписи
+Microsoft добавит в браузер Edge поддержку VP9 и, возможно, Ogg/Vorbis
+Google Chrome показывает рекламу несмотря на AdBlock
+Последняя версия Chrome игнорирует AdBlock на некоторых сайтах
+Создатели Adblock Plus выпустили браузер с блокировкой рекламы для iOS и Android
+WebRTC плагин почти здесь: Apple и Microsoft влились в толпу (WebRTC Plugin Free World is Almost Here: Apple and Microsoft joining the crowd)
+Сайты с интересным дизайном и функциональностьюСайты с нестандартными макетами
+bluefountainmedia.com — сайт веб-студии с креативными элементами
+Промо-страничка, посвященная iPhone6s.
+petas.it — скролл-сайт с анимированными эффектами переходов между слайдами
+torpedov.com — сайт с интересной анимацией
+crig.ga. — сайт с концептуальным дизайном и ненавязчивой анимацией
+Игровой музыкальный эксперимент на странице сайта
+ Дизайн«Контент перестал быть королём на сайте» — мнение дизайнера об изменениях в отрасли
+eBay улучшил пользовательский опыт в мобайле
+Все еще актуальные текстуры в веб-дизайне
+Повседневный дизайн: делаем кредитки чуть-чуть удобнее
+Новый логотип Airbnb нашли в книге 1988 года о дизайне
+Вдохновляющая типографика
+10 Awesome UX Podcasts
+Анимация в веб-дизайне: почему и когда использовать (Animation in Web Design: Why and When to Use)
+Результаты опроса: инструменты, которые используют сегодня дизайнеры (2015) (The Tools Designers Are Using Today)
+Опасная и цветная ложь в вашем документе с айдентикой (The Dangerous and Colorful Lie in Your Visual Identity Document)
+Никогда не используйте диалог с подтверждением (Never Use The Confirm Dialog)
+Подсказки при создании Material-дизайна (Design Tips for Material Design)
+Дизайн более безопасных веб-анимаций для чувствительных к движению (Designing Safer Web Animation For Motion Sensitivity)
+Руководство для новичков по пользовательскому тестированию (The Absolute Beginner’s Guide to User Testing)
+Как делать дизайн под мобильные устройства (How to design for mobile UX)
+Какая разница чьи это линии? (о дизайне иконок основной навигации в приложениях) (Whose line is it anyways?)
+Все что вам нужно знать о предупреждающем дизайне (What You Need To Know About Anticipatory Design)
+Определяя дизайн (Defining Design)
+День, когда ты стал лучшим дизайнером (The Day You Became A Better Designer)
+Как делать дизайн презентаций: уроки от Seasoned Founder (How to Design a Pitch Deck: Lessons from a Seasoned Founder)
+Концепт редизайна Apple Music (Apple Music Redesign concept)
+Создание объемного текстового эффекта из белого и золотого металла в Adobe Photoshop (Create a Shiny, White and Gold, 3D Text Effect in Adobe Photoshop)
+Ошибки в фотошопе: быстрое решение проблемы с маскируемым слоем (Photoshop Errors: Quickly Fix Layer Mask Problems)
+Создание овощного паттерна в Adobe Illustrator (Eat Your Veggies! Create a Vegetable Pattern in Adobe Illustrator)
+Лого Google: дизайны читателей (Google's logo: readers' designs)
+Use &amp; Modify — коллекция шрифтов
+ Подборка бесплатных дизайнерских печенекБесплатные абстрактные текстуры для ваших проектов
+UI набор от Invision (NOW-FREE UI KIT BY INVISION)
+Эксклюзивная коллекция PSD лучших окон авторизации в Lollipop (Exclusive Collection of 10 Best Lollipop Login Screen Design Free PSD)
+Пять наборов с иконками (5 FREE ICONS SETS TO DOWNLOAD TODAY)
+Illustricons — векторные хипстерские иконки (Illustricons Free – Vector Icons (AI, EPS, SVG, PNG))
+Atzur — декоративное семейство шрифтов с засечками (Atzur free typefamily)
+Bellico — рукописный декоративный шрифт (Bellico Typeface + Bonus Vectors)
+Набор из семнадцати шрифтов (Download Free Font Bundle)
+Три десятка рукописных шрифтов (30 Free Script Fonts)
+Заголовочные шрифты (Awesome Free Fonts To Use In Headlines)
+ НовостиПрезентация AppleiPhone 6S, iPad Pro, новый Apple TV: главные анонсы с мероприятия Apple
+Apple выпустила семь видеороликов для рекламы iPhone 6S, Apple Watch, iPad Pro, Pencil и Apple TV
+Мнения представителей российской ИТ-индустрии о новых iPhone, iPad Pro и приставке Apple TV
+iOS 9 выйдет в качестве бесплатного обновления 16 сентября
+iPhone 6s и iPhone 6s Plus – новые смартфоны от Apple
+Перезапуск Apple TV: Сири, игры и рок-н-ролл!
+Теперь яблочный: пять новинок Apple, подсмотренных у конкурентов
+Мнение: «Apple, не надо рассказывать про iPhone 6s. Мы уже готовы его купить»
+
+Распределенный Интернет вместо HTTP: Первые веб-сайты начали работать на IPFS
+Apple инвестирует в технологии искусственного интеллекта
+На «Яндекс.Картах» появились панорамы высочайшей вершины Земли
+Windows 10 перегревает компьютеры пользователей
+Google, Apple и Microsoft защищают пользователей от правительства США
+ ЗанимательноеТруп единорога: нет ничего особенного в миллиардной оценке компании
+В Англии в продажу поступил «перевоплощённый» ZX Spectrum
+За последние 30 лет интернет-трафик вырос в 2,7 млрд раз
+Американский миллионер-творец антивируса McAfee создает киберпартию и баллотируется на пост президента
+Титановый эндоскелет напечатали на 3D-принтере
+Опубликованы первые фотографии и видео интерьера нового пилотируемого корабля SpaceX Crew Dragon
+Илон Маск предлагает сбросить атомные бомбы на Марс, чтобы сделать его пригодным для жизни
+Топ 10 терминов программирования, которые произносят неверно
+
+ Просим прощения за возможные опечатки или неработающие/дублирующиеся ссылки. Если вы заметили проблему — напишите пожалуйста в личку, мы стараемся оперативно их исправлять. Дайджест за прошлую неделю.
+Материал подготовили  dersmoll и  alekskorovin.
+
+      
+      
+    

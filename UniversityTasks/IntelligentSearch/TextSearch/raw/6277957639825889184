@@ -1,0 +1,222 @@
+﻿#TITLE:Простой драйвер rotary encoder для Qt4 Embedded под Linux
+
+      
+Так сложилось, что в Qt4 Embedded, которую мы используем на нашем приборе Беркут-ММТ, нет поддержки таких устройств ввода, как энкодер. Т.е. если прицепить к прибору мышь — координаты при перемещении обрабатываться будут, а вот колесо прокрутки — нет. Потому что драйвер linuxinput не обрабатывает события с типом REL_WHEEL, которое генерит энкодер, а только REL_X и REL_Y, которые отвечают за изменение координат. 
+Кому интересно как эту проблему решить — добро пожаловать под кат.
+Вот кусочек кода драйвера linuxinput, который занимается обработкой событий от input подсистемы ядра Linux:for (int i = 0; i &lt; n; ++i) {
+  struct ::input_event *data = &amp;buffer[i];
+  bool unknown = false;
+
+  if (data-&gt;type == EV_ABS) {
+    if (data-&gt;code == ABS_X) {
+      m_x = data-&gt;value;
+    } else if (data-&gt;code == ABS_Y) {
+      m_y = data-&gt;value;
+    } else {
+      unknown = true;
+    }
+  } else if (data-&gt;type == EV_REL) {
+    if (data-&gt;code == REL_X) {
+      m_x += data-&gt;value;
+    } else if (data-&gt;code == REL_Y) {
+      m_y += data-&gt;value;
+    } else {
+      unknown = true;
+    }
+  } else if (data-&gt;type == EV_KEY &amp;&amp; data-&gt;code == BTN_TOUCH) {
+    m_buttons = data-&gt;value ? Qt::LeftButton : 0;
+  } else if (data-&gt;type == EV_KEY) {
+    int button = 0;
+
+    switch (data-&gt;code) {
+      case BTN_LEFT:
+        button = Qt::LeftButton;
+        break;
+      case BTN_MIDDLE:
+        button = Qt::MidButton;
+        break;
+      case BTN_RIGHT:
+        button = Qt::RightButton;
+        break;
+    }
+
+    if (data-&gt;value)
+      m_buttons |= button;
+    else
+      m_buttons &amp;= ~button;
+  } else if (data-&gt;type == EV_SYN &amp;&amp; data-&gt;code == SYN_REPORT) {
+    QPoint pos(m_x, m_y);
+    pos = m_handler-&gt;transform(pos);
+    m_handler-&gt;limitToScreen(pos);
+    m_handler-&gt;mouseChanged(pos, m_buttons);
+  } else if (data-&gt;type == EV_MSC &amp;&amp; data-&gt;code == MSC_SCAN) {
+    // kernel encountered an unmapped key - just ignore it continue;
+  } else {
+    unknown = true;
+  }
+
+  if (unknown) {
+    qWarning("unknown mouse event type=%x, code=%x, value=%x", data-&gt;type, data-&gt;code, data-&gt;value);
+  }
+}
+Решаем проблемы
+У нас есть три варианта:модифицировать драйвер linuxinput
+модифицировать ядерный драйвер таким образом, чтобы он генерил события, понятные для драйвера linuxinput
+написать свой драйвер устройства ввода для Qt4
+
+Третий вариант — самый правильный. Его и рассмотрим.Пишем драйвер
+Для создания своего драйвера нужно написать два класса — наследника QWSMouseHandler и наследника QWSMousePlugin. Задача первого — непосредственно работа с устройством ввода, задача второго — объяснить QMouseDriverFactory, что для драйвера с именем %drivername% надо использовать нашу реализацию наследника QWSMouseHandler.
+Начнем с класса-наследника QWSMouseHandler:class RotaryEncoderHandler: public QObject, public QWSMouseHandler {
+  Q_OBJECT
+
+  public:
+    RotaryEncoderHandler( const QString &amp;device = QString("/dev/input/rotary_encoder" ) );
+    ~RotaryEncoderHandler( );
+
+    void suspend( );
+    void resume ( );
+
+  private:
+    QSocketNotifier *m_notify;
+    int                 deviceFd;
+    int                 m_wheel;
+
+  private slots:
+    void readMouseData( );
+};
+
+Как видно из заголовочного файла — нам надо реализовать аж целых три функции: suspend(), resume(), readMouseData(). Ну и конструктор с деструктором.
+Конструктор — в качестве аргумента к нам приходит имя устройства — /dev/input/event3, например. Далее наша задача открыть файловый дескриптор устройства с указанным именем и передать его на растерзание в QSocketNotifier. QSocketNotifier — это такой зверь, который слушает файловый дескриптор и на любые его телодвижения эмитит сигнал activated(int).RotaryEncoderHandler::RotaryEncoderHandler( const QString &amp;device ): QWSMouseHandler( device )
+  ,deviceFd( 0 )
+  ,m_wheel( 0 )
+{
+  setObjectName("Rotary Encoder Handler");
+  deviceFd = ::open(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY);
+  if( deviceFd &gt; 0 ){
+    qDebug() &lt;&lt; "Opened" &lt;&lt; device &lt;&lt; "as rotary encoder device";
+    m_notify = new QSocketNotifier( deviceFd, QSocketNotifier::Read, this);
+    connect( m_notify, SIGNAL( activated(int)), this,
+             SLOT( readMouseData()));
+  } else {
+    qWarning("Cannot open %s: %s", device.toLocal8Bit().constData(), strerror( errno ) );
+
+    return;
+  }
+}
+
+Т.е. мы открыли дескриптор устройства ввода, прицепили к нему QSocketNotifier и на его сигнал activated( int ) повесили свой обработчик.
+Деструктор у этого класса совсем простой — его задача проверить, открыт ли дескриптор устройства ввода и если да — закрыть.
+Методы suspend()/resume() должны останавливать/запускать обработку данных из устройства ввода. Это делается простым вызовом метода setEnabled( bool ) у QSocketNotifier.
+Вот мы и подобрались непосредственно к обработчику данных.void RotaryEncoderHandler::readMouseData( )
+{
+  struct ::input_event buffer[32];
+  int n = 0;
+
+  forever {
+
+    n = ::read(deviceFd, reinterpret_cast(buffer) + n, sizeof(buffer) - n);
+
+    if (n == 0) {
+      qWarning("Got EOF from the input device.");
+      return;
+    } else if (n &lt; 0 &amp;&amp; (errno != EINTR &amp;&amp; errno != EAGAIN)) {
+      qWarning("Could not read from input device: %s", strerror(errno));
+      return;
+    } else if (n % sizeof(buffer[0]) == 0) {
+      break;
+    }
+  }
+
+  n /= sizeof(buffer[0]);
+
+  for (int i = 0; i &lt; n; ++i) {
+    struct ::input_event *data = &amp;buffer[i];
+    bool unknown = false;
+    if (data-&gt;type == EV_REL) {
+      if (data-&gt;code == REL_WHEEL) {
+        m_wheel = data-&gt;value;
+      } else {
+        unknown = true;
+      }
+    } else if (data-&gt;type == EV_SYN &amp;&amp; data-&gt;code == SYN_REPORT) {
+      mouseChanged(pos(), Qt::NoButton, m_wheel);
+    } else if (data-&gt;type == EV_MSC &amp;&amp; data-&gt;code == MSC_SCAN) {
+      // kernel encountered an unmapped key - just ignore it
+      continue;
+    } else {
+      unknown = true;
+    }
+    if (unknown) {
+      qWarning("unknown mouse event type=%x, code=%x, value=%x", data-&gt;type, data-&gt;code, data-&gt;value);
+    }
+  }
+}
+
+Он сильно напоминает аналогичный метод из драйвера linuxinput, но в отличии от него, передает только события с изменениями состояния энкодера. Т.е. этот драйвер нельзя как есть использовать для мыши, так как в нем отсутствует обработка изменений координат самой мыши — ничего кроме колеса прокрутки работать не будет.
+Теперь посмотрим что из себя представляет класс драйвера:class RotaryEncoderDriverPlugin : public QMouseDriverPlugin {                    
+  Q_OBJECT                                                                       
+  public:                                                                        
+    RotaryEncoderDriverPlugin( QObject *parent  = 0 );                           
+    ~RotaryEncoderDriverPlugin();                                                
+                                                                                 
+    QWSMouseHandler* create(const QString&amp; driver);                              
+    QWSMouseHandler* create(const QString&amp; driver, const QString&amp; device);       
+    QStringList keys()const;                                                     
+}; 
+
+Не очень большой, правда? Вот его реализация:Q_EXPORT_PLUGIN2(rotaryencoderdriver, RotaryEncoderDriverPlugin)
+
+RotaryEncoderDriverPlugin::RotaryEncoderDriverPlugin( QObject *parent ):
+  QMouseDriverPlugin( parent )
+{
+}
+
+RotaryEncoderDriverPlugin::~RotaryEncoderDriverPlugin()
+{
+}
+
+
+QStringList RotaryEncoderDriverPlugin::keys() const
+{
+  return QStringList() &lt;&lt;"rotaryencoderdriver";
+}
+
+QWSMouseHandler* RotaryEncoderDriverPlugin::create( const QString&amp; driver,
+                                                const QString&amp; device )
+{
+  if( driver.toLower() == "rotaryencoderdriver" ){
+    return new RotaryEncoderHandler( device );
+  }
+
+  return 0;
+}
+
+QWSMouseHandler* RotaryEncoderDriverPlugin::create( const QString&amp; driver )
+{
+  if( driver.toLower() == "rotaryencoderdriver" ){
+    return new RotaryEncoderHandler( );
+  }
+
+  return 0;
+}
+
+Как видно из кода — вся задача драйвера сводится к тому, чтобы сообщить классу QMouseDriverFactory что это драйвер с именем rotaryencoderdriver. Ну и методы create(), конечно.Проверка боем
+Теперь, когда у нас есть драйвер — надо как-то объяснить библиотеке Qt4 что именно его нужно использовать для определенного устройства. Для этого есть специальная переменная окружения — QWS_MOUSE_PROTO. Она служит для того, чтобы указать Qt4 каким драйвером и из какого устройства брать данные о перемещении мыши. Предположим что наш энкодер - /dev/input/rotary0, следовательно чтобы все заработало, надо установить переменную как QWS_MOUSE_PROTO=«rotaryencoderdriver:/dev/input/rotary0».Ловим события от энкодера
+Для работы с событиями энкодера надо в нашем приложении реализовать фильтр событий:bool ClassName::eventFilter(QObject *o, QEvent *e)
+{
+  if ( o ) {
+    if ( e-&gt;type() == QEvent::Wheel)
+    {
+      QWheelEvent* we = static_cast&lt; QWheelEvent* &gt;( e );
+      /* тут обрабатываем событие как нам нужно */ 
+      return true;
+     }
+  /* остальные события отдадим в Object*/ 
+  return QObject::eventFilter( o, e );
+}
+Полезные ссылкиQt for Embedded Linux Pointer Handling
+Update: для наглядности добавлено видео
+
+      
+      
+    

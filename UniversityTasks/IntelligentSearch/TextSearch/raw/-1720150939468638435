@@ -1,0 +1,320 @@
+﻿#TITLE:Приложение на прокачку. Как ускорить загрузку C#/XAML приложения Windows Store
+
+      
+Существуют различные способы ускорить скорость загрузки приложения и его производительность. 
+В частности вы можете использовать отложенную загрузку элементов страницы или воспользоваться инкрементной загрузкой содержимого. Об этих способах загрузить страницу быстрее и о других рекомендациях читайте далее.Отложенная загрузка элементов страницы
+Иногда при загрузке приложения некоторые элементы нам сразу не нужны. В таком случае мы можем их не загружать сразу, ускорив таким образом запуск приложения, а загрузить их только потом, когда они действительно станут необходимы.
+Разберем на примере. Добавим такой вот код в XAML нашей страницы:    &lt;Grid HorizontalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"&gt;      
+      &lt;StackPanel x:Name="SomeHiddenPanel" Visibility="Collapsed" Width="100" Height="100" Background="Yellow"&gt;
+      &lt;/StackPanel&gt;
+      &lt;Button x:Name="btnShow" Click="btnShow_Click"&gt;Показать панель&lt;/Button&gt;        
+    &lt;/Grid&gt;
+
+Как видно из кода элемент StackPanel скрыт. Запустим приложение. В окне приложения StackPanel желтого цвета не отображается. А вот в динамическом визуальном дереве (кстати, это новая фича Visual Studio 2015) мы сразу же после запуска сможем увидеть наш скрытый элемент с именем SomeHiddenPanel:
+Выходит, то, что мы сделали его Collapsed, не означает, что он не загрузится. Контрол не занимает пространство интерфейса окна, но загружается и кушает наши ресурсы. При желании мы сможем его отобразить на странице с помощью: SomeHiddenPanel.Visibility = Visibility.Visible;
+
+После того, как мы добавим к элементу StackPanel атрибут x:DeferLoadStrategy=«Lazy» мы получим такой вот код:    &lt;Grid HorizontalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"&gt;    
+        &lt;StackPanel x:Name="SomeHiddenPanel" x:DeferLoadStrategy="Lazy" Visibility="Collapsed"
+                         Width="100" Height="100" Background="Yellow"&gt;
+        &lt;/StackPanel&gt;
+        &lt;Button x:Name="btnShow" Click="btnShow_Click"&gt;Показать панель&lt;/Button&gt;     
+    &lt;/Grid&gt;
+
+Вот теперь после запуска приложения элемент StackPanel действительно будет отсутствовать
+Если мы попробуем обратиться к элементу SomeHiddenPanel из кода и, скажем, попробуем изменить ему видимостьSomeHiddenPanel.Visibility = Visibility.Visible;
+
+то мы получим исключение System.NullReferenceException. И все верно, ведь элемент реально отсутствует.
+Для того чтобы подгрузить элемент в нужный для нас момент можно воспользоваться методом FindName. 
+После вызова    FindName("SomeHiddenPanel");
+
+Элемент XAML будет загружен. Останется только отобразить его:   SomeHiddenPanel.Visibility = Visibility.Visible;
+
+Вуаля:
+Другие способы загрузить элемент с отложенной загрузкой x:DeferLoadStrategy=«Lazy» это:
+1. Использовать binding, который ссылается на незагруженный элемент.
+2. В состояниях VisualState использовать Setter или анимацию, которая будет ссылаться на незагруженный элемент. 
+3. Вызвать анимацию, которая затрагивает незагруженный элемент. 
+Проверим последний способ. Добавим в ресурсы страницы StoryBoard:    &lt;Page.Resources&gt;
+        &lt;Storyboard x:Name="SimpleColorAnimation"&gt;
+            &lt;ColorAnimation BeginTime="00:00:00" Storyboard.TargetName="SomeHiddenPanel" 
+           Storyboard.TargetProperty="(StackPanel.Background).(SolidColorBrush.Color)"
+           From="Yellow" To="Green" Duration="0:0:4" /&gt;
+        &lt;/Storyboard&gt;
+    &lt;/Page.Resources&gt;
+
+Теперь в событии btnShow_Click запустим анимацию:            SimpleColorAnimation.Begin();
+           SomeHiddenPanel.Visibility = Visibility.Visible;
+
+Теперь после нажатия кнопки элемент будет отображен.
+Немного теории:
+Атрибут x:DeferLoadStrategy может быть добавлен только элементу UIElement (за исключением классов, наследуемых от FlyoutBase. Таких как Flyout или MenuFlyout). Нельзя применить этот атрибут к корневым элементам страницы или пользовательского элемента управления, а также к элементам, находящимся в ResourceDictionary. Если вы загружаете код XAML с помощью XamlReader.Load, то смысла в этом атрибуте нет, а соответственно с XamlReader.Load он и не может использоваться.
+Будьте осторожны при скрытии большого количество элементов интерфейса и при отображении их всех одновременно за раз, так как это может вызвать заминку в работе программы.Инкрементная загрузка в приложениях Windows 8.1
+XAML элементы ListView/GridView как правило содержат в себе привязку к массиву данных. Если данных достаточно много, то при загрузке одномоментно они все отобразится, конечно же, не смогут и прокрутка окна приложения будет прерывистой (особенно это заметно, если в виде данных используются изображения).
+Как можно было установить приоритет загрузки в Windows 8.1? С помощью расширения Behaviors SDK (XAML).
+Добавляли ссылку на него. Меню «Проект» — «Добавить ссылку». В группе «Расширения» выбирали Behaviors SDK (XAML).
+Далее в корневой элемент Page добавляли ссылки на пространства имен:   xmlns:Interactivity="using:Microsoft.Xaml.Interactivity" 
+   xmlns:Core="using:Microsoft.Xaml.Interactions.Core"
+
+После этого в шаблоне можно было расставить приоритет загрузки подобным образом:&lt;Image Source="ms-appx:///Assets/placeHolderImage.png" Height="100" Width="60" VerticalAlignment="Center" Margin="0,0,10,0"&gt;
+&lt;Interactivity:Interaction.Behaviors&gt;
+&lt;Core:IncrementalUpdateBehavior Phase="0"/&gt;
+&lt;/Interactivity:Interaction.Behaviors&gt;
+&lt;/Image&gt;
+
+Рассмотрим на примере.
+Добавим в проект в папку Assets картинку-заглушку с именем placeHolderImage.jpg
+Как было описано выше, добавим ссылку на Behaviors SDK (XAML). 
+Создадим класс данныхКод класса данных ImageInfo  public class ImageInfo 
+    {
+        private string _name;
+        private Uri _url;
+
+        public string Name
+        {
+            get { return _name; }
+            set { _name = value;}
+        }
+
+        public Uri Url
+        {
+            get { return _url; }
+            set { _url = value; }
+        }
+    }
+
+В тег Page страницы MainPage.xaml добавим объявления пространств имен:   xmlns:Interactivity="using:Microsoft.Xaml.Interactivity" 
+   xmlns:Core="using:Microsoft.Xaml.Interactions.Core"
+
+и ссылку на пространство имен нашего проекта (у меня это IncrementalLoadingDemo)    xmlns:local="using:IncrementalLoadingDemo"
+
+Теперь можно добавить ListView с шаблоном элемента внутри и указать фазы загрузки (фаз должно быть не больше 3-ех)&lt;ListView ItemsSource="{Binding}" HorizontalContentAlignment="Center" Width="200"
+                  Height="500" BorderThickness="1" BorderBrush="Black"&gt;
+            &lt;ListView.ItemTemplate&gt;
+                &lt;DataTemplate x:DataType="local:ImageInfo"&gt;
+                    &lt;StackPanel Orientation="Vertical"&gt;
+
+             &lt;TextBlock Text="{Binding Name}" &gt;
+                &lt;Interactivity:Interaction.Behaviors&gt;
+                    &lt;Core:IncrementalUpdateBehavior Phase="1"/&gt;
+                &lt;/Interactivity:Interaction.Behaviors&gt;
+             &lt;/TextBlock&gt;
+
+                   &lt;Grid&gt;
+             &lt;Image Source="Assets/placeHolderImage.jpg"  Height="100" Width="100" VerticalAlignment="Center" Margin="0"&gt;
+                &lt;Interactivity:Interaction.Behaviors&gt;
+                  &lt;Core:IncrementalUpdateBehavior Phase="0"/&gt;
+                &lt;/Interactivity:Interaction.Behaviors&gt;
+             &lt;/Image&gt;
+
+              &lt;Image Source="{Binding Path=Url}"  Height="100" Width="100" VerticalAlignment="Center" Margin="0"&gt;
+                  &lt;Interactivity:Interaction.Behaviors&gt;
+                     &lt;Core:IncrementalUpdateBehavior Phase="3"/&gt;
+                   &lt;/Interactivity:Interaction.Behaviors&gt;
+               &lt;/Image&gt;
+                   &lt;/Grid&gt;
+
+                    &lt;/StackPanel&gt;
+                &lt;/DataTemplate&gt;
+            &lt;/ListView.ItemTemplate&gt;
+        &lt;/ListView&gt;
+
+И заполнить его данными в code-behind:    ObservableCollection&lt;ImageInfo&gt; myimages = new ObservableCollection&lt;ImageInfo&gt;();
+
+        public MainPage()
+        {
+            this.InitializeComponent();
+
+            this.DataContext = myimages;
+
+            int i;
+            for (i=0; i &lt; 20000; i++) {
+     myimages.Add(new ImageInfo { Name = "Картинка 1", Url = new Uri("http://www.alexalex.ru/TesT.png") });
+     myimages.Add(new ImageInfo { Name = "Картинка 2", Url = new Uri("http://www.alexalex.ru/RedactoR.jpg") });
+     myimages.Add(new ImageInfo { Name = "Картинка 3", Url = new Uri("http://www.alexalex.ru/TesT.gif") });
+            }
+        }
+
+Теперь первым делом будет загружено локальное изображение placeHolderImage.png и только затем будет загружено и отображено в Grid изображение из сети, заслонив собой изображение заглушку. Если мы будем быстро прокручивать список, то заметим, что иногда веб картинка не успевает загрузиться и проскакивает наша картинка-заглушка.Инкрементная загрузка без привязок данных с помощью события ContainerContentChanging
+В приложениях Windows 8.x была возможность использовать Behaviors SDK, а можно было воспользоваться событием ContainerContentChanging и установить фазы прорисовки из кода. Способ с ContainerContentChanging чуть более сложен для реализации, но он повышает скорость работы приложения. При нем при быстрой прокрутке прогружаются только отображаемые на данный момент в окне элементы. Способ подразумевает отсутствие привязок данных и императивную подгрузку содержимого из кода C#. 
+Изменим наш пример.
+Нам необходим будет шаблон ItemTemplate. Создадим пользовательский элемент управления с именем ItemViewer и таким вот кодом XAML:Код здесь&lt;UserControl
+    x:Class="IncrementalLoadingDemo.ItemViewer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:IncrementalLoadingDemo"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300"
+    d:DesignWidth="400"&gt;
+
+    &lt;StackPanel Orientation="Vertical"&gt;
+        &lt;TextBlock x:Name="txtName" Text="{Binding Name}" &gt;&lt;/TextBlock&gt;
+
+        &lt;Grid&gt;
+            &lt;Image x:Name="imgHolder" Source="Assets/placeHolderImage.jpg"  Height="100" Width="100" VerticalAlignment="Center" Margin="0" /&gt;
+            &lt;Image x:Name="imgUrl"  Height="100" Width="100" VerticalAlignment="Center" Margin="0" /&gt;
+        &lt;/Grid&gt;
+    &lt;/StackPanel&gt;
+ 
+&lt;/UserControl&gt;
+
+В код класса пользовательского элемента управления добавим несколько методов. Один метод отображает текст, другой картинку замещающую изображение, третий картинку, загружаемую из интернета и, наконец, четвертый очищает данные:Код C# класса    public sealed partial class ItemViewer : UserControl
+    {
+        private ImageInfo _item;
+
+        public ItemViewer()
+        {
+            this.InitializeComponent();
+        }
+
+        public void ShowPlaceholder()
+        {
+            imgHolder.Opacity = 1;
+        }
+
+
+        public void ShowTitle(ImageInfo item)
+        {
+            _item = item;
+            txtName.Text = _item.Name;
+            txtName.Opacity = 1;
+        }
+
+        public void ShowImage()
+        {
+            imgUrl.Source = new BitmapImage(_item.Url);
+            imgUrl.Opacity = 1;
+            imgHolder.Opacity = 0;
+        }
+
+        public void ClearData()
+        {
+            _item = null;
+            txtName.ClearValue(TextBlock.TextProperty);
+            imgHolder.ClearValue(Image.SourceProperty);
+            imgUrl.ClearValue(Image.SourceProperty);
+        }
+    } 
+
+Теперь в XAML файла MainPage.xaml мы добавим ссылку на только что созданный пользовательский элемент. Он у нас будет использован в качестве шаблона:    &lt;Page.Resources&gt;
+        &lt;DataTemplate x:Key="FrontImageTemplate"&gt;
+            &lt;local:ItemViewer/&gt;
+        &lt;/DataTemplate&gt;
+    &lt;/Page.Resources&gt;
+
+И добавим сам элемент ListView   &lt;ListView ItemsSource="{Binding}" HorizontalContentAlignment="Center" Width="200" 
+         Height="500" BorderThickness="1" BorderBrush="Black" ShowsScrollingPlaceholders="True"
+         ItemTemplate="{StaticResource FrontImageTemplate}" ContainerContentChanging="ItemListView_ContainerContentChanging"&gt;
+   &lt;/ListView&gt;
+
+В нем мы указали шаблон и событие ContainerContentChanging. Код этого события будет отображать элементы в зависимости от текущей фазы загрузки:void ItemListView_ContainerContentChanging   private void ItemListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            ItemViewer iv = args.ItemContainer.ContentTemplateRoot as ItemViewer;
+
+            if (args.InRecycleQueue == true)
+            {
+                iv.ClearData();
+            }
+            else if (args.Phase == 0)
+            {
+                iv.ShowTitle(args.Item as ImageInfo);
+                // регистрируем ассинхронный callback для следующего шага
+                args.RegisterUpdateCallback(ContainerContentChangingDelegate);
+            }
+            else if (args.Phase == 1)
+            {
+                iv.ShowPlaceholder();
+                // регистрируем ассинхронный callback для следующего шага
+                args.RegisterUpdateCallback(ContainerContentChangingDelegate);
+            }
+            else if (args.Phase == 2)
+            {
+                iv.ShowImage();
+                // шаги закончились, поэтому ничего регистрировать больше не нужно
+            }
+
+            // Для улучшения производительности устанавливаем Handled в true после отображения данных элемента
+            args.Handled = true;
+        }
+
+И еще нам понадобится callback с делегатом (добавляем его тоже в MainPage.xaml.cs):private TypedEventHandler&lt;ListViewBase, ContainerContentChangingEventArgs&gt; ContainerContentChangingDelegate
+   {
+       get
+       {
+           if (_delegate == null)
+           {
+     _delegate = new TypedEventHandler&lt;ListViewBase, ContainerContentChangingEventArgs&gt;(ItemListView_ContainerContentChanging);
+           }
+           return _delegate;
+        }
+   }
+        private TypedEventHandler&lt;ListViewBase, ContainerContentChangingEventArgs&gt; _delegate;
+
+Этот способ можно использовать и в приложениях Windows 8.x и в приложениях Windows 10.Инкрементная загрузка в приложениях Windows UAP
+С выходом Windows 10 и UWP появился более удобный и быстрый способ, ведь стало возможным использовать компилированные привязки x:Bind. 
+О них я уже писал недавно — Компилируемые привязки данных в приложениях Windows 10
+Немного повторюсь и приведу тот же самый пример уже с использованием x:Bind.
+Для привязки ссылки к Image нам понадобится конвертерКод конвертера    class ConverterExample : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value == null) return string.Empty;
+
+            System.Uri u = (System.Uri)value;
+
+            Windows.UI.Xaml.Media.Imaging.BitmapImage bitmapImage = new Windows.UI.Xaml.Media.Imaging.BitmapImage(u);
+
+            return bitmapImage;
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            // используется редко
+            throw new NotImplementedException();
+        }
+    }
+
+В ресурсы XAML страницы Page добавим на него ссылку    &lt;Page.Resources&gt;
+        &lt;local:ConverterExample x:Name="ThatsMyConverter"/&gt;
+    &lt;/Page.Resources&gt; 
+
+И теперь мы можем добавить ListView, указав элементам шаблона фазы загрузки (фаз должно быть не больше трех) &lt;ListView ItemsSource="{x:Bind myimages}" HorizontalContentAlignment="Center" Width="200" Height="500" BorderThickness="1" BorderBrush="Black"&gt;
+     &lt;ListView.ItemTemplate&gt;
+         &lt;DataTemplate x:DataType="local:ImageInfo"&gt;
+             &lt;StackPanel Orientation="Vertical"&gt;
+                 &lt;TextBlock Text="{x:Bind Name}" x:Phase="0" &gt;&lt;/TextBlock&gt;
+
+                 &lt;Grid&gt;
+              &lt;Image Source="Assets/placeHolderImage.jpg"  Height="100" Width="100" VerticalAlignment="Center" Margin="0" /&gt;
+              &lt;Image Source="{x:Bind Url,Converter={StaticResource ThatsMyConverter}}"  Height="100" Width="100"
+                               VerticalAlignment="Center" Margin="0" x:Phase="3" /&gt;
+                 &lt;/Grid&gt;
+
+             &lt;/StackPanel&gt;
+         &lt;/DataTemplate&gt;
+     &lt;/ListView.ItemTemplate&gt;
+ &lt;/ListView&gt;
+
+Пример стал проще и, разумеется, приложение стало работать быстрее. Как его можно еще оптимизировать?
+Для оптимизации загрузки больших изображений можно (и можно было ранее в Windows 8.x) использовать DecodePixelHeight и DecodePixelWidth. Если задать значения этим атрибутам, то значение BitmapImage будет закэшировано не в нормальном, а в отображаемом размере. Если необходимо сохранить пропорции автоматически, то можно указать только DecodePixelHeight или DecodePixelWidth, но не оба значения одновременно.
+То есть в нашем случае мы можем изменить немного код метода Convert нашего конвертера, добавив одну строчку (мы ведь знаем, что выводить изображение мы будем высотой 100 пикселей):        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value == null) return string.Empty;
+
+            System.Uri u = (System.Uri)value;
+
+            Windows.UI.Xaml.Media.Imaging.BitmapImage bitmapImage = new Windows.UI.Xaml.Media.Imaging.BitmapImage(u);
+            bitmapImage.DecodePixelHeight = 100; // вот эту строку мы добавили
+
+            return bitmapImage;
+        }
+Несколько общих рекомендаций:
+Вы получите прирост производительности если конвертируете ваше приложение с Windows 8.x на Windows 10.
+Пользуйтесь профайлером для поиска бутылочных горлышек в вашем коде. 
+Познайте дзен. Самый быстрый код это код, которого нет. Выбирайте между большим количеством фич и скоростью работы вашего приложения.
+Оптимизируйте размер изображений используемых вашим приложением.
+Сократите количество элементов в шаблоне данных. Grid внутри Grid-а это не очень хорошее решение.Материалы, которые мне помогли в прокачке приложения:x:DeferLoadStrategy attributeXAML Performance: Techniques for Maximizing Universal Windows App Experiences Built with XAMLIncremental loading Quickstart for Windows Store apps using C# and XAML
+
+      
+      
+    

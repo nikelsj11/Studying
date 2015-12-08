@@ -1,0 +1,1089 @@
+﻿#TITLE:Рисуем на тайлах электронной карты в MSSQL
+
+      Хочу рассказать читателям хабра-сообщества как используя CLR библиотеку Microsoft.SqlServer.Types можно формировать тайлы для электронной карты. В статье пойдёт речь о генерации списка картографических тайлов для их дальнейшего рендеринга. Будет описан алгоритм генерации тайлов по геометрии объектов, хранящейся в базе данных MS SQL 2008. Весь процесс рендеринга шаг за шагом будет рассмотрен на примере в конце статьи.Содержание ПроблемаИсходные данныеРешениеХранилище тайловЭтапы подготовки тайловИспользуемые функцииПример с ломаной линиейПроверка пересеченияТаблицы для хранения образов тайловРазмещение иконки на тайлеОбъединение тайловОтрисовка геометрии на тайлеЗаключениеПроблема
+Когда в браузере отображается большое количество гео данных в векторной графике (с помощью SVG или CANVAS), иногда приходится ждать не только пока данные загрузятся на клиентскую машину, но и пока выполнится процесс отрисовки, который может выполняться слишком долго. 
+При отображении большого количества иконок на карте в браузере можно применить кластеризацию, но для сложных геометрических объектов нужно использовать другой подход.Исходные данные:
+Набор геометрических объектов хранится в таблице базы данных Microsoft SQL 2008. Координаты узлов – это широта и долгота (EPSG:4326). Поле с гео-данными имеет тип GEOMETRY. Объекты должны отображаться на карте в виде иконки, для геометрии Point. В виде ломаной линии определённой толщины для геометрии Polyline. Геометрия Polygon должны отображаться в виде одного или нескольких закрашенных многоугольников с контуром. Тайлы должны соответствовать проекции Web MercatorРешение:
+Вместо векторной графики будем отображать объекты на карте в виде растрового слоя, то есть такими же изображениями (тайлами) как и сама карта. Для этого необходимо подготовить набор картографических тайлов для каждого масштаба с изображением объектов. Для формирования тайлов будем использовать проекцию Google Web Mercator, то есть преобразования широты и долготы в пиксели карты будут выполняться с помощью кода google, где используются формулы описывающие проекцию Меркатора:
+ Подробнее про проекции можно почитать здесь. 
+Начиная с версии Sql Server 2008, для работы с пространственными данными поддерживается тип данных GEOMETRY и GEOGRAPHY. 
+Существующие картографические сервисы от Yandex, Google или OpenStreetMap картографию как предоставляли в виде PNG картинок, фиксированного размера, обычно 256x256 точек. Хотя теперь существуют сервисы, где тайлы формируются с помощью таких технологий как SVG или CANVAS. Будем рассматривать растровые тайлы в формат PNG (picture network graphic). PNG формат поддерживает прозрачность (указывается в альфа канале), благодаря этому возможно наложение тайлов друг на друга без абсолютного перекрытия, при отображении нескольких слоёв.Хранилище тайлов 
+Для каждого масштаба хранится определённый набор тайлов. Для масштаба 0-ого уровня – 1 тайл:
+Для масштаба 1-ого уровня четыре тайла 2 * 2:
+ для масштаба n хранится 2n * 2n тайлов. Количество тайлов с увеличением номера масштаба увеличивается экспоненциально.
+Тайлы хранятся в файловой системе Web-сервера и отправляются на машину клиента по http запросу, например:someurl/layer{Z}/{X}/{Y}.png
+ где Z,X,Y соответственно масштаб, X позиция тайла, Y позиция тайла. Например, по следующим url доступен тайл с изображением Троицкого моста в Санкт-Петербурге:b.tile.openstreetmap.org/15/19144/9524.png
+В этом url:
+ 15 – номер масштаба;
+ 19144– X позиция тайла;
+ 9524 – Y позиция тайла.
+Естественно, что в разных системах формат URL запроса отличается. Вместо номеров тайлов и масштаба, для запроса тайлов может быть использован QUAD-ключ. Файлы тайлов могут быть отправлены клиенту сервером прямо из файловой системы или с помощью http обработчиков. Будем рассматривать вариант с X, Y, Z.Этапы подготовки тайловФормирование списка тайлов по геометрии каждого объекта;
+Генерация тайлов для каждого объекта;
+Объединение тайлов, для получения уникального набора;
+Сохранение в файловую систему.
+ Используемые функции
+Для реализации задачи понадобится функция формирования геометрии тайла по X, Y позициям тайла и номеру масштаба. Геометрия тайла в нашем случае это прямоугольник покрывающий тайл с координатами углов, выраженными в широте и долготе. Формирования такой геометрии можно реализовать в SQL функции или в функции SQL CLR. Разница во времени выполнения SQL CLR функции и обычной SQL функции не заметна. Код SQL CLR функции реализован в классе Coords2PixelConversion в прилагаемых исходных кодах. 
+Следующая геометрия является контуром этого тайла, то есть проходит по его границам. Координаты вершин здесь – это долгота и широта.Геометрия границы тайла'POLYGON ((30.322265625 59.955010262062061, 30.322265625 59.949509172252277, 30.333251953125 59.949509172252277, 30.333251953125 59.955010262062061, 30.322265625 59.955010262062061))'
+Код скалярной SQL функции tile.GetTileBounds()tile.GetTileBounds(@level int, @x int, @y int)
+CREATE FUNCTION [tile].[GetTileBounds] (@level int, @x int, @y int)
+RETURNS geometry
+AS
+BEGIN
+DECLARE  @res GEOMETRY = NULL
+IF @level IS NOT NULL AND @x IS NOT NULL AND @y IS NOT NULL
+BEGIN
+  DECLARE @n1  FLOAT = PI() - 2.0 * PI() * @y / POWER(2.0, @level);
+  DECLARE @n2  FLOAT = PI() - 2.0 * PI() * (@y + 1) / POWER(2.0, @level);
+  DECLARE @top FLOAT = (180.0 / PI() * ATAN(0.5 * (EXP(@n1) - EXP(-@n1))));
+  DECLARE @bottom FLOAT = (180.0 / PI() * ATAN(0.5 * (EXP(@n2) - EXP(-@n2))));
+  DECLARE @tileWidth FLOAT = 360 / CONVERT(float, POWER(2, @level)) 
+  DECLARE @left FLOAT = @tileWidth * @x - 180,
+                    @right FLOAT = @tileWidth * (@x + 1) - 180
+  SET @res = geometry::STPolyFromText('POLYGON (('
+      + LTRIM(STR(@left, 25, 16)) + ' ' + LTRIM(STR(@top, 25, 16)) + ', '
+      + LTRIM(STR(@left, 25, 16)) + ' ' + LTRIM(STR(@bottom, 25, 16)) + ', '
+      + LTRIM(STR(@right, 25, 16)) + ' ' + LTRIM(STR(@bottom, 25, 16)) + ', '
+      + LTRIM(STR(@right, 25, 16)) + ' ' + LTRIM(STR(@top, 25, 16)) + ', '
+      + LTRIM(STR(@left, 25, 16)) + ' ' + LTRIM(STR(@top, 25, 16))
+      + '))', 0)
+  END
+  RETURN @res
+END
+
+Как использовать эту функцию будет рассказано далее в этой статье.
+Рассмотрим методы формирования списка тайлов. Для разных геометрий, можно подобрать различные подходы к формированию списка тайлов. Способ 1:
+Воспользуемся таким обстоятельством: Если на одном масштабе объект не пересекается с тайлом, то на масштабе с большим номером 4 тайла, которые перекрывают проверяемый тайл, так же не пересекаются с объектом. То есть при переходе к следующему масштабу выполняем проверку тайла, только если тайл предыдущего масштаба пересекается с геометрией объекта. Так исключаются лишние проверки, которые выполняются в способе 2.Способ 2:
+На самом деле этот способ – сценарий худшего случая. Для каждого масштаба по каждому объекту определять поднабор тайлов функцией GEOMETRY::STEnvelope() и проверять пересечение тайла из этого поднабора с объектом. Этот способ менее эффективен, особенно для объектов с большой площадью или длиной, так как проверяется большее количество тайлов. Способ 3: 
+Для каждого объекта формировать геометрию тайловой сетки, по пересечению сетки с геометрией объекта получить набор точек. Для каждой, полученной точки определить два тайла и добавить в итоговый список тайлов.Например, для сложной географической линии проходящей через континент можно найти точки пересечения с сеткой проходящей по границам тайлов, и по этим точкам уже определить тайлы для рендеринга. Сетка создаётся в границах прямоугольной области, вмещающей линию, и представляет собой набор вертикальных и горизонтальных линий. Это гораздо эффективнее чем проверять каждый тайл в границах прямоугольной области объекта. 
+Опишем первый способ более подробно. Для геометрий объектов обладающих площадью набор тайлов для проверки пересечения с объектом может быть ограничен крайними тайлам прямоугольной области (bbox) перекрывающей объект. 
+По геометрии объекта (кроме типа геометрии POINT) формируется прямоугольник CLR функцией MSSQL GEOMETRY::STEnvelope(). Для объектов с геометрией POINT в качестве границы bbox используется прямоугольная область, перекрывающая иконку объекта на карте. Функция GetImageBound, возвращающая геометрию перекрывающую иконку реализована в классе GoogleProjection. Здесь же реализованы методы преобразования широты и долготы в номера позиций пикселей. Координаты угловых точек прямоугольной области выражены в широте и долготе. Далее мы получаем поднабор тайлов, покрывающих полученный прямоугольник. Для этого нам нужна функция преобразования географических координат в номер тайла на соответствующем масштабе. Для получения X и Y позиции тайла по долготе и широте можем использовать как SQL CLR функции, которые будут приведены далее, так и SQL функции приведённые ниже: tile.GetXTilePos((@Longitude FLOAT, @Zoom INT)
+tile.GetYTilePos((@Latitude FLOAT, @Zoom INT)
+
+После определения позиций угловых тайлов, все тайлы, находящиеся в прямоугольной области между найденными угловыми тайлами проверяются на пересечение с геометрией объекта в функции tile.fn_FetchGeometryTilesZoomDepth(). SQL Функция получения X позиции тайла для долготы и номера масштабаCREATE FUNCTION tile.GetXTilePos(@Longitude FLOAT, @Zoom INT)
+RETURNS INT
+AS
+BEGIN		
+    DECLARE @D FLOAT,@E FLOAT,@F FLOAT,@G FLOAT, @tileY INT, @tileX INT          
+    SET  @D   = 128 * POWER(2, @Zoom)
+    SET  @E   = ROUND(@D + @Longitude * 256 / 360 * POWER(2, @Zoom), 0)            
+    SET @tileX  = Floor(@E / 256);           
+    RETURN @tileX
+END
+Функция получения Y позиции тайла для широты и номера масштабаCREATE FUNCTION tile.GetYTilePos(@Latitude FLOAT, @Zoom INT)
+RETURNS INT
+AS
+BEGIN
+     DECLARE		@A FLOAT, @B FLOAT, @C FLOAT, @D FLOAT, @E FLOAT, @F FLOAT, @G FLOAT, @tileY INT                           
+     SET @D   = 128 * POWER(2, @Zoom)                       
+     SET @A =	 Sin(PI() / 180 * @Latitude)
+     SET @B =	 -0.9999
+     SET @C =	  0.9999
+     IF @A &lt; @B SET @A = @B
+     IF @A &gt; @C SET @A = @C
+     SET @F = @A
+     SET @G   = Round(@D + 0.5 * Log((1.0 + @F) / (1.0 - @F)) * (-256) * POWER(2, @Zoom) / (2 * PI()),0)            
+     SET @tileY  = Floor(@G / 256)                          
+     RETURN @tileY
+END
+
+В функции tile.fn_FetchGeometryTilesZoomDepth() вычисляются левый верхний и правый нижний тайл минимальной прямоугольной области покрывающей геометрию. Затем для определенния пересечения фигуры с тайлом во вложенном цикле используем функцию tile.fn_GetTilesByTileNumZoomDepth() для каждого тайла в этой области проходя слева направо и сверху вниз от левого верхнего тайла до правого нижнего. Функция возвращает список тайлов, для которых было определено пересечение с геометрией объекта. Функция получения набора тайловCREATE FUNCTION tile.fn_FetchGeometryTilesZoomDepth 
+( @GeoData GEOMETRY, @Zoom INT, @Depth INT)
+RETURNS @retTiles TABLE	(     Zoom INT,    TileX INT,	TileY INT)
+AS 
+BEGIN
+  DECLARE @Left FLOAT, @Right FLOAT, @Top FLOAT, @Bottom FLOAT
+  DECLARE @CurrentXTile INT, @CurrentYTile INT, @Quanttiles INT
+  DECLARE @Envelope GEOMETRY, @RightTop GEOMETRY, @LeftBottom GEOMETRY
+  DECLARE @CurTileGeom GEOMETRY, @res GEOMETRY
+  DECLARE @tiletop FLOAT,@tilebottom FLOAT,@tileleft FLOAT, @tileright FLOAT
+  DECLARE @LeftTilePos INT,@RightTilePos INT,@TopTilePos INT
+  DECLARE @BottomTilePos INT
+  SET @envelope = @GeoData.STEnvelope()
+  SET @RightTop =  @envelope.STPointN(3)            
+  SET @LeftBottom = @envelope.STPointN(1)
+  SET @Right = @RightTop.STX
+  SET @Left = @LeftBottom.STX
+  SET @Top = @RightTop.STY
+  SET @Bottom = @LeftBottom.STY
+  SET @LeftTilePos      =	tile.GetXTilePos( @Left,@Zoom)
+  SET @RightTilePos    =	tile.GetXTilePos( @Right,@Zoom)
+  SET @TopTilePos      =	tile.GetYTilePos( @Top,@Zoom)
+  SET @BottomTilePos =	tile.GetYTilePos( @Bottom,@Zoom)
+  SET @CurrentXTile    = @LeftTilePos
+  WHILE @CurrentXTile &lt;= @RightTilePos
+  BEGIN
+     SET @currentYTile = @TopTilePos
+     WHILE @CurrentYTile &lt;= @BottomTilePos		
+     BEGIN		   		
+	INSERT INTO @retTiles (Zoom, TileX, TileY)						
+        SELECT * FROM tile.fn_GetTilesByTileNumZoomDepth ( @GeoData, @Zoom, @CurrentXTile,  @CurrentYTile, @Depth )							      
+        SET @CurrentYTile = @CurrentYTile + 1
+    END 
+    SET @CurrentXTile =@CurrentXTile + 1 
+  END  
+  RETURN
+END
+
+Проверять пересечение геометрии тайла с геометрией объекта будем функцией GEOMETRY::STIntersects(). Если геометрия объекта и геометрия тайла пересекаются, то добавляем запись в предварительно созданную таблицу tile.TileOverlap и вызываем ту же функцию рекурсивно для четырёх тайлов следующего масштаба, покрывающие текущий, с параметром @Depth уменьшеным на еденицу. Проверка пересечения реализована в функции  tile.fn_FetchGeometryTilesZoomDepth(). Получение списка тайлов по геометрии для указанного тайлаCREATE FUNCTION tile.fn_GetTilesByTileNumZoomDepth ( @GeoData GEOMETRY, @Zoom INT, @tileX INT, @tileY INT, @Depth INT)
+RETURNS @retTiles TABLE (   Zoom INT,   X INT,   Y INT)
+AS 
+BEGIN
+DECLARE @currentTile TABLE (   Zoom INT,   X INT,   Y INT)
+IF	  GEOGRAPHY::STGeomFromWKB([tile].[GetTileBounds](@Zoom, @tileX, @tileY).STAsBinary(),4326).STIntersects(GEOGRAPHY::STGeomFromWKB(@GeoData.MakeValid().STUnion(@GeoData.STStartPoint()).STAsBinary(),4326)) = 1 
+BEGIN
+	INSERT INTO @currentTile SELECT @Zoom , @tileX , @tileY 			
+	INSERT INTO @retTiles		SELECT d.zoom, d.X, d.Y FROM @currentTile c
+	CROSS APPLY (SELECT * FROM [tile].[fn_GetTilesForObjectByTileNumZoomDepth]( @GeoData , c.Zoom + 1, c.X * 2, c.Y * 2, @Depth - 1) WHERE @Depth &gt; 0) AS d
+	INSERT INTO @retTiles	SELECT d.zoom, d.X, d.Y FROM @currentTile c
+	CROSS APPLY (SELECT * FROM [tile].[fn_GetTilesForObjectByTileNumZoomDepth]( @GeoData , c.Zoom + 1, c.X * 2 + 1, c.Y * 2, @Depth - 1) WHERE @Depth &gt; 0) AS d
+	INSERT INTO @retTiles	SELECT d.zoom, d.X, d.Y FROM @currentTile c
+	CROSS APPLY (SELECT * FROM [tile].[fn_GetTilesForObjectByTileNumZoomDepth]( @GeoData , c.Zoom + 1, c.X * 2, c.Y * 2 + 1, @Depth - 1) WHERE @Depth &gt; 0) AS d
+	INSERT INTO @retTiles	SELECT d.zoom, d.X, d.Y FROM @currentTile c
+	CROSS APPLY (SELECT * FROM [tile].[fn_GetTilesForObjectByTileNumZoomDepth]( @GeoData , c.Zoom + 1, c.X * 2 + 1, c.Y * 2 + 1, @Depth - 1) WHERE @Depth &gt; 0) AS d
+	INSERT INTO @retTiles SELECT * FROM @currentTile
+END
+RETURN
+END
+
+Если необходимо сформировать тайлы для одного объекта, номера тайлов можно писать сразу в таблицу tile.Tile, так как набор тайлов будет уникальным. Для формирования тайла, с которым пересекаются геометрии нескольких объектов понадобиться объединение тайлов, созданных для разных объектов и накладывающихся друг на друга. 
+Функция tile.fn_GetTilesByTileNumZoomDepth() выполняет проверку пересечения геометрии объекта с тайлами масштабов, с учётом заданной глубины. Параметр @Depth указывает глубину проверки, если например @Zoom = 2 и @Depth = 1 то будет проверен тайл масштаба 2, и в случае наличия пересечения будут проверены 4 тайла масштаба 3. Необходимо проверить эти тайлы, так как они перекрывают тайл с предыдущего масштаба. Проверка пересечения должна выполнятся после преобразования типа данных GEOMETRY в GEOGRAPHY, это важно, так как для типа данных GEOGRAPHY проверка выполняется с учётом того, что все координаты точек геометрии в проекции 4326, то есть имеем дело с геометрическими объектами на сфере.Пример с ломаной линией
+Допустим, что хотим получить тайлы для ломанной соединяющей центр Санкт-Петербурга с центром Москвы. Протяжённость примерно 800 км. Ломанная будет проходить через населённые пункты: Новгород — Вышний волочок – Тверь.Геометия ломаной линии от Санкт-Петербурга до Москвы'LINESTRING( 30.381113 59.971474, 31.26002 58.539215, 34.564158 57.591722, 35.915476 56.876838,37.622242 55.773125)'
+
+Для этой геометрии с 3 по 17 масштаб получим всего тайлов 11076, распределение количества тайлов пересекающихся с геометрией по масштабам приведено в таблице 1Таблица 1 - Распределение количества тайлов по уровням масштабаМасштаб
+Количество тайлов
+3
+1
+4
+2
+5
+3
+6
+4
+7
+7
+8
+12
+9
+23
+10
+45
+11
+88
+12
+174
+13
+347
+14
+692
+15
+1383
+16
+2766
+17
+5529
+
+Тайлы полученные для 3-ого и 4-ого масштаба показаны на рисунке 1:
+Рисунок 1 – Тайлы: 3/4/2 и 4/9/4
+Для каждого масштаба формируется поднабор тайлов и проверяется каждый без исключения тайл. На 4- 5 масштабе количество тайлов попадающих в прямоугольную область, полученную функцией GEOMETRY::STEnvelope() по геометрии объекта будет невелико. Всего тайлов на 4 масштабе 2^4*2^4 = 256. Но на 16 и 17 масштабе необходимо будет проверить на много больше тайлов. Исключение «лишних» проверок в первом способе ускорит работу. Для объектов с геометрией точка (POINT), оба способа будут иметь одинаковую эффективность.  Проверка пересечения
+Функция GEOMETRY::STIntersects() может не определить пересечение геометрии объекта с геометрией тайла, так как функция STIntersects() для типа данных GEOMETRY работает с координатами на плоскости, а широта и долгота не являются декартовыми координатами. Поэтому, для достоверного определения пересечения конвертируем тип GEOMETRY в тип GEOGRAPHY. Следует обратить внимание, что в отличие от типа данных GEOMETRY тип данных GEOGRAPHY требует соблюдения направленности колец полигонов. Координаты внешних колец должны идти против часовой стрелки. Для внутренних колец (пустот) координаты должны перечисляться по часовой стрелке. Чтобы избежать ошибки при формировании географии используем фунции GEOMETRY::MakeValid() и GEOMETRY::STUnion() для получения корректной последовательности координат, при преобразования типа GEOMETRY в тип GEOGRAPHY. При создании географии указываем параметр SRID = 4326, это значит, что все операции над координатами выполняются в сферической системе.
+На данном этапе, когда получен список тайлов, то есть таблицу с тремя колонками: Z, X, Y; дальнейшую работу можно выполнить с помощью программы для редеринга mapnik, которая позволяет выполнить формирование тайлов с изображением объектов. Организация доступа mapnik к базе данных Microsoft SQL Server требует определённых усилий. Подготовка к генерации тайлов в mapnik включает следующие шаги:
+• Объявить стиль объектов для рендеринга;
+• Описать источник данных геометрии объектов;
+• Указать таблицу со списком тайлов для рендеринга, чтобы не генерировать все тайлы подряд.
+Мы будем выполнять генерацию тайлов внутри базы данных MS SQL Server 2008. Для этого необходимо реализовать несколько CLR функций для работы с геометрией, хранящейся в базе данных. Основные функции, которые нам понадобятся приведены ниже:tile.IconTile(),
+tile.ShapeTile(),
+tile.TileAgg(),
+tile.SaveToFolderByZoomXY()
+.Таблицы для хранения образов тайлов
+На рисунке 2 показана структура таблиц, где сохраняется список тайлов для рендеринга. В поле Data в этих таблицах будет сохраняться PNG картинка с изображением объектов попадающих на тайл. Хранение и обработка большого количества картинок в таблице может сказаться на производительности. Для данной задачи более подходящим вариантом является формирование образов тайлов вне базы данных по сформированному в таблице списку тайлов по каждому объекту и последующее сохранение в файловую систему.
+Рисунок 2 – Таблицы для хранения списка тайловРазмещение иконки на тайле
+Разберём алгоритмы позиционирования иконки на тайле (тип геометрии POINT).
+Есть широта и долгота некоторого объекта, есть список тайлов текущего масштаба, на которые накладывается иконка. Формирование перечня тайлов было описано ранее. Вычисление позиции иконки на тайле состоит из следующих действий:
+1. Сначала преобразуем широту и долготу в абсолютные пиксельные координаты; 
+2. Затем, для каждого тайла, из имеющегося списка, на текущем масштабе вычисляем абсолютные пиксельные координаты левого верхнего угла. координаты левого верхнего пикселя тайла (pixXtile,pixYtile) вычисляем умножением номера x и y позиции тайла на его размер, в нашем случае это 256 пикселей;
+3. Разность между абсолютными пиксельными координатами объекта и абсолютными пиксельными координатами левого верхнего угла тайла определяются в функция GetPixelXOnTile() и GetPixelXOnTile(). Эта разность есть относительные пиксельные координаты центра иконки на тайле;
+4. Чтобы отрисовать иконку на тайле нужно получить границы области отрисовки на тайле в пикселях, в которую будет происходить вставка. Относительные пиксельные координаты объекта на тайле получены на предыдущем шаге. Теперь по размеру иконки определяются границы прямоугольной области для вставки.
+5. Выполняем отрисовку иконки на тайле.CLR SQL функция размещающая иконку на тайле[Microsoft.SqlServer.Server.SqlFunction]
+    public static SqlBinary IconTile(SqlBinary image, SqlInt32 zoom, SqlDouble Lon, SqlDouble Lat, SqlInt32 xTile, SqlInt32 yTile, SqlDouble scale)
+    {
+        SqlBinary result = null;
+        using (Icon2TileRendering paster = new Icon2TileRendering())
+        {
+            using (MemoryStream ms = new MemoryStream())
+            {
+                ms.Write(image.Value, 0, image.Length);
+                SetBeginPosition(ms);
+                paster.PasteFromStreamScaledImageToTile((int)zoom, (double)Lon, (double)Lat, (int)xTile, (int)yTile, (double)scale, ms);
+                result = paster.GetBytes();
+            }
+        }
+        return result;
+    }
+Получаем границы области отрисовки #region [Pixel Position Calculation]
+Rectangle GetTargetBound(int zoom, double Lon, double Lat, int xTile, int yTile, int width, int height)
+{
+  int xPix = _conv.FromLongitudeToXPixel(Lon, zoom);
+  int yPix = _conv.FromLatitudeToYPixel(Lat, zoom);
+  int xPos = xPix - xTile * TILE_SIZE;
+  int yPos = yPix - yTile * TILE_SIZE; 
+  int halfWidth = width / 2;
+  int halfHeight = height / 2;
+  return new Rectangle(xPos - halfWidth, yPos - halfHeight, width, height
+ }
+ 
+int GetPixelXOnTile(int zoom, double Lon, int xTile)
+{
+  return _conv.FromLongitudeToXPixel(Lon, zoom) - xTile * TILE_SIZE;
+}
+int GetPixelYOnTile(int zoom, double Lat, int yTile)
+{           
+  return _conv.FromLatitudeToYPixel(Lat, zoom) - yTile * TILE_SIZE;
+}
+#endregion [Pixel Position Calculation]
+Копирование иконки на тайл/// &lt;summary&gt;
+/// Размещает иконку на тайле
+/// &lt;/summary&gt;
+/// &lt;param name="zoom"&gt;&lt;/param&gt;
+/// &lt;param name="Lon"&gt;&lt;/param&gt;
+/// &lt;param name="Lat"&gt;&lt;/param&gt;
+/// &lt;param name="xTile"&gt;&lt;/param&gt;
+/// &lt;param name="yTile"&gt;&lt;/param&gt;
+/// &lt;param name="iconImage"&gt;&lt;/param&gt;
+public void PasteImageToTileByLatLon(int zoom, double Lon, double Lat, int xTile, int yTile, Bitmap iconImage)
+{
+  int width = iconImage.Width;
+  int height = iconImage.Height;
+  CopyRegionIntoImage(iconImage, new Rectangle(0, 0, width, height),  GetTargetBound(zoom, Lon, Lat, xTile, yTile, width, height));
+}
+Объединение тайлов
+На один и тот же тайл могут накладываться иконки нескольких объектов. Чтобы получить тайлы со всеми объектами, можно сначала создать тайлы для каждого объекта, затем объединить их в один. Такое решение можно реализовать с помощью группировки строк таблицы базы данных, для этого создана CLR функция агрегат tile.TileAgg(), объединяющая тайлы в один. Это решение имеет один минус, так как на каждый объект пресекающийся с тайлом мы будем хранить отдельную запись с BINARY полем, хранящим картинку тайла, с избражением только данного объекта, что требует большого количества памяти. Более правильное решение – использовать один экземпляр тайла, и последовательно отображать на нем все попадающие на него иконки объектов. Таким образом, расходуем меньше памяти. В этом случае группироать просто нечего. Мы хотим использовать группировку.Заполнение таблицы позициями тайлов и изображениями тайлов с отрисованными на них иконкамиCREATE PROC [tile].[FillObjectTilesIntersection]( @StartZoom INT, @EndZoom INT)
+	AS 
+	BEGIN
+	DECLARE @CurrentZoom INT
+	SET @CurrentZoom = @StartZoom
+WHILE @CurrentZoom  &lt;= @EndZoom
+BEGIN
+  INSERT INTO tile.Tile (X,Y,Data,Zoom)
+  SELECT  t.TileX,t.TileY, [tile].[TileAgg]
+		(tile.IconTile(i.Data, @CurrentZoom,o.Longitude,o.Latitude,t.tileX,t.tileY, 1.0)
+		),@CurrentZoom AS Zoom
+  FROM tile.Shape o
+  INNER JOIN tile.[Image] i ON i.ImageID = o.ImageID
+  CROSS APPLY  tile.fn_FetchObjectTiles(tile.GetIconBoundForZoom(o.Longitude, o.Latitude, 64, 64, @CurrentZoom, 0),@CurrentZoom) t
+  WHERE o.TypeID = @TypeID
+  GROUP BY  t.TileX,t.TileY
+  SET @CurrentZoom = @CurrentZoom + 1
+ END
+END
+
+В качестве источника объектов будем использовать таблицу tile.Object с координатами объектов и идентификатором образа иконки, хранящейся в таблице tile.Image в поле типа Binary. Cкрипт формирования тайлов  3/4/2 и 4/9/4 с позиционированием иконки на долготе 30.381113 и широте 59.971474DECLARE @Image VARBINARY(MAX)
+SELECT TOP (1) @image =  (   SELECT  * FROM OPENROWSET(BULK N'd:\media\icons\pin_orange.png', SINGLE_BLOB) As tile)
+SELECT [tile].[SaveToFolderByZoomXY]([tile].[IconTile](@image, 3,30.381113, 59.971474, 4, 2, 1.0), N'D:\Tiles\',3,4,2)
+SELECT [tile].[SaveToFolderByZoomXY]([tile].[IconTile](@image, 4,30.381113, 59.971474, 9, 4, 1.0), N'D:\Tiles\',4,9,4)
+Рисунок 3 – Полученные тайлы с иконкойОтрисовка геометрии на тайле
+Для ломаной линии (POLYLINE, MULTIPOLYLINE) объединяем геометрию тайла с геометрией полилинии, таким образом часть ломаной находящейся вне области тайла исключается. Алгоритм определения контура и закрашиваемой области, может быть применён для геометрий обладающих площадью, то есть POLYGON, MULTIPOLYGON, GEOMETRYCOLLECTION содержащая POLYGON или MULTYPOLYGON. Алгоритм реализован в классе ShapeToTileRendering и включает следующие этапы:
+1. Координаты (широта, долгота) геометрии преобразуются в пиксельные координаты с учётом масштаба по формулам преобразования широты, долготы в пиксели PSG3857 (Google проекция) и вычитаем из каждой координаты полученной геометрии координаты левого верхнего пикселя целевого тайла. Получаем, так называемую геометрию (A). Эти действия реализованы в функции ConvertToZoomedPixelZeroedByTileGeometry(poly, Z, X, Y)
+2. Формируется геометрия (B) тайла в пиксельных координатах с учётом масштаба 
+3. Формируется геометрия (C) полученная пересечением (STIntersection) пиксельной геометрии тайла (B) с геометрией объекта (A) 
+4. Формируется геометрия (D) полученная в результате пересечения контура геометрии (C) и контура геометрии тайла (B), получаем линии проходящие по границе тайла и граничащие с предполагаемой закрашиваемой областью полигона внутри тайла. Формируется геометрия (E) полученная в результате вычитания, с помощью функции .STDifference ( other_geometry )
+5. Геометрия (E) и есть контур для отрисовки, который получается вычитанием из контура(LINESTRING или MULTILINSTRING) геометрии (С) геометрии (D) с помощью функции 
+6. Заливается полигон геометрии (С) – получена заливаемая область
+7. Рисуется геометрия (E) -контур полигона после исключения пересечения с границами тайла
+8. Повторяем шаги с 1 по 7 для всех тайлов текущего объекта и сохраняем их в таблицу tile.TileOverlap
+Рассмотрим первые 3 этапа более подробно на примере тайла 15-ого масштаба в X позиции с номером 19144 и Y позиции с номером 9524. Выполним вышеперечисленные операции с помощью T-SQL скриптов. Для начала получаем геометрию границ тайла, использую следующий скрипт: SELECT [tile].[GetTileBounds](15,19144,9524).ToString()
+
+Получили следующий результат:Геометрия границы тайла 'POLYGON ((30.322265625 59.955010262062061, 30.322265625 59.949509172252277, 30.333251953125 59.949509172252277, 30.333251953125 59.955010262062061, 30.322265625 59.955010262062061))'
+
+Далее построим геометрию в виде ромба например, которая будет пересекаться с выбранным тайлом. Пусть центры геометрии и тайла будут совпадать. Для этого воспользуемся функцией построения географического сектора на условной поверхности земли. Функция реализована, исходя из допущения, что земля имеет форму сферы с радиусом 6367 км. Параметрами функции являются долгота и широта центра дуги, азимут(направление сектора), угол разворота дуги, радиус в метрах и шаг приращения угла в градусах. Чем меньше приращение, тем более точная дуга и больше точек в геометрии. Если указать нулевой азимут, угол разворота равным 360 градусов и приращение 90 градусов, то получим наш ромб. В функции используется цикл, где c помощью формул сферической тригонометрии выполняются приращения к углу и определяются координаты точек на дуге окружности, лежащей на поверхности земли. Функция возвращает геометрию полигона на основе этих точек: SELECT [tile].[fn_GetCircleSegment](30.3277587890625, 59.952259717159905,0,360,440,90)
+Функция получения сегмента окружности на поверхности сферыCREATE FUNCTION [tile].[fn_ GetCircleSegment]
+(@X float, @Y float, @azimuth float, @angle float, @distance float, @step FLOAT)
+RETURNS geometry
+WITH EXEC AS CALLER
+AS
+BEGIN
+  IF @X IS NULL OR @Y IS NULL OR @azimuth IS NULL OR ISNULL(@angle, 0) = 0 OR ISNULL(@distance, 0) &lt;= 0
+    RETURN NULL
+    DECLARE @sectorStepAngle FLOAT
+  SET @sectorStepAngle = @step
+  IF ABS(@angle) &gt; 360
+    SET @angle = 360
+  DECLARE @pointsStr VARCHAR(MAX)
+  DECLARE @firstPointsStr VARCHAR(MAX)
+  DECLARE @earthRadius FLOAT
+  DECLARE @lat FLOAT
+  DECLARE @lon FLOAT
+  DECLARE @d FLOAT
+    IF ABS(@angle) &lt; 360
+    SET @pointsStr = LTRIM(STR(@X, 25, 16)) + ' ' + LTRIM(STR(@Y, 25, 16))
+  ELSE    SET @pointsStr = ''
+  SET @earthRadius = 6367
+  SET @lat = RADIANS(@Y)
+  SET @lon = RADIANS(@X)
+  SET @d = (@distance / 1000) / @earthRadius
+  DECLARE @angleStart FLOAT
+  DECLARE @angleEnd FLOAT
+  SET @angleStart = @azimuth - @angle / 2;
+  SET @angleEnd = @azimuth + @angle / 2;
+  DECLARE @pointsCount INT
+  SET @pointsCount = FLOOR(@angle / @sectorStepAngle) 
+  DECLARE @brng FLOAT
+  DECLARE @latRadians FLOAT
+  DECLARE @lngRadians FLOAT
+  DECLARE @ptX FLOAT
+  DECLARE @ptY FLOAT
+  DECLARE @i INT
+  SET @i = 0
+  DECLARE @addPrefix TINYINT
+  IF ABS(@angle) &lt; 360
+    SET @addPrefix = 1
+  ELSE    SET @addPrefix = 0
+  WHILE @i &lt;= @pointsCount
+  BEGIN
+    SET @brng = RADIANS(@angleStart + @i * @sectorStepAngle);
+    SET @latRadians = ASIN(SIN(@lat) * COS(@d) + COS(@lat) * SIN(@d) * COS(@brng));
+    SET @lngRadians = @lon + ATN2(SIN(@brng) * SIN(@d) * COS(@lat), COS(@d) - SIN(@lat) * SIN(@latRadians));
+    SET @ptX = 180.0 * @lngRadians / PI();
+    SET @ptY = 180.0 * @latRadians / PI();
+    IF @addPrefix = 1
+    BEGIN
+      SET @pointsStr += ', ' + LTRIM(STR(@ptX, 25, 16)) + ' ' + LTRIM(STR(@ptY, 25, 16))
+    END
+    ELSE
+    BEGIN
+      SET @pointsStr += LTRIM(STR(@ptX, 25, 16)) + ' ' + LTRIM(STR(@ptY, 25, 16))
+            SET @addPrefix = 1
+    END
+      IF @i = 0
+      SET @firstPointsStr = LTRIM(STR(@ptX, 25, 16)) + ' ' + LTRIM(STR(@ptY, 25, 16))
+    IF @i = @pointsCount AND (@angleStart + @pointsCount * @sectorStepAngle) &lt; @angleEnd
+    BEGIN
+      SET @brng = RADIANS(@angleEnd);
+      SET @latRadians = ASIN(SIN(@lat) * COS(@d) + COS(@lat) * SIN(@d) * COS(@brng));
+      SET @lngRadians = @lon + ATN2(SIN(@brng) * SIN(@d) * COS(@lat), COS(@d) - SIN(@lat) * SIN(@latRadians));
+      SET @ptX = 180.0 * @lngRadians / PI();
+      SET @ptY = 180.0 * @latRadians / PI();
+      SET @pointsStr = @pointsStr + ', ' + LTRIM(STR(@ptX, 25, 16)) + ' ' + LTRIM(STR(@ptY, 25, 16))
+    END
+    SET @i = @i + 1
+  END
+  IF ABS(@angle) &lt; 360
+    SET @pointsStr += ', ' + LTRIM(STR(@X, 25, 16)) + ' ' + LTRIM(STR(@Y, 25, 16))
+  ELSE
+    SET @pointsStr += ', ' + @firstPointsStr
+  RETURN geometry::STPolyFromText('POLYGON ((' + @pointsStr + '))', 0)
+END
+GO
+
+В качестве альтернативы, написана CLR функция, выполняющая те же вычисления. Можно заметить что значительного отличия во времени выполнения этих функций не наблюдается.CLR функция формирования сегмента окружности/// &lt;summary&gt;
+/// Формирует геометрию сектора
+/// &lt;/summary&gt;
+/// &lt;param name="longitude"&gt;&lt;/param&gt;
+/// &lt;param name="latitude"&gt;&lt;/param&gt;
+/// &lt;param name="azimuth"&gt;&lt;/param&gt;
+/// &lt;param name="angle"&gt;&lt;/param&gt;
+/// &lt;param name="radius"&gt;&lt;/param&gt;
+/// &lt;returns&gt;&lt;/returns&gt;
+[Microsoft.SqlServer.Server.SqlFunction]
+public static SqlGeometry DrawGeoSpatialSectorVarAngle(SqlDouble longitude, SqlDouble latitude, SqlDouble azimuth,
+                                                       SqlDouble angle, SqlDouble radius, SqlDouble stepAngle)
+{
+  if (longitude == SqlDouble.Null || latitude == SqlDouble.Null || azimuth == SqlDouble.Null ||
+                angle == SqlDouble.Null || radius == SqlDouble.Null || radius == 0 || angle == 0)
+    return SqlGeometry.Parse("GEOMETRYCOLLECTION EMPTY");           
+  SqlGeometryBuilder builder = new SqlGeometryBuilder();
+  builder.SetSrid(0);
+  builder.BeginGeometry(OpenGisGeometryType.Polygon);           
+  double firstPointLon;
+  double firstPointLat;
+  double sectorStepAngle = (double) stepAngle;
+  const double earthRadius = 6367.0;
+  double lat = (double) latitude;
+  double lon = (double) longitude;
+  double azim = (double) azimuth;
+  double ang = (double) angle;
+  double piRad = (Math.PI/180.0);
+  double tLat = piRad*lat;
+  double tLon = piRad*lon;
+  double distkm = ((double) radius/1000)/earthRadius;
+  double angleStart = azim - ang/2;
+  double angleEnd = azim + ang/2; 
+  var _angle = Math.Abs(ang);
+  if (_angle &gt; 360.0)
+  {
+     angle = 360.0;
+  }
+  int pointCount = (int) Math.Floor(ang/sectorStepAngle);
+  double brng;
+  double latRadians;
+  double lngRadians;
+  double ptX;
+  double ptY;
+  int i = 0; 
+  if (angle &lt; 360.0)
+  {
+    builder.BeginFigure(lon, lat);
+    firstPointLon = lon;
+    firstPointLat = lat;
+  }
+  else
+  {
+    brng = piRad*(angleStart);
+    latRadians = Math.Asin(Math.Sin(tLat)*Math.Cos(distkm) + Math.Cos(tLat)*Math.Sin(distkm)*Math.Cos(brng));
+    lngRadians = tLon +    Math.Atan2(Math.Sin(brng)*Math.Sin(distkm)*Math.Cos(tLat),
+                                        Math.Cos(distkm) - Math.Sin(tLat)*Math.Sin(latRadians));
+    ptX = 180.0*lngRadians/Math.PI;
+    ptY = 180.0*latRadians/Math.PI;
+    builder.BeginFigure(ptX, ptY);
+    firstPointLon = ptX;
+    firstPointLat = ptY;
+  }
+  while (i &lt;= pointCount)
+  { 
+    brng = piRad*(angleStart + i*sectorStepAngle);
+    latRadians = Math.Asin(Math.Sin(tLat)*Math.Cos(distkm) + Math.Cos(tLat)*Math.Sin(distkm)*Math.Cos(brng));
+    lngRadians = tLon +     Math.Atan2(Math.Sin(brng)*Math.Sin(distkm)*Math.Cos(tLat),
+                                        Math.Cos(distkm) - Math.Sin(tLat)*Math.Sin(latRadians));
+    ptX = 180.0*lngRadians/Math.PI;
+    ptY = 180.0*latRadians/Math.PI; 
+    builder.AddLine(ptX, ptY); 
+    i = i + 1;
+  }
+  if (((angleStart + pointCount * sectorStepAngle) &lt; angleEnd))
+  {
+    brng = piRad * (angleEnd);
+    latRadians = Math.Asin(Math.Sin(tLat) * Math.Cos(distkm) + Math.Cos(tLat) * Math.Sin(distkm) * Math.Cos(brng));
+    lngRadians = tLon +   Math.Atan2(Math.Sin(brng) * Math.Sin(distkm) * Math.Cos(tLat),
+                                       Math.Cos(distkm) - Math.Sin(tLat) * Math.Sin(latRadians));
+    ptX = 180.0 * lngRadians / Math.PI;
+    ptY = 180.0 * latRadians / Math.PI;
+    builder.AddLine(ptX, ptY); 
+  }
+  builder.AddLine(firstPointLon, firstPointLat);
+  builder.EndFigure();
+  builder.EndGeometry();
+  return builder.ConstructedGeometry;
+}
+Найдем пересечение геометрии тайла с геометрией нашего ромба (четырёхугольника)DECLARE @bbox GEOMETRY
+DECLARE @octagon GEOMETRY
+SELECT @bbox = [tile].[GetTileBounds](15,19144,9524), 
+@octagon = [tile].[fn_GetCircleSegment](30.3277587890625, 59.952259717159905,0,360,440,90)
+
+Здесь 30.3277587890625, 59.952259717159905 – координаты центра тайла;
+Получим геометрию пересечения, пока ещё с широтой и долготой в координатах:SELECT @bbox.STIntersection(@octagon)
+
+Получаем следующую геометрию:Геометрия пересечения объекта с тайлом с градусами в координатах'POLYGON ((30.3253442162734 59.949509172234684,
+ 30.3301733618516 59.949509172234684,
+ 30.333251953125 59.9510505967796,
+ 30.333251953125 59.953468509045528,
+ 30.330173073498937 59.955010262085125,
+ 30.325344504626063 59.955010262085125,
+ 30.322265625 59.953468509045528,
+ 30.322265625 59.9510505967796,
+ 30.3253442162734 59.949509172234684))'
+
+Будем использовать функции преобразования широты и долготы в пиксели, чтобы получить порядковые номера пикселей на виртуальном плоском полотне карты: Преобразование широты и долготы в X и Y позиции пикселейSELECT [tile].[GetPixelXPosFromLongitude](30.3253442162734,15), [tile].[GetPixelYPosFromLatitude](59.949509172234684,15)
+, [tile].[GetPixelXPosFromLongitude](30.3301733618516,15), [tile].[GetPixelYPosFromLatitude]( 59.949509172234684,15)
+, [tile].[GetPixelXPosFromLongitude](30.333251953125,15), [tile].[GetPixelYPosFromLatitude](  59.9510505967796,15)
+, [tile].[GetPixelXPosFromLongitude](30.333251953125,15), [tile].[GetPixelYPosFromLatitude](  59.953468509045528,15)
+, [tile].[GetPixelXPosFromLongitude](30.330173073498937,15), [tile].[GetPixelYPosFromLatitude](  59.955010262085125,15)
+, [tile].[GetPixelXPosFromLongitude](30.325344504626063,15), [tile].[GetPixelYPosFromLatitude](   59.955010262085125,15)
+,[tile].[GetPixelXPosFromLongitude](30.322265625,15), [tile].[GetPixelYPosFromLatitude](  59.953468509045528,15)
+, [tile].[GetPixelXPosFromLongitude](30.322265625,15), [tile].[GetPixelYPosFromLatitude](  59.9510505967796,15)
+, [tile].[GetPixelXPosFromLongitude](30.3253442162734,15), [tile].[GetPixelYPosFromLatitude](  59.949509172234684,15)
+Полученные номера позиций пикселей для геометрии объектаДолгота
+Широта
+X пиксель 15-ого масштаба
+Y пиксель 15-ого масштаба
+30.3253442162734
+59.949509172234684
+4900936
+2438400
+30.3301733618516
+59.949509172234684
+4901048
+2438400
+30.333251953125
+59.9510505967796
+4901120
+2438328
+30.333251953125
+59.953468509045528
+4901120
+2438216
+30.330173073498937
+59.955010262085125
+4901048
+2438144
+30.325344504626063
+59.955010262085125
+4900936
+2438144
+30.322265625
+59.953468509045528
+4900864
+2438216
+30.322265625
+59.9510505967796
+4900864
+2438328
+30.3253442162734
+59.949509172234684
+4900936
+2438400
+
+По полученным пиксельным координатам сформируем геометрию контура пересечения тайла и геометрии объекта:Геометрия пересечения объекта и тайла с пикселями в координатSELECT GEOMETRY::STGeomFromText('LINESTRING(4900936	2438400,	4901048	2438400,	4901120	2438328,	4901120	2438216,	4901048	2438144,	4900936	2438144,	4900864	2438216,	4900864	2438328,	4900936	2438400
+)',0)
+
+Геометрия (С) формируемая на шаге 3, область подлежащая заливке, выделена зелёным на рисунке 4 ниже. 
+Рисунок 4 – общая область геометрии тайла и геометрии объекта
+Геометрия (D) нам не особенно нужна, больше нас интересует набор линий контура для отрисовки на тайле, его получаем, как описано в шаге 5, вычитанием из контура геометрии (С) геометрии (D), то что получилось выделено синим на рисунке 5.
+Таким образом мы получили область для заливки и набор линий контура для данного тайла.
+Следующая геометрия есть геометрия (E):SELECT GEOMETRY::STGeomFromText('MULTILINESTRING((4901048	2438400,	4901120	2438328),(	4901120	2438216,	4901048	2438144),(	4900936	2438144,	4900864	2438216),	(4900864	2438328,	4900936	2438400)
+)',0)
+
+Рисунок 5 – Контур геометрии для рендеринга (выделен синим)
+Следующий T-SQL скрипт создаёт изображения тайлов в формате PNG и сохраняет в файловую систему по папкам соответствующим дереву Z/X/Y. При отсутствии папки создаются.Сохранение готовых тайлов в файловую системуDECLARE @bbox GEOMETRY
+DECLARE @rhomb GEOMETRY
+DECLARE @image VARBINARY(MAX)
+SELECT @bbox = [tile].[GetTileBounds](15,19144,9524), @rhomb = [tile].[fn_GetSector](30.3277587890625, 59.952259717159905,0,360,440,90)
+SET @image = [tile].[ShapeTile]( @octagon,15,19144,9524,'4400B050','9601B41E',3)
+SELECT[tile].[SaveToFolderByZoomXY](@image,'d:/tiles',15,19144,9524)
+SET @image = [tile].[ShapeTile]( @octagon,15,19143,9524,'4400B050','9601B41E',3)
+SELECT[tile].[SaveToFolderByZoomXY](@image,'d:/tiles',15,19143,9524)
+SET @image = [tile].[ShapeTile]( @octagon,15,19145,9524,'4400B050','9601B41E',3)
+SELECT[tile].[SaveToFolderByZoomXY](@image,'d:/tiles',15,19145,9524)
+SET @image = [tile].[ShapeTile]( @octagon,15,19144,9523,'4400B050','9601B41E',3)
+SELECT[tile].[SaveToFolderByZoomXY](@image,'d:/tiles',15,19144,9523)
+SET @image = [tile].[ShapeTile]( @octagon,15,19144,9525,'4400B050','9601B41E',3)
+SELECT[tile].[SaveToFolderByZoomXY](@image,'d:/tiles',15,19144,9525)
+
+Полученные PNG файлы на рисунке ниже:
+Для создание одного тайла вызываем метод DrawPartObjectShapeOnTile() класса ShapeToTileRendering:Отрисовка части геометрии на указанном тайле/// &lt;summary&gt;
+/// Отрисовка части геометриии на тайле
+/// &lt;/summary&gt;
+/// &lt;param name="shape"&gt;Полная геометрия объекта с градусами в качестве координат&lt;/param&gt;
+/// &lt;param name="X"&gt;X позиция тайла&lt;/param&gt;
+/// &lt;param name="Y"&gt;Y позиция тайла&lt;/param&gt;
+/// &lt;param name="Zoom"&gt;номер уровня масштаба&lt;/param&gt;
+/// &lt;param name="argbFill"&gt;цвет заполнения в формате ARGB&lt;/param&gt;
+/// &lt;param name="argbStroke"&gt;цвет контура&lt;/param&gt;
+/// &lt;param name="strokeWidth"&gt;ширина контура&lt;/param&gt;
+public void DrawPartObjectShapeOnTile(SqlGeometry shape, int X, int Y, int Zoom, string argbFill,
+                                      string argbStroke, int strokeWidth)
+{
+  PasteShapeOnTile(CreateColor(argbFill), CreateColor(argbStroke), strokeWidth,
+    CutPolygonByZoomedPixelZeroTile(shape, X, Y, Zoom));
+}
+
+В метотде PasteShapeOnTile() реализовано рисование списка геометрий на тайле.private void PasteShapeOnTile(Color fillcolor, Color strokecolor, int width, List&lt;SqlGeometry&gt; geom)
+{
+  SqlGeometry shape = geom[0];
+  int geomnum = (int) shape.STNumGeometries();
+  SqlGeometry stroke = null;
+  SqlGeometry ring;
+  int intnum;
+  if (geom != null)
+  switch (GetOpenGisGeometryType(shape))
+  {
+    case OpenGisGeometryType.LineString:
+    case OpenGisGeometryType.MultiLineString:
+         DrawMultiLineStringBordered2(shape, fillcolor, strokecolor, width, 1);
+         break;
+    case OpenGisGeometryType.Polygon:
+         intnum = (int) shape.STNumInteriorRing();
+         ring = shape.STExteriorRing();
+         // 1. Рисуем полигон без внутренних колец
+         FillPolygonOnTile(fillcolor, ring.ToPointsArray());
+         // 2. Рисуем внутренние кольца
+         if (geomnum &gt;= 1) stroke = geom[1];
+         for (int i = 1; i &lt;= intnum; i++)
+         {
+           FillTransparentPolygonOnTile(shape.STInteriorRingN(i).ToPointsArray());
+         }
+         // 3. Рисуем контур
+         if (geom.Count &gt; 1)
+         {
+           stroke = geom[1];
+           DrawContourOnTile(stroke, strokecolor, width);
+         }
+         break;
+    case OpenGisGeometryType.MultiPolygon:
+         break;
+  }
+}
+
+Пункты 3-7, то есть получение заполняемой области и линий контура для указанного тайла, реализованы в методе CutPolygonByZoomedPixelZeroTile(), где используем уже пиксели в качестве координат./// &lt;summary&gt;
+/// Формирует пересечение геометрии и полигона с контуром в виде границе тайла
+/// &lt;/summary&gt;
+/// &lt;param name="poly"&gt;&lt;/param&gt;
+/// &lt;param name="X"&gt;&lt;/param&gt;
+/// &lt;param name="Y"&gt;&lt;/param&gt;
+/// &lt;param name="Z"&gt;&lt;/param&gt;
+/// &lt;returns&gt;Возвращает пересечение геометрии и полигона с контуром в виде границе тайла&lt;/returns&gt;
+private List&lt;SqlGeometry&gt; CutPolygonByZoomedPixelZeroTile(SqlGeometry poly, int X, int Y, int Z)
+{
+  return CutZoomedPixelPolygonByZeroTile(_parser.ConvertToZoomedPixelZeroedByTileGeometry(poly,Z,X,Y);
+}
+
+В классе GeometryParser реализованы методы преобразования градусов в пиксели карты и затем выполняется «обнуление» — получение относительных пиксельных координат для тайла в позиции X, Y. То есть опредеяются пиксельные координаты для нулевого тайла, для этого вычитаем пиксельные координаты левого верхнего пикселя целевого тайла из каждой координаты геометрии:/// &lt;summary
+///  Выполняем преобразование градусов в пиксели и смещаем координаты на нулевой  тайл    
+/// &lt;/summary&gt;
+/// &lt;param name="shape"&gt;геометрия с градусами в координатах&lt;/param&gt;
+/// &lt;param name="zoom"&gt;номер уровня масштаба&lt;/param&gt;
+/// &lt;param name="tileX"&gt; Х позиция тайла&lt;/param&gt;
+/// &lt;param name="tileY"&gt;Y позиция тайла&lt;/param&gt;
+/// &lt;returns&gt;Возвращает геометрию с пикселями в координатах на нулевом тайле&lt;/returns&gt;
+public SqlGeometry ConvertToZoomedPixelZeroedByTileGeometry(SqlGeometry shape,int zoom,
+         int tileX,int tileY)
+{
+  return CreateGeometryFromZoomedPixelInfo
+          (ConvertToGeometryZoomedPixelsZeroTileShiftedInfo( GetGeometryInfo(shape), zoom, tileX, tileY));
+}
+
+/// &lt;summary
+///  Выполняем преобразование градусов в пиксели и смещаем координаты на нулевой  тайл    
+/// &lt;/summary&gt;
+/// &lt;param name="info"&gt;Информация о экземпляре геометрии&lt;/param&gt;
+/// &lt;param name="zoom"&gt;номер уровня масштаба&lt;/param&gt;
+/// &lt;param name="x"&gt; Х позиция тайла&lt;/param&gt;
+/// &lt;param name="y"&gt;Y позиция тайла&lt;/param&gt;
+/// &lt;returns&gt;Возвращает информацию о пиксельной геометрии на нулевом тайле&lt;/returns&gt;
+private GeometryZoomedPixelsInfo ConvertToGeometryZoomedPixelsZeroTileShiftedInfo
+(GeometryInstanceInfo info, int zoom, int x, int y)
+{
+  int tilezeroshiftX = x*TILE_SIZE;
+  int tilezeroshiftY = y*TILE_SIZE;
+  var result = new GeometryZoomedPixelsInfo();
+  var pixelCoordsListList = new List&lt;List&lt;GeometryPixelCoords&gt;&gt;();
+  var geomPixCoordsList = new List&lt;GeometryPixelCoords&gt;();
+  var coords = new GeometryPixelCoords {InnerRing = false};
+  OpenGisGeometryType type = info.ShapeType;
+  result.ShapeType = type;
+  switch (type)
+  {
+    case OpenGisGeometryType.Point:
+         PointF[] geopoints = info.Points[0][0].PointList;
+         coords.PixelCoordList = new[]
+           {new Point{X = _conv.FromLongitudeToXPixel(geopoints[0].X, zoom) - tilezeroshiftX,
+                      Y = _conv.FromLatitudeToYPixel(geopoints[0].Y, zoom) - tilezeroshiftY }
+           };
+         geomPixCoordsList.Add(coords);
+         pixelCoordsListList.Add(geomPixCoordsList);
+         break;
+    case OpenGisGeometryType.LineString:
+         coords.PixelCoordList = 
+            GetPixelCoordsShifted(
+              info.Points[0][0].PointList,
+              zoom,
+              tilezeroshiftX,
+              tilezeroshiftY);
+         geomPixCoordsList.Add(coords);
+         pixelCoordsListList.Add(geomPixCoordsList);
+         break;
+    case OpenGisGeometryType.Polygon:
+         foreach (var list in info.Points)
+           foreach (GeometryPointSequence pointseq in list)
+           {
+             coords.PixelCoordList = 
+               GetPixelCoordsShifted(pointseq.PointList, zoom, tilezeroshiftX, tilezeroshiftY);
+               coords.InnerRing = pointseq.InnerRing;
+               geomPixCoordsList.Add(coords);
+           }
+         pixelCoordsListList.Add(geomPixCoordsList);
+         break;
+    case OpenGisGeometryType.MultiPoint:
+    case OpenGisGeometryType.MultiLineString:
+    case OpenGisGeometryType.MultiPolygon:
+         pixelCoordsListList = 
+         GetGeometryPixelCoordsShifted(info.Points, zoom, tilezeroshiftX, tilezeroshiftY);
+         break;
+    case OpenGisGeometryType.GeometryCollection:
+         GeometryInstanceInfo[] geomColl = info.GeometryInstanceInfoCollection;
+         int n = info.GeometryInstanceInfoCollection.Length;
+         var geomPixZoomInfoCollection = new GeometryZoomedPixelsInfo[n];
+         for (int i = 0; i &lt; n; i++)
+         {
+             var geom = new GeometryZoomedPixelsInfo();
+             geom.ShapeType = geomColl[i].ShapeType;
+             geom.Points = 
+             GetGeometryPixelCoordsShifted(geomColl[i].Points, zoom, tilezeroshiftX, tilezeroshiftY);
+             geomPixZoomInfoCollection[i] = geom;
+         }
+         result.GeometryInstanceInfoCollection = geomPixZoomInfoCollection;
+         break;
+    }
+    if (type != OpenGisGeometryType.GeometryCollection) result.Points = pixelCoordsListList;
+  return result;
+}
+
+В классе ShapeToTileRendering реализован метод CutZoomedPixelPolygonByZeroTile(). В методе мы выполняем обрезку геометрии по границе тайла. Обратим внимание, что в параметре poly передаётся геометрия с координатами, отсчитываемыми от левого верхнего пикселя целевого тайла. private List&lt;SqlGeometry&gt; CutZoomedPixelPolygonByZeroTile(SqlGeometry poly, int X, int Y)
+        {
+            List&lt;SqlGeometry&gt; result = new List&lt;SqlGeometry&gt;();
+            SqlGeometry stroke = null;
+            SqlGeometry contour;
+            SqlGeometry tileLineString;
+            SqlGeometry tobecut;
+            SqlGeometry tile = _conv.GetTilePixelBound(0, 0, 1);
+            var tiled = poly.STIntersection(tile);
+            result.Add(tiled);
+            switch (GetOpenGisGeometryType(tiled))
+            {
+                case OpenGisGeometryType.Polygon:
+                    // Получаем контур полигона и внутренние кольца в виде MULTILINESTRING
+                    contour = PolygonToMultiLineString(tiled);
+                    // удаляем линии среза геометрии по границе тайла
+                    tileLineString = tile.ToLineString();
+                    tobecut = contour.STIntersection(tileLineString);
+                    stroke = contour.STDifference(tobecut);
+                    break;
+                case OpenGisGeometryType.MultiPolygon:
+                    // Получаем контур полигона и внутренние кольца в виде MULTILINESTRING
+                    contour = MultiPolygonToMultiLineString(tiled);
+                    // удаляем линии среза геометрии по границе тайла
+                    tileLineString = tile.ToLineString();
+                    tobecut = contour.STIntersection(tileLineString);
+                    stroke = contour.STDifference(tobecut);
+                    break;
+            }
+            result.Add(stroke);
+            return result;
+        }
+
+Теперь осталось автоматизировать процесс формирования тайлов для объектов по списку. Процедура tile.FillShapeTiles формирует список тайлов для рендеринга, по геометрии передаваемой в параметре @GeoData и сохраняет сформированные тайлы в файловую систему по указанному в параметре @FolderPath пути. 
+В процедуре используются следующие импортированные в БД CLR функции: tile.ShapeTile();
+tile.SaveToFolderByZoomXY()
+.
+Функции реализованы в классе BitmapFunctions SQL CLR библиотеки SqlBitmapOperation:
+Функция ShapeTile() возвращает PNG картинку тайла с изображением части объекта попадающей на тайл в указанной позиции xTile, yTile:ShapeTile() [SqlFunction]
+    public static SqlBinary ShapeTile(SqlGeometry shape, SqlInt32 zoom,  SqlInt32 xTile, SqlInt32 yTile, SqlString argbFill,SqlString argbStroke,SqlInt32 strokeWidth)
+    {
+        SqlBinary result = null;
+        using (ShapeToTileRendering paster = new ShapeToTileRendering())
+        {
+            using (MemoryStream ms = new MemoryStream())
+            {
+                try
+                {
+                    paster.DrawPartObjectShapeOnTile(shape, (int) xTile, (int) yTile, (int) zoom, argbFill.ToString(),
+                                                     argbStroke.ToString(), (int) strokeWidth);
+                    result = paster.GetBytes();
+                }
+                catch (System.Exception ex)
+                {
+                    string innerMessage = ex.InnerException.Message;
+                    throw new Exception(string.Format("zoom: {1}; X:{2}; Y:{3} {0} , inner: {4}", shape, zoom, xTile,yTile, innerMessage));
+                }
+                return result;
+            }
+        }            
+    }
+
+Библиотека SqlBitmapOperation использует методы реализованные в библиотеке TileRendering.
+Библиотека .NET TileRendering использует следующие .NET библиотеки:System
+Microsoft.SqlServer.Types
+System.Drawing
+msdn.microsoft.com/en-us/library/ms345099.aspx
+После компиляции библиотек SqlBitmapOperation и TileRendering , их необходимо импортировать в базу данных из файловой системы, предварительно импортировав используемые ими библиотеки:Импорт библиотек в базу данных из файловой системыCREATE ASSEMBLY [Microsoft.SqlServer.Types]
+AUTHORIZATION [dbo]
+FROM 'd:\SQLCLR\BIN\TileRendering\Microsoft.SqlServer.Types.dll'
+WITH PERMISSION_SET = UNSAFE
+GO
+CREATE ASSEMBLY [System.Drawing]
+AUTHORIZATION [dbo]
+FROM 'd:\SQLCLR\BIN\TileRendering\ System.Drawing.dll'
+WITH PERMISSION_SET = UNSAFE
+GO
+CREATE ASSEMBLY [TileRendering]
+AUTHORIZATION [dbo]
+FROM 'd:\SQLCLR\BIN\TileRendering\TileRendering.dll'
+WITH PERMISSION_SET = UNSAFE
+GO
+CREATE ASSEMBLY nQuant.Core
+FROM 'd:\SQLCLR\BIN\TileRendering\ nQuant.Core.dll'
+WITH PERMISSION_SET = UNSAFE
+GO
+CREATE ASSEMBLY SqlBitmapOperation
+FROM 'd:\SQLCLR\BIN\TileRendering\SqlBitmapOperation.dll'
+WITH PERMISSION_SET = UNSAFE
+GO
+SqlBitmapOperation использует библиотеку nQuant.Core в исследовательских целях. Эта библиотека позволяет создавать PNG картинки в формате 8 бит на пиксель с использованием палитры. 
+Поскольку мы пользуемся типом SqlGeometry и другими методами библиотеки Microsoft.SqlServer.Types в наших функциях, то Microsoft.SqlServer.Types должна быть также импортирована в БД.System.Drawing – это обёртка для библиотеки GDI+ c неуправляемым кодом, возможно поэтому приходится использовать уровень доступа EXTERNAL_ACCESS для импортируемых библиотек, использующих методы из Sytem.Drawing. При таком уровне доступа для библиотеки необходимо создавать ассиметричный ключ, или разрешить импортировать сборки с правами доступа EXTERNAL_ACCESS или UNSAFE выполнив следующий T-SQL скрипт:ALTER DATABASE [dataBaseName] SET TRUSTWORTHY ON; 
+
+После импорта CLR сборок в базу данных, можно объявить функции, чтобы их можно было вызывать в хранимых процедурах:Объявление функций на стороне базы данныхCREATE AGGREGATE [tile].[TileAgg]
+(@Value [varbinary](max))
+RETURNS[varbinary](max)
+EXTERNAL NAME [SqlBitmapOperation].[TileAgg]
+GO
+  
+CREATE AGGREGATE [tile].[IconTileAgg]
+(@Value [varbinary](max), @PixelX [int], @PixelY [int])
+RETURNS[varbinary](max)
+EXTERNAL NAME [SqlBitmapOperation].[IconTileAgg]
+GO
+CREATE FUNCTION [tile].[IconTile](@image [varbinary](max), @zoom [int], @Lon [float], @Lat [float], @xTile [int], @yTile [int], @scale [float])
+RETURNS [varbinary](max) WITH EXECUTE AS CALLER
+AS 
+EXTERNAL NAME [SqlBitmapOperation].[BitmapFunctions].[IconTile]
+GO
+--ShapeTile(SqlGeometry shape, SqlInt32 zoom,  SqlInt32 xTile, SqlInt32 yTile, SqlString argbFill,SqlString argbStroke,SqlInt32 strokeWidth)
+CREATE FUNCTION [tile].[ShapeTile](@shape GEOMETRY, @zoom [int], @xTile [int], @yTile [int], @argbFill NVARCHAR(10),@argbStroke NVARCHAR(10), @strokeWidth INT)
+RETURNS [varbinary](max) WITH EXECUTE AS CALLER
+AS 
+EXTERNAL NAME [SqlBitmapOperation].[BitmapFunctions].[ShapeTile]
+GO
+--SaveToFolderByZoomXY(SqlBinary image, SqlString rootFolderPath, SqlInt32 Zoom, SqlInt32 X,SqlInt32 Y)
+CREATE FUNCTION tile.SaveToFolderByZoomXY(@image VARBINARY(MAX),@rootFolderPat NVARCHAR(512) , @Zoom [int], @xTile [int], @yTile [int])
+RETURNS BIT WITH EXECUTE AS CALLER
+AS 
+EXTERNAL NAME [SqlBitmapOperation].[BitmapFunctions].[SaveToFolderByZoomXY]
+GO
+
+Класс ShapeToTileRendering предназначен для отображения геометрии на тайле. Перед отрисовкой геометрия из сферических координат проекции 4326 преобразуется в пиксельные координаты соответствующего масштаба. Эти преобразования реализованы в классе GeometryParser, который формирует геометрию уже в проекции PSG3857, готовую к отображению на тайле.Метод PastShapeOnTile размещает геометрию, переданную в параметре geom на изображении тайла. Размер изображения в нашем случае 256 пикселей на всех уровнях масштаба.Размещение подготовленной геометрии на тайле      void PasteShapeOnTile(Color fillcolor,Color strokecolor, int width, List&lt;SqlGeometry&gt; geom)
+        {           
+            SqlGeometry shape = geom[0];
+            int geomnum = (int)shape.STNumGeometries();
+          
+            SqlGeometry stroke = null;           
+            SqlGeometry ring;
+            int intnum;
+          if  (geom != null)
+            switch (GetOpenGisGeometryType(shape))
+            {
+                case OpenGisGeometryType.LineString:
+                case OpenGisGeometryType.MultiLineString:
+                    DrawMultiLineStringBordered2(shape, fillcolor, strokecolor, width, 1);
+                    break;
+                case OpenGisGeometryType.Polygon:
+                   
+                    intnum = (int)shape.STNumInteriorRing();                   
+                    ring = shape.STExteriorRing();
+                        // 1. рисуем полигон без внутренних колец
+                        FillPolygonOnTile(fillcolor, ring.ToPointsArray());
+                        // 2. рисуем внутренние кольца
+                        if (geomnum &gt;= 1) stroke = geom[1];  
+                        for (int i = 1; i &lt;= intnum; i++)
+                        {
+                            FillTransparentPolygonOnTile(shape.STInteriorRingN(i).ToPointsArray());
+                        }
+                        // 3. рисуем контур
+                        if (geom.Count &gt; 1)
+                        {
+                            stroke = geom[1];
+                            DrawContourOnTile(stroke, strokecolor, width);
+                        }
+                        break;
+                case OpenGisGeometryType.MultiPolygon: break;
+            }                    
+        }
+
+Следующая хранимая процедура tile.FillShapeTiles может быть использована только для формирования тайла одного объекта.Хранимая процедура tile.FillShapeTilesCREATE PROC tile.FillShapeTiles 
+@GeoData GEOMETRY, @fillArgb VARCHAR(20),@strokeArgb VARCHAR(20), @FolderPath NVARCHAR(20), @EndZoom INT = 17, @StartZoom INT = 4, @Thickness INT = 2
+AS BEGIN
+IF @EndZoom &lt; @StartZoom OR @GeoData IS NULL RETURN
+  INSERT INTO tile.tile (Zoom, X,Y,Data)
+  SELECT t.Zoom, t.TileX AS X,t.TileY AS Y, tile.ShapeTile(@GeoData, t.Zoom, t.TileX, t.TileY, @fillArgb, @strokeArgb ,@Thickness) AS Data						
+  FROM (SELECT * FROM  tile.fn_FetchGeometryTilesZoomDepth(@GeoData,@StartZoom, @EndZoom - @StartZoom)) t											
+  SELECT tile.SaveToFolderByZoomXY   (Data, @FolderPath	,Zoom,X,Y) FROM	tile.Tile		
+END
+
+Если объектов несколько, более 100 000 например, то на один тайл придётся проецировать несколько объектов. То есть будет необходимо накладывать тайлы для разных объектов друг на друга. Отдадим эту задачу серверу базы данных, то есть будем использовать CLR функцию агрегат. 
+Процедура tile.FillShapeTilesIntersection() использует CLR функцию tile.ShapeTile() для формирования образа в формате .PNG по полученой геометрии, координатам тайла и стилю отрисовки. Предполагается наличие этой CLR функции в базе данных. Для объединения тайлов, используется CLR агрегат tile.TileAgg(@Data VARBINARY(MAX)), принимающий в качестве параметра двоичный образ тайла в .PNG формате, тайлы хранятся в полях типа VABINARY(MAX).
+В любой CLR функции агрегирования должны присутствовать следующие методы:Init();
+Accumulate(value);
+Merge(Agg);
+Terminate()
+Реализация SQL CLR агрегата//------------------------------------------------------------------------------
+// &lt;copyright file="CSSqlAggregate.cs" company="Microsoft"&gt;
+//     Copyright (c) Microsoft Corporation.  All rights reserved.
+// &lt;/copyright&gt;
+//------------------------------------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Data.SqlTypes;
+using Microsoft.SqlServer.Server;
+using TileRendering;
+using System.IO;
+using System.Drawing;
+using System.Drawing.Imaging;
+ 
+ [Serializable]
+[SqlUserDefinedAggregate(Format.UserDefined, IsInvariantToDuplicates = true, IsInvariantToNulls = true, IsInvariantToOrder = false, IsNullIfEmpty = false, MaxByteSize = -1)]
+public struct TileAgg : IBinarySerialize
+{
+     Bitmap _bitmap;
+    ImageFormat _format;
+    Graphics _graphics;
+    ImageCodecInfo _codecInfo;
+    const int TILE_SIZE = 256;
+    Bitmap GetInitialTile()
+    { 
+        Bitmap DrawArea = new Bitmap(TILE_SIZE, TILE_SIZE); 
+        using (Graphics xGraph = Graphics.FromImage(DrawArea))
+        {
+            xGraph.FillRectangle(Brushes.Transparent, 0, 0, TILE_SIZE, TILE_SIZE);
+            _graphics = Graphics.FromImage(DrawArea);
+            return DrawArea;
+        }
+    }
+  
+    #region [Aggregate artifacts]
+ 
+      public void Init()
+    {
+        _codecInfo = GetEncoderInfo("image/png");
+        _bitmap = GetInitialTile();
+        DetectFormat();
+    }
+ 
+    public void Accumulate(SqlBinary Value)
+    { 
+        using (MemoryStream ms = new MemoryStream())
+        {
+            ms.Write(Value.Value, 0, Value.Length);
+            ms.Seek(0, SeekOrigin.Begin);
+            ms.Position = 0;          
+            PasteFromStreamImageToTile( ms);
+        }
+    }
+ 
+     public void Merge(TileAgg Group)
+    {
+        PasteGroup(Group.Terminate());
+    }
+ 
+    public SqlBinary Terminate()
+    {
+        return GetBytes();
+    }
+ 
+#endregion [Aggregate artifacts]
+ 
+    void PasteFromStreamImageToTile( Stream stream)
+    {
+        using (Bitmap iconImage = new Bitmap(stream, false))
+        {
+            DetectFormat();
+            int width = iconImage.Width;
+            int height = iconImage.Height;
+            var area = new Rectangle(0, 0, width, height);
+            CopyRegionIntoImage(iconImage,area, area);
+        }
+    }
+ 
+     void CopyRegionIntoImage(Bitmap srcBitmap, Rectangle srcRegion, Rectangle destRegion)
+    {
+        _graphics.DrawImage(srcBitmap, destRegion, srcRegion, GraphicsUnit.Pixel);
+        srcBitmap.Dispose();
+    }
+  
+    void PasteGroup(SqlBinary Value)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        {
+            ms.Write(Value.Value, 0, Value.Length);
+            ms.Seek(0, SeekOrigin.Begin);
+            ms.Position = 0;
+            PasteTile(ms);
+        }
+    }
+ 
+    void PasteTile(Stream stream)
+    {
+        Rectangle bounds = new Rectangle(0, 0, TILE_SIZE, TILE_SIZE);
+        CopyRegionIntoImage(new Bitmap(stream), bounds, bounds);
+    }
+ 
+    byte[] GetBytes()
+    {
+        return _bitmap.ToByteArray(ImageFormat.Png);
+    }
+ 
+    #region [IBinarySerialize]
+    public void Read(BinaryReader reader)
+    {
+        _bitmap = new Bitmap(new MemoryStream(reader.ReadBytes((int)reader.BaseStream.Length)));
+        DetectFormat();
+    }
+ 
+    public void Write(BinaryWriter writer)
+    {
+        EncoderParameters encodeParams = new EncoderParameters(1);
+        encodeParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 100);
+        _bitmap.Save(writer.BaseStream, _codecInfo, encodeParams);
+    }
+    #endregion [IBinarySerialize]
+ 
+    /// &lt;summary&gt;
+    /// определяет формат образа
+    /// &lt;/summary&gt;
+    void DetectFormat()
+    {
+        _format = _bitmap.GetImageFormat();
+    }
+ 
+     ImageCodecInfo GetEncoderInfo(string mimeType)
+    {
+        //выполнить независимый от регистра поиск
+        string lookupKey = mimeType.ToLower();
+         ImageCodecInfo foundCodec = null;
+        Dictionary&lt;string, ImageCodecInfo&gt; encoders = Encoders();
+         if (encoders.ContainsKey(lookupKey))
+        {
+            //получить кодек из списка
+            foundCodec = encoders[lookupKey];
+        }
+         return foundCodec;
+    }
+ 
+    private Dictionary&lt;string, ImageCodecInfo&gt; Encoders()
+    {
+        Dictionary&lt;string, ImageCodecInfo&gt; encoders = new Dictionary&lt;string, ImageCodecInfo&gt;();             
+        foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
+        {
+                        encoders.Add(codec.MimeType.ToLower(), codec);
+        }
+        return encoders; 
+    }
+}
+
+ Хранимая процедура tile.FillShapeTilesIntersection в качестве исходных данных использует таблицы tile.Shape. В параметре  @StartZoom – начальный масштаб,  @EndZoom — конечный масштаб. В полях tile.Shapes.fillArgb и tile.Shapes.strokeArgb хранится цвет заливки и цвет контура. Используем следующий формат: AARRGGBB,
+где AA – альфа канал (прозрачность), RR – красный компонент, GG — зелёный комполнент, BB – синий компонент в шестнадцатеричном представлении. Например: DDDDFFDD. Формирование тайлов для набора объектовCREATE PROC tile.FillShapeTilesIntersection( @StartZoom INT, @EndZoom INT)
+AS
+BEGIN
+DECLARE @Shape GEOMETRY   
+DECLARE @CurrentZoom INT
+DECLARE @ObjectTypeID INT
+DECLARE @fillArgb NVARCHAR(10), @strokeArgb NVARCHAR(10)            
+IF @ObjectTypeID IS NOT NULL
+BEGIN        
+  SET @CurrentZoom = @StartZoom                                        
+  DECLARE shape_cursor CURSOR FOR 
+  SELECT o.Shape, fillARGB, strokeARGB
+  FROM tile.Shape o                                                   
+  OPEN shape_cursor  
+  FETCH NEXT FROM shape_cursor INTO @Shape, @fillArgb, @strokeArgb                                        
+  WHILE @@FETCH_STATUS = 0
+  BEGIN
+    SET @CurrentZoom = @StartZoom
+    WHILE @CurrentZoom  &lt;= @EndZoom
+    BEGIN
+      INSERT INTO tile.tileOverlap (Zoom, X,Y,Data)
+      SELECT t.Zoom, t.TileX AS X,t.TileY AS Y, 
+             tile.ShapeTile(@Shape, t.Zoom, t.TileX, t.TileY, @fillArgb, @strokeArgb ,2) AS Data
+      FROM (SELECT * FROM  tile.fn_FetchGeometryTiles(@Shape,@CurrentZoom)) t                                 
+      SET @CurrentZoom = @CurrentZoom + 1
+    END                              
+    FETCH NEXT FROM shape_cursor INTO @Shape, @fillArgb, @strokeArgb 
+  END
+  CLOSE shape_cursor;
+  DEALLOCATE shape_cursor;                     
+  DELETE tile.TileOverlap
+  END
+END
+Заключение
+Подводя итог, следует отметить, что библиотека формирования тайлов, описанная здесь является лишь прототипом. Конечно генерация тайлов на стороне базы данных — довольно странный подход, и существует много педпочтительных альтернатив. Но если кто-то дочитал до конца эту статью, то теперь имеет представление о устройстве тайловой модели электронной карты и знает как использовать пространственные типы данных SQL Server. Исходный код библиотеки на githubИсходный код библиотеки и бэкап базы данных 3.5Мб
+
+      
+      
+    

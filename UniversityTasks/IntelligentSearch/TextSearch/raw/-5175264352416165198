@@ -1,0 +1,231 @@
+﻿#TITLE:Псевдостриминг mp4 в nginx с каналом 7Gbit/s
+
+      Предыстория:
+Есть площадка с видео контентом, где посещаемость около 500 тысяч уников в сутки. Видео у себя не хранили, а любезно заимствовали с сайтов «партнеров». Ну как заимствовали: в реальном времени парсили с сайта ссылки на видеопотоки и вставляли в свой плеер.
+В такой схеме было несколько ключевых проблем: Нужно поддерживать работоспособность парсеров в режиме 24/7 для всех сайтов партнеров, а их не один десяток;
+Видео иногда удаляются;
+После определённой нагрузки, а иногда спонтанно, некоторые видео начинают требовать ретрансляции.
+
+В определённый момент поняли, что так жить больше нельзя и нужно раздавать видео со своих серверов. По примерной оценке размер видео был 4-5TB и максимальный порт в час пик около 5-7Gbit/s (после запуска цифры оказались примерно такими же).Кратко о структуре 
+Главный сервер: Хранит все видео;
+Отвечает за загрузку видео с сайта партнера;
+Распределяет видео по раздающим серверам;
+Считает статистику популярности видео;
+Отдает плей-листы для плеера;
+Является балансировщиком для выбора раздающего сервера;
+
+Раздающий сервер: Раздает видео.
+Видео — это все качества (240, 360, 480 и 720) одного видео + фото заставки. Все видео конвертируем в mp4 (H.264 видео и AAC аудио), фото заставки в jpeg.
+Все сервера имеют две сетевые карты, каждая с портом 1Gbit/s. Внешняя сетевая карта для раздачи, а внутренняя для распределения видео с главного на раздающие сервера.
+Главный сервер один, а раздающих может быть любое количество. Раздающие сервера объедены в группы и один сервер может принадлежать только одной группе. Видео может входить только в одну группу. При запросе видео, балансировка идет только между серверами группы, к которой принадлежит запрашиваемое видео.
+Бэкенд реализован на yii2.Загрузка нового видео
+На главный сервер прилетает запрос по API с ссылкой на видео, которое нужно скачать. Если видео поддается парсингу, то оно добавляется в стек на скачивание. После скачивания оно попадает в стек для распределения на раздающие сервера. Перед загрузкой на раздающий сервер для видео выбирается группа (выбирается один раз и больше не меняется).
+На данный момент, группа выбирается банальным образом. Идет равномерное распределение по количеству видео. Так как размер видео разный, то если группа заполнена под завязку то она выпадает из дальнейшего распределения.
+После скачивания видео оно конвертируется в mp4 (H.264 видео и AAC аудио) с помощью ffmpeg. Чтобы видео быстро стартовало в плеере его нужно прогнать через MP4Box. Это необходимо из-за того, что ffmpeg помещает “moov-атомы” (мета-информацию о видео) в конец файла, однако, чтобы пользователь имел возможность просматривать видео не дожидаясь его полной загрузки, эти атомы должны быть вначале файла.
+Скачивание файлов на главный сервер и их распределение по раздающим серверам работает в несколько потоков. При этом видео скачивается параллельно во всех качествах.
+Для многопоточности использую стек для заданий (FIFO) + демон, который поддерживает нужное количество потоков. Поток – это запущенный демоном php через exec. Все добро сделал велосипедом компонентом для yii2. Если будет интересно, то оформлю в рамках отдельной статьи.
+Как только, хотябы одно качество, видео загрузится на все раздающие сервера в своей группе оно становится доступным для стриминга.Хранение видео
+Рассмотрим хранения файлов на примере видео с id = 3044: videoHash – это md5(id) videoHashChar2 – первые два символа от videoHash quality – качество видео (240, 360, 480, 720) storage/image/&lt;b&gt;{videoHashChar2}&lt;/b&gt;/&lt;b&gt;{videoHash}&lt;/b&gt;.jpg  
+storage/video/&lt;b&gt;{videoHashChar2}&lt;/b&gt;/&lt;b&gt;{videoHash}&lt;/b&gt;.&lt;b&gt;{quality}&lt;/b&gt;.mp4  
+ 
+md5(3044) = b8af7d0fbf094517781e0382102d7b27 
+storage/image/b8/b8af7d0fbf094517781e0382102d7b27.jpg 
+storage/video/b8/b8af7d0fbf094517781e0382102d7b27.240.mp4 
+… 
+storage/video/b8/b8af7d0fbf094517781e0382102d7b27.720.mp4
+Дополнительная иерархия в виде videoHashChar2 нужна, чтобы избежать тормозов с большим количеством файлов в одной директории.
+Структура хранения файлов на главном и раздающем сервере одинаковая. Для удобства загрузки файлов на раздающие сервера они смонтированы на главный сервер через nfs по локальной сети.Защита ссылок
+Все ссылки закреплены за пользователем и имеют ограниченный срок жизни. Пример ссылок:XXX.XXX.XXX.XXX/balancer/play-list/6875?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f 
+XXX.XXX.XXX.XXX/balancer/image/6875.jpg?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f 
+XXX.XXX.XXX.XXX/balancer/video/6875.480.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f
+
+XXX.XXX.XXX.XXX/balancer/play-list/&lt;b&gt;{videoId}&lt;/b&gt;?ue=&lt;b&gt;{expires}&lt;/b&gt;&amp;uh=&lt;b&gt;{hash}&lt;/b&gt;
+Параметры: videoId – идентификатор видео; expires – время окончания жизни ссылки; hash – хеш из параметров ссылки, данных пользователя и соли (videoId, expires, salt, ip, UserAgent, …). 
+Если проверка проходит успешно, то выбрасываю для nginx заголовок X-Accel-Redirect. Прямой доступ на видео закрыт директивой internal. Первоначально хотел использовать ngx_http_secure_link_module, но для гибкости чтобы не дергуть каждый раз админа перевел проверку на бэкенд.Главный сервер
+Параметры: Hexa Xeon E5-2430v2, 6х2.50GHz, 4x 8TB SATA3 7.200 RPM, 48GB DDR3 ECC;
+CentOS Linux 6;
+Raid 10;
+Порт 1Gbit/s;
+Nginx 1.8 + php-fpm (php 5.6), mysql 5.5.
+Конфиг nginxsplit_clients "${remote_addr}${request_time}${time_local}" $balance_g1_addr { 
+    33% AAA.AAA.AAA.AAA; 
+    33% BBB.BBB.BBB.BBB; 
+    34% CCC.CCC.CCC.CCC; 
+} 
+ 
+split_clients "${remote_addr}${request_time}${time_local}" $balance_g2_addr { 
+    33% DDD.DDD.DDD.DDD; 
+    33% EEE.EEE.EEE.EEE; 
+    34% FFF.FFF.FFF.FFF; 
+} 
+ 
+split_clients "${remote_addr}${request_time}${time_local}" $balance_g3_addr { 
+    100% GGG.GGG.GGG.GGG;   
+} 
+ 
+server { 
+    charset utf-8; 
+    client_max_body_size 1024M; 
+    listen XXX.XXX.XXX.XXX:80; 
+    server_name XXX.XXX.XXX.XXX; 
+    root        /home/server/site/web; 
+    index       index.php; 
+    access_log  off; 
+    error_log   /var/log/nginx/servers_error.log; 
+    
+    location / { 
+        try_files $uri $uri/ /index.php?$args; 
+    } 
+    
+    location /storage { 
+        root /home/server; 
+        internal; 
+    } 
+
+    location ~ \.php$ { 
+        include fastcgi_params; 
+        fastcgi_param SCRIPT_FILENAME /home/server/site/web/$fastcgi_script_name; 
+        fastcgi_pass unix:/tmp/server1-fpm.sock; 
+        try_files $uri =404; 
+    } 
+    
+    location ~ /\.(ht|svn|git) { 
+        deny all; 
+    } 
+     
+    location ~ /ds-g1/(.+)$ { 
+        internal; 
+        return 302 "http://$balance_g1_addr/$1?$args"; 
+    } 
+ 
+    location ~ /ds-g2/(.+)$ { 
+        internal; 
+        return 302 "http://$balance_g2_addr/$1?$args"; 
+    } 
+ 
+    location ~ /ds-g3/(.+)$ { 
+        internal; 
+        return 302 "http://$balance_g3_addr/1?$args"; 
+    } 
+
+} 
+
+Баланcировка между раздающими серверами в рамках группы реализована через модуль ngx_http_split_clients_module. Когда запрашивается видео, то на бэкенде определяет к какой группе принадлежит видео и выбрасывает заголовок X-Accel-Redirect.
+Пример: XXX.XXX.XXX.XXX/balancer/video/7190.720.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f
+Если видео с id=7190 принадлежит к группе 2, то заголовок X-Accel-Redirect будет следующим:/ds-g2/sv/7190.720.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f. Потом будет выбран сервер из группы 2 (например EEE.EEE.EEE.EEE) и отправлен редирект 302 Moved Temporarily на EEE.EEE.EEE.EEE/sv/7190.720.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f.
+В нашей конфигурации 3-и группы. Так как все раздающие сервера размером 2TB и портом 1Gbit/s, то с учетом разбивки имеем 6TB полезного места и суммарный порт 7GB. 1 и 2 группа — это суммарный объем 4TB и порт 6Gbit/s. 3 группа – это объем 2TB и порт 1Gbit/s. 
+3 группа особенная, в ней находятся самые непопулярные видео. Данная группа заполняется в полуавтоматическом режиме. Новые ролики распределяются только по первым двум группам, так как они потенциально являются популярными (по крайней мере первое время). Это сделано, чтобы по максимуму использовать место и порт. 
+Если не делать отдельную группу под непопулярные видео, то в других группах быстро закончится свободное место и при этом канал будет загружен не на 100%.
+В группе может быть любое количество серверов. Полезный объем и максимальный размер порта определяется по самому слабому серверу в группе. Группы могут быть с разным объемом и портом.
+Такой маленький объем раздающих серверов в 2TB связан с использованием 4x512GB SSD TLC. Эксперимент с 2x4TB SATA3 7,200 RPM закончился фиаско, так как на них смогли выжать только 0.3Gbit/s, при доступном порте 1Gbit/s.Раздающий сервер
+Параметры: Hexa Xeon E5-2430v2, 6х2.50GHz, 4 x 512GB SSD TLC, 48GB DDR3 ECC;
+CentOS Linux 6;
+Raid 0;
+Порт 1Gbit/s;
+Nginx 1.8 + php-fpm (php 5.6).
+Конфиг nginxserver { 
+    listen       80; 
+    root   /home/user/site/web; 
+    index  index.php; 
+    location ~ \.php$ { 
+        include fastcgi_params; 
+        fastcgi_param SCRIPT_FILENAME /home/user/site/web$fastcgi_script_name; 
+        fastcgi_pass unix:/tmp/upstream1-fpm.sock; 
+    } 
+
+    #image 
+    location ~ ^/si/.+\.jpg$ { 
+        rewrite .* /image.php?$args; 
+    } 
+
+    #video 
+    location ~ ^/sv/.+\.(\d+)\.mp4$ { 
+        rewrite .* /video.php?$args; 
+    }
+
+    location ~ ^/image/.+\.jpg$ {  
+        root /home/user/storage; 
+        internal; 
+    }
+
+    location ~ ^/video/.+\.mp4$ {  
+        root /home/user/storage; 
+        internal; 
+        location ~ \.240\.mp4$ { 
+            mp4; 
+            mp4_buffer_size 1m; 
+            mp4_max_buffer_size 10m; 
+            sendfile on; 
+            tcp_nopush on; 
+            tcp_nodelay on; 
+            expires max; 
+            directio 10m; 
+            limit_rate 96k; 
+            limit_rate_after 3m; 
+        } 
+
+        location ~ \.360\.mp4$ { 
+            mp4; 
+            mp4_buffer_size     4m; 
+            mp4_max_buffer_size 10m; 
+            sendfile on; 
+            tcp_nopush on; 
+            tcp_nodelay on; 
+            expires max; 
+            directio 10m; 
+            limit_rate 256k; 
+            limit_rate_after 10m; 
+        }   
+
+        location ~ \.480\.mp4$ { 
+            mp4;             
+            mp4_buffer_size     8m; 
+            mp4_max_buffer_size 20m; 
+            limit_rate 512k; 
+            sendfile on; 
+            tcp_nopush on; 
+            tcp_nodelay on; 
+            expires max; 
+            directio 10m; 
+            limit_rate_after 10m; 
+        }   
+   
+        location ~ \.720\.mp4$ { 
+            mp4; 
+            mp4_buffer_size     20m; 
+            mp4_max_buffer_size 40m; 
+            sendfile on; 
+            tcp_nopush on; 
+            tcp_nodelay on; 
+            expires max; 
+            directio 10m; 
+            limit_rate 1024m; 
+            limit_rate_after 10m; 
+        } 
+    } 
+} 
+
+Раздача видео реализована через модуль ngx_http_mp4_module для псевдо-стриминга. Чтобы его включить достаточно добавить директиву mp4. 
+Для каждого качества видео задана своя скорость отдачи limit_rate и размер первоночального куска, который будет отдаваться на максимальной скорости limit_rate_after. По коммерческой подписке nginx доступны mp4_limit_rate и mp4_limit_rate_after, которые задаются в секундах (это удобнее в разы, но бюджет на это не предусмотрен).mp4_buffer_size — начальный размер буфера, используемого при обработке mp4-файлов.mp4_max_buffer_size — в ходе обработки метаданных может понадобиться буфер большего размера. Его размер не может превышать указанного, иначе nginx вернёт серверную ошибку 500 (Internal Server Error).sendfile, tcp_nopush, tcp_nodelay – одним словом ускоряет отдачу файлов.directio – задание минимальный размер файла для включения режима чтение без обращение в кеш операционной системы.expires – включение клиентское кеширование.Пример плей-листаXXX.XXX.XXX.XXX/balancer/play-list/7190?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f
+Плей-лист возвращается в формате json:{ 
+  "status": 1, 
+  "data": { 
+    "listVideo": { 
+      "240": "http://XXX.XXX.XXX.XXX/balancer/video/7190.240.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f", 
+      "360": "http://XXX.XXX.XXX.XXX/balancer/video/7190.360.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f", 
+      "480": "http://XXX.XXX.XXX.XXX/balancer/video/7190.480.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f", 
+      "720": "http://XXX.XXX.XXX.XXX/balancer/video/7190.720.mp4?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f" 
+    }, 
+    "img": "http://XXX.XXX.XXX.XXX/balancer/image/7190.jpg?ue=1440614576&amp;uh=0cbd48e20dc2bf396a2eece00cd9ec2f" 
+  } 
+} 
+Ссылки
+Cтриминг видео в «Одноклассниках» — www.highload.ru/2014/abstracts/1636.html 
+Видеохостинг своими руками — habrahabr.ru/post/111249 
+ffmpeg — www.ffmpeg.org 
+MP4Box — gpac.sourceforge.net 
+ngx_http_mp4_module — nginx.org/ru/docs/http/ngx_http_mp4_module.html 
+ngx_http_split_clients_module — nginx.org/ru/docs/http/ngx_http_split_clients_module.html 
+Отдача файлов с помощью nginx — ruhighload.com/index.php/2009/10/31/nginx-dlya-otdaci-failov
+      
+    

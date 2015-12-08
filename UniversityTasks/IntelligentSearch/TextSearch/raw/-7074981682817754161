@@ -1,0 +1,242 @@
+﻿#TITLE:Публикация Android библиотеки в jCenter
+
+      
+В жизни каждого андроид разработчика настаёт момент, когда количество самописных утилит и хелперов, качующих из проекта в проект, переваливает за десяток. В этом случае хорошей практикой будет оформление подобных хелперов в виде самостоятельных «модулей» в терминах Android Studio. Еще лучше, если Вы собираетесь поделиться Вашими наработками с комьюнити, снабдив исходный код подходящей лицензией. Но просто залить исходники на GitHub в этом случае будет недостаточно – хочется, чтобы любой желающий мог подключить библиотеку с помощью однострочной Gradle зависимости, например такой:dependencies {
+   compile 'com.github.romangromov:simpleprefs:0.0.8'
+}
+
+О том, как этого добиться и пойдет речь в данной статье.Как Android Studio подгружает зависимости
+Вместе с выходом Android Studio разработчикам была предложена новая система автоматической сборки проектов Gradle. Теперь, чтобы добавить библиотеку в Ваш проект, достаточно поправить файл build.gradle, указав однострочную зависимость (в рассматриваемом случае она называется Remote Binary Dependency) в блоке dependencies:dependencies {
+   compile 'com.mcxiaoke.volley:library:1.0.16'
+}
+
+После этого Android Studio загрузит указанную библиотеку нужной версии с сервера-хранилища и добавит в проект, что действительно очень удобно. Пожалуй, самыми популярным серверами-хранилищами Java библиотек являются jCenter и Maven Central. Аналогами можно назвать NPM для Node.js, NuGet для .Net, pip для Python и т.д.
+Заглянем в build.gradle, расположенный в корне проекта:buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.2.3'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+Здесь jcenter() указывает, что Android Studio следует искать указанные зависимости в репозиториях jCenter. Аналогичная запись заставит Android Studio искать зависимости на Maven Central:allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+Последние версии Android Studio по умолчанию указывают jCenter — от части это связано с тем, что загрузка библиотеки в Maven Central требует больше усилий со стороны разработчика. jCenter считается крупнейшим хранилищем Java библиотек, но в то же время многие разработчики предпочитают Maven Central. Не стоит забывать, что jCenter и Maven Central являются физически разными серверами, и наличие библиотеки в одном не гарантирует её наличие в другом. 
+Наша задача загрузить библиотеку только в jCenter. Схематично процесс будет выглядеть так:Шаг 0: Выбираем имя будущего пакета библиотеки
+Существует конвенция именования пакетов, которой мы должны придерживаться. Название пакета состоит из 3-ех частей:GROUP_ID:ARTIFACT_ID:VERSIONGROUP_ID: можно представить себе как идентификатор аккаунта, организации или package name, под которым распространяется библиотека или несколько библиотек. GROUP_ID должен быть в формате Reverse FQDN;ARTIFACT_ID: название библиотеки или в терминологии Maven название «артефакта»;VERSION: рекомендуется использовать паттерн вида x.y.z, но допустимо использование любых строковых значений.
+Пример:dependencies {
+  compile 'com.squareup.okhttp:okhttp:2.1.0'
+  compile 'com.squareup.okhttp:okhttp-urlconnection:2.1.0' 
+}
+
+Здесь com.squareup.okhttp это GROUP_ID, под которым распространяется множество библиотек, в частности okhttp и okhttp-urlconnection.Примечание: при выборе GROUP_ID следует иметь в виду, что Вам должен принадлежать выбранный домен. В противном случае возникнут проблемы при его регистрации на Шаге 2.
+В качестве демонстрационного примера я буду использовать тривиальный класс SimplePrefs.java, который упрощает обращение к SharedPreferences. Подразумевается, что Вы можете самостоятельно смастерить из него библиотеку-модуль в Android Studio и разместить исходный код в публичном репозитории.SimplePrefs.javapackage com.romangromov.simpleprefs;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+public class SimplePrefs {
+    private SharedPreferences prefs;
+
+    public SimplePrefs(Context context, String prefsName, int mode) {
+        this.prefs = context.getSharedPreferences(prefsName, mode);
+    }
+
+    public void putString(String key, String value) {
+        prefs.edit().putString(key, value).apply();
+    }
+
+    public String getString(String key) {
+        return prefs.getString(key, null);
+    }
+
+    public void putInt(String key, int value) {
+        prefs.edit().putInt(key, value).apply();
+    }
+
+    public int getInt(String key, int defValue) {
+        return prefs.getInt(key, defValue);
+    }
+
+    public void putLong(String key, long value) {
+        prefs.edit().putLong(key, value).apply();
+    }
+
+    public long getLong(String key, long defValue) {
+        return prefs.getLong(key, defValue);
+    }
+
+    public void putBoolean(String key, boolean value) {
+        prefs.edit().putBoolean(key, value).apply();
+    }
+
+    public boolean getBoolean(String key) {
+        return prefs.getBoolean(key, false);
+    }
+
+    public void clear() {
+        prefs.edit().clear().apply();
+    }
+}
+AndroidManifest.xml&lt;manifest package="com.romangromov.simpleprefs" /&gt;
+
+Поскольку исходный код я буду размещать на Github, то GROUP_ID мне следует выбрать в формате:com.github.&lt;my-cool-username&gt;
+В качестве идентификатора артефакта будем использовать название библиотеки, версию выбираем любую. В моём случае название будущего пакета выглядит так:com.github.romangromov:simpleprefs:0.0.8'Шаг 1: создаем контейнер в Bintray
+Дело в том, что деплой библиотеки в Maven Central это весьма трудоёмкая задача, поэтому существуют сервисы, упрощающие этот процесс. Bintray — это система хранения библиотек, выступающая посредником между jCenter, Mavel Central и другими хранилищами. Ей-то мы и воспользуемся.
+Создаём аккаунт на Bintray (достаточно бесплатного аккаунта) и подготавливаем контейнер, в который будет загружена наша библиотека: в разделе Owned Repositories выбираем Maven:
+Жмём на Add New package:
+Заполняем все поля, не забываем указать выбранную лицензию, жмём Create Package:
+После этого Bintray подготовит наш контейнер:Шаг 2: Регистрируем GROUP_ID с помощью SonatypeSonatype OSS Repository Hosting Service – это доверенное хранилище артефактов для Maven Central. Сервера Maven Central регулярно синхронизируются с OSSRH, и те артефакты, которые пользователь помечает как готовые к релизу, загружаются в центральное хранилище Maven Central. Чтобы зарегистрировать GROUP_ID, от имени которого Вы будете распространять библиотеки, нужно завести issue в их JIRA. После рассмотрения заявки Вам откроют нужный репозиторий на Sonatype, и Вы сможете загрузить артефакт.
+Регистрируемся здесь, открываем и заполняем новую issue:
+Остаётся дождаться ответа, после которого Вам создадут репозитории Sonatype с выбранным GROUP_ID. Мне ответили в течение часа:Мой облом с GROUP_IDизначально я не знал о том, что на GROUP_ID накладываются ограничения и выбрал такой: com.romangromov, на что получил ответ:вот сылка из письма
+После этого я сменил GROUP_ID на предложенный com.github.romangromov и успокоился.
+Нам остаётся связать наш аккаунт Sonatype с Bintray, для этого идём в Настройки Профиля -&gt; Accounts и указываем юзернейм, который зарегистрировали в джире Sonatype:Шаг 3: Настраиваем автоматическую подпись пакетов в Bintray
+Перед загрузкой артефактов в Maven Central они должны быть подписаны цифровой подписью. Bintray позволяет настроить автоматическую подпись новых пакетов или при загрузке обновлений для уже существующих. Для начала необходимо сгененировать приватный и публичный ключ. Стандарной утилитой для шифрования на линуксе является PGP( Pretty Good Privacy). Она бесплатна для частных лиц, но для использования её в коммерческих целях требуется лицензия. Полностью открытый аналог этой программы GnuPG (Gnu Privacy Guard) — делает то же самое, но абсолютно бесплатно.Как установить GPG?Для пользователей Linux: apt-get install gpg, но на моей Ubuntu 14.04 LTS была из коробки;
+Для пользователей Windows: скачать, установить, добавить в PATH.
+Генерируем пару открытый-закрытый ключ:gpg --gen-key
+Здесь Вам предложат выбрать алгоритмы шифрования, указать Ваше полное имя и почтовый адрес, а так же придумать пароль. Оставляем всё по умолчанию, запоминаем почту и пароль, получаем примерно такой результат:
+Нам интересен идентификатор публичного ключа в строке pub: 2048R/&lt;PUBLIC_KEY_ID&gt;. Необходимо загрузить этот PUBLIC_KEY_ID на сервер криптографических ключей, для этого выполним:gpg --keyserver hkp://pool.sks-keyservers.net --send-keys PUBLIC_KEY_ID
+Теперь экспортируем созданную пару ключей в виде текстовых файлов, не забывая подставить значение для почты, которую вы указали на шаге генерации ключей:
+gpg -a --export yourmail@email.com &gt; public_key_sender.asc
+gpg -a --export-secret-key yourmail@email.com &gt; private_key_sender.asc
+
+Появятся два текстовых файла, копируем их содержимое, идём в Настройки Профиля на Bintray, раздел GPG Signing:
+Остаётся поставить галочку, разрешающую автоматическую подпись: снова идём в редактирование профиля и ищем GPG Sign Uploaded files automatically.
+Теперь загружаемые артефакты будут автоматически подписаны в Bintray.
+Подробней можно почитать тут.Шаг 4: настраиваем проект в Android Studio
+Создаём типовой проект, который содержит два модуля:
+1) Модуль библиотеки, SimplePrefsLibrary, который мы будем загружать в jCenter;
+2) Модуль приложения, sample, демонстрирующего возможности библиотеки (не подлежит загрузке).
+Для того, чтобы загрузить нашу библиотеку в Bintray мы воспользуемся плагином bintray-release для Gradle.
+Дело в том, что перед загрузкой библиотеки в Bintray её необходимо снабдить определенными мета-данными, которые соответствуют требованиям jCenter или Maven Central. Чтобы не делать это вручную, мы воспользуемся плагином, который берёт на себя генерацию необходимых мета-файлов.
+Сперва заберём API ключ, который нам любезно предоставляет Bintray: Настройки Профиля -&gt; API Key:
+Теперь идём в build.gradle в корне проекта, добавляем плагин:buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.3.1'
+        classpath 'com.novoda:bintray-release:0.3.4'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+Правим build.gradle для модуля библиотеки:apply plugin: 'com.android.library'
+apply plugin: 'com.novoda.bintray-release'
+
+android {
+    compileSdkVersion 21
+    buildToolsVersion "21.1.2"
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 21
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+}
+
+// это блок будет обработан плагином bintray-release
+publish {
+    groupId = 'com.github.romangromov'
+    artifactId = 'simpleprefs'
+    publishVersion = '0.0.8'
+    desc = 'A small library containing a wrapper for the SharedPreferences of Android'
+    licences = ['MIT']
+    website = 'https://github.com/romangromov/SimplePrefs'
+}
+
+Здесь мы указали необходимые параметры конфигурации maven в Bintray, подробное описание параметров есть на wiki.
+После этого открываем терминал в Android Studio и выполняем:gradlew clean build bintrayUpload -PbintrayUser=&lt;юзернейм на bintray&gt; -PbintrayKey=&lt;api ключ с bintray&gt; -PdryRun=false
+
+Это запустит gradle скрипт сборки проекта и деплой в Bintray, и, если всё в порядке, мы увидим надпись BUILD SUCCESSFUL, иначе читаем сообщение и устраняем ошибки, как правило сообщения внятные/гуглятся.
+Теперь идём в Bintray во вкладку Files и проверяем, загрузился ли пакет:
+Если всё в порядке, то мы увидим содержимое нашего пакета. Отлично, теперь его может загрузить любой желающий! Но на данный момент пакет размещен в нашем персональном Maven репозитории, а не в Maven Central или jCenter. Чтобы его использовать необходимо указывать maven репозиторий автора в явном виде:repositories {
+    maven {
+        url 'https://dl.bintray.com/romangromov/maven/'
+    }
+}
+dependencies {
+    compile 'com.github.romangromov:simpleprefs:0.0.8'
+}
+
+Мне самому не нравятся подобные зависимости, поэтому сразу же избавимся от этого с помощью синхронизации с jCenter (благо это делается в один клик!): идём в Bintray на страницу нашего пакета, жмём вкладку Maven Central и ссылку из всплывающего окна «Add to jCenter».
+Ну вот и всё, после этого будет сформирован запрос на добавление библитеки в jCenter:
+После того, как библиотека добавится в jCenter, появится значок c надписью Linked to jCenter, теперь любой желающий сможет использовать Вашу библиотеку с помощью однострочной зависимости:dependencies {
+   compile 'com.github.romangromov:simpleprefs:0.0.8'
+}
+На этом всё, спасибо за Внимание!
+Исходники проекта на Github.
+Использованные материалы:
+1. inthecheesefactory.com
+2. blog.bintray.com
+3. habrahabr.ru
+4. opennet.ru
+        	
+		
+
+	
+
+		Какой репозиторий Вы предпочитате?
+
+		
+					
+
+
+				
+					jCenter
+				
+			
+					
+
+
+				
+					Maven Central
+				
+			
+					
+
+
+				
+					jitpack.io
+				
+			
+					
+
+
+				
+					собственный сервер
+				
+			Проголосовало 24 человека. Воздержалось 13 человек.
+	
+
+    Только зарегистрированные пользователи могут участвовать в опросе. Войдите, пожалуйста.
+	
+
+      
+    

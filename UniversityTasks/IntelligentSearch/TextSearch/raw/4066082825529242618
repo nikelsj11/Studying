@@ -1,0 +1,163 @@
+﻿#TITLE:Дайджест интересных материалов из мира веб-разработки и IT за последнюю неделю №178 (21 — 27 сентября 2015)
+
+      Предлагаем вашему вниманию подборку с ссылками на полезные ресурсы, интересные материалы и IT-новостиВеб-разработка
+CSS
+Javascript
+Браузеры
+Дизайн
+Новости
+Занимательное
+ Веб-разработкаЯ разработчик, но это не моя страсть
+Сумбурно о разработке писем
+10 частых ошибок начинающих веб-разработчиков
+Руководство по Web Animations API — Часть 3: множественные анимации, Часть 4: групповые и последовательные эффекты
+Сентябрьские новинки W3C
+Почему производительность имеет значение (Why Performance Matters: The Perception Of Time)
+Делаем сайт доступным — интервью со слепым экспертом по доступности (Making Your Website Design Accessible)
+Лучшие уроки по созданию браузерных игр (25 Best Tutorials for Developing HTML5 Web Browser Games)
+Мой текущий процесс разработки рассылочных писем (My Current HTML Email Development Workflow)
+Отладка WebGL и HTML5 в мобильных устройствах с эмуляторами Visual Studio (Debug WebGL and HTML5 Mobile Experiences with Visual Studio Emulators)
+О том, как Pointer Events упростят кросс-браузерную поддержку тач-ивентов (How Pointer Events Will Make Cross-Browser Touch Support Easy)
+Создание сайтов и приложений с RTL-направленностью  (Building RTL-Aware Web Apps &amp; Websites: Part 1)
+Эффектный веб:Еженедельная подборка красивых эффектов на CSS/SVG/JS #5
+SVG Modal Window
+Lavalamp
+Элластичность в индикаторах прогресса (Elastic Progress)
+Часы, составленные из других часов, на чистом CSS 
+Пример использования режимов смешения в CSS для эффектного параллакса
+KeepOut — игра на WebGL (A 3D dungeon adventure)
+
+ CSSИгра на голом HTML / CSS, Игры на CSS. Часть 2: StarCraft
+Приступаем к работе с SCSS-Lint
+Жизнь после CSS3: что нового в CSS… 1?
+Разврат и декаданс text-rendering: optimizeLegibility
+Серия статей о Модульном CSS и Sass
+Глубокое погружение в PostCSS: что вам необходимо знать (PostCSS Deep Dive: What You Need to Know)
+stylesheets — пополняемая коллекция статей о CSS
+W3C опубликовала первые черновики CSS Basic User Interface Module Level 4, CSS Text Module Level 4, CSS Round Display Level 1
+Решение проблемы с длинными словами с помощью CSS (Dealing with long words in CSS)
+Видео: использование CSS классов в Modernizr (Watch: Using Modernizr CSS Classes)
+Современная веб-разметка с flexbox (Modern web layout with flexbox)
+Мобильная навигация для Smashing Magazine: пример (Mobile Navigation For Smashing Magazine: A Case Study)
+Кросс-браузерная настройка внешнего вида с помощью CSS и JS полей типа range (Customising Cross-Browser Range Inputs with CSS and JavaScript)
+Видео: компиляция Sass с grunt-contrib-watch (Watch: Compiling Sass using grunt-contrib-watch)
+Контекст стека в CSS: что это такое и как работает (CSS stacking contexts: What they are and how they work)
+Shift.css — простой фреймворк для создания CSS анимацией
+Создание текстовых масок (How To Do Knockout Text)
+Варианты использования Css Calc
+ JavaScriptПочему именно Vue?
+Лайкли 2.0 — обновился плагин для стилизации социальных кнопок от Ильи Бирмана
+Запуск nginScript и взгляд в будущее (Launching nginScript and Looking Ahead)
+ECMAScript перемещается на GitHub (ECMAScript moves to GitHub)
+ES6:Тонкости модульной системы ECMAScript 2015 (ES6)
+Введение в стрелочные функции ES6 (An Introduction to JavaScript ES6 Arrow Functions)
+ES6 генераторы и асинхронный JavaScript (ES6 Generators and asynchronous javascript)
+Пишите на ES6, а не на Coffee (Make ES6, Not Coffee)
+ Продолжение серии статей от Nicolas Bevacqua о ES6: ES6 Math Additions, ES6 Object Changes, ES6 Strings (and Unicode) , ES6 Array Extensions 
+
+Промисы:Руководство для начинающих по JS промисам (Beginner's Guide to JavaScript promises)
+Promisees — визуализация работы промисов (Promisees — Promise visualization playground for the adventurous)
+awesome-promises — курируемый список ресурсов по промисам в JavaScript
+JavaScript промисы с Node.js (JavaScript Promises with Node.js)
+
+Pro JavaScript Concepts for Enterprise Developers
+Руководство по JS-движкам для идиотов (A Guide to JavaScript Engines for Idiots)
+Конструкторы в JS (Understanding JavaScript Constructors)
+Полезные советы при отладке Javascript, о которых вы не знали (Useful Javascript debugging tips you didn’t know)
+Как сделать сегодня виртуальную реальность в вебе (How to Build VR on the Web Today)
+Изучаем чистый React — без JSX, Flux, ES6, Webpack (Learn Raw React — no JSX, no Flux, no ES6, no Webpack…)
+Уроки:Цикл видео: как написать opensource JavaScript библиотеку (How to Write an Open Source JavaScript Library)
+Создание мобильного приложения с Famo.us и Angular (Create a Mobile App Using Famo.us and Angular)
+Давайте напишем веб расширение (Let’s Write a Web Extension)
+Создание почтового ящика с Gmail JavaScript API (Mastering Your Inbox with the Gmail JavaScript API)
+Создание анимированного слайдера продуктов с Sequence.js (Creating an Animated Product Slider with Sequence.js)
+
+JSCity — визуализация исходного кода JavaScript в виде объемных изображений городов с возможностью навигации (JSCity — visualizing JavaScript source code as navigable 3D cities)
+Создание подсказок с EnjoyHint (Hints Creation with EnjoyHint)
+queryl — язык запросов для выполнения сложного поиска объектов (queryl — query language to perform complex object searches)
+Видео с LvivJS 2015
+Видео с Nordic.js 2015 
+БраузерыВстречайте новый бренд Opera
+Релиз Firefox 41, Немного технических подробностей для веб-разработчиков
+Превью нового инструмента для работы с анимациями в Firefox 43
+Новый Firefox 42 доступен в режиме Beta-теста
+Как работает Хромиум (How Chromium Works)
+ORTC API уже доступно в Microsoft Edge
+Chrome, Firefox, Safari, Opera, Edge? Альтернативы основным браузерам (Chrome, Firefox, Safari, Opera, Edge? Impressive Web Browser Alternatives)
+ ДизайнЗачем Apple придумали и ввели в iOS новый шрифт San Francisco?
+5 правил дизайна под носимые устройства
+Как дизайн помогает приносить чистую воду в Африке
+Атмосферные винтажные кинопостеры
+6 трендов веб-дизайна, о которых вы должны знать в 2015 &amp; 2016
+Коллекция полезных плагинов и интрументов для Photoshop
+99 шуток, которые будут понятны только веб-дизайнерам (99 Jokes Only Web Designers Will Understand)
+Почему негативное мышление положительно сказывается на дизайне (Why Thinking Negatively is Actually Good for Web Design)
+Должны ли вы быть смелыми с своей типографикой? Спросите Mr. Robot.
+Весь веб-дизайн сейчас скучен (Web design is now completely boring)
+Три шага для лучших UI вайрфреймов (3 Steps to Better UI Wireframes)
+Канадский веб-дизайн (Showcasing Web Design From Canada)
+Дизайн цветочного паттерна в Adobe Photoshop (Design a Floral Pattern for Fabric in Adobe Photoshop)
+Spotify на мобильном: что стоило бы улучшить (Spotify mobile: An experience to consider)
+Почему я делаю что-то ужасное каждый день (Why I make something awful, every day)
+Starbucks Android Material Design
+Два урока по использованию обратной связи (Two Lessons For Using Feedback)
+Новый дизайн бренда Opera (Meet the new Opera brand identity)
+Дизайн в Facebook (Design at Facebook)
+Искусство быстрых итераций (The art of iterating quickly)
+Как отображать потоки дискуссий в вебе (How to display threaded discussions on the web)
+Почему вы должны примерять Material Design для вашего следующего проекта (Why you should look at Material Design for your next project.)
+UX/UI вирусного продукта (UX/UI to make your product viral)
+Иллюстрации из фильмов в стиле пиксель-арт и интервью с автором (Pixel Art Movie Scenes – A Q&amp;A with Gustavo Viselner)
+Еще семь советов по ускорению работы с Photoshop от профессионалов (7 MORE Photoshop Master Tips to Speed up Your Workflow)
+Семь отменных плагинов, поднимающих работу со Sketch на новый уровень (7 Fantastic Plugins to Level-up Your Sketch App Powers)
+Sketch-Find-And-Replace — плагин для поиска и замены в Sketch 3
+sketch-palettes — цветовые палитры для Sketch
+Секрет новых шрифтов от Apple — New San Francisco (The Secret of the Apple’s New San Francisco Fonts)
+ Подборка бесплатных дизайнерских печенекБесплатные телевизионные текстуры
+Бесшовные иконочные паттерны (Freebie: Seamless Icon Patterns)
+Паттерны посвященные Дню Всех Святых (Freebie: 10 Vector Halloween Patterns (AI, EPS &amp; JPG))
+Лучшие шаблоны визиток 2015 (40+ Best Free PSD Business Card Templates 2015)
+Прекрасные наборы UI в формате PSD – сентябрь 2015 (27 Wonderful Free PSD UI Kits – September 2015 Edition)
+Мокапы постеров и флаеров за сентябрь 2015 (21 Awesome Free Poster &amp; Flyer Mock-ups – September 2015 Edition)
+PSD с дизайном настроек мобильного приложения (Freebie PSD: iOS 8 Dark App Settings View)
+Векторная графика на различную тематику (25 Free Vector Graphics All Designers Should Download)
+Векторные изображения посвященные бизнесу (28 Free Business Vectors You Can Download)
+Векторные изображения для вашего дизайна (30 Free App Vectors You Should Use In Your Designs)
+Набор иконок от We Love SVG (We Love SVG offers Open Source Icons for UI Design)
+Набор иконок посвященных хостингу и тех. поддержке (AI, EPS, PSD, SVG, PNG) (Freebie: Web Hosting &amp; Technical Support Icons (AI, EPS, PSD, SVG, PNG))
+Наборы иконок для веб дизайнеров (30 Free Icon Sets for Web Designers)
+Иконки наиболее знаменитых мест (World Landmark: 12 Free Icons)
+Measure — декоративный шрифт без засечек
+Luzern — шрифт без засечек
+Лучшие бесплатные альтернативы наиболее популярным шрифтам (The Best Free Alternatives to the Most Popular Fonts)
+ НовостиВ http-сервер nginx встроена поддержка JavaScript
+Веб Skype может работать без плагинов в браузере Edge
+Twitter обновил дизайн кнопок для внешних сайтов впервые за четыре года
+Компания Google представила новый алгоритм сжатия данных Brotli
+Роман Microsoft с Linux усиливается
+Microsoft объединилась с Baidu для продвижения Windows 10 в Китае
+Яндексу исполнилось 18 лет
+Яндекс перезапустил Авто.ру в новом дизайне
+В Северной Америке закончились свободные адреса IPv4
+Facebook запустил поддержку 360-градусного видео
+ ЗанимательноеКак я стал программистом. Путь от питерского бездомного до Senior Developer-а за 6 лет
+13 кнопок в Facebook (помимо Dislike), которые реально нужны
+Новый завоз: 14 бесплатных онлайн-курсов по IT и программированию на FutureLearn
+Ученые соединили два человеческих мозга через Интернет
+Шесть технологий, которые пришли в нашу жизнь из кино
+9 популярных облачных сервисов, заменяющих Microsoft OneDrive
+10 тезисов: виртуальная реальность
+«Всё решает вау-эффект»: cоздатель сообщества про AliExpress во «ВКонтакте» зарабатывает на необычных товарах из интернет-магазина
+Вне фокуса: как меняется чтение в цифровую эпоху
+Оплеуха от фейсбука: как научиться говорить себе «нет»
+18 фатальных ошибок для стартапа
+Пять крупнейших хакерских атак в истории интернета
+Откуда Apple взяла иконку ⌘ клавиши Command
+Гифка на 1000 лет (The 1,000-Year GIF)
+
+ Просим прощения за возможные опечатки или неработающие/дублирующиеся ссылки. Если вы заметили проблему — напишите пожалуйста в личку, мы стараемся оперативно их исправлять. Дайджест за прошлую неделю.
+Материал подготовили  dersmoll и  alekskorovin.
+
+      
+      
+    

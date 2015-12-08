@@ -1,0 +1,45 @@
+﻿#TITLE:Вывод систем хранения данных NetApp из кластера
+
+      Добавление в кластер системы хранения NetApp FAS происходит очень просто:
+Подключаются порты кластерного интерконнекта в свич и выполняется команда:cluster setup
+
+А как вывести ноду из кластера? Вывод нод из кластера
+Вывести ноду из кластера может понадобится в самых разнообразных случаях. Иллюстрацией тому может быть, если у вас есть кластер состоящий к примеру из систем FAS8020 и FAS2240/255x и вы хотите конвертировать вторую в полку, чтобы подключить её к 8020.
+Для этого необходимо:Удалить или мигрировать вольюмы из агрегатов находящихся на отключаемых нодах, включая системные вольюмы MDV
+Удалите или мигрируйте LIF'ы с нод которые будут отключены. SAN LIF'ы можно не мигрировать (ведь у вас скорее всего настроен мультипасинг) или могут быть мигрированы в offline режиме
+Измените home порты на LIF'ах, если они указывают на порты отключаемой ноды
+Удалите порты отключаемых нод из вручную содзанных failover-groups 
+Удалите порты отключаемых нод из вручную созданных broadcast-domain'ов
+Просто удалите порты отключаемых нод из portset'ов или создайте новые portset'ы, замените в igroup'ах старные на новые, после удалите старые
+Выключите High Availability для группы в которой находится отключаемая нода
+Если на агрегатах находящихся на отключаемых нодах расположены системные вольюмы для аудит логов, выключите CIFS аудит
+При необходимости, из advanced режима перместите epsilon на ноду которая не будет удаляться
+cluster1::&gt; vserver audit delete -vserver vsm01
+
+cluster1::&gt; storage failover modify -node clA-01 -enabled false
+cluster1::&gt; storage failover modify -node clA-02 -enabled false
+
+cluster1::*&gt; set -privilege advanced  
+cluster1::*&gt; cluster show
+cluster1::*&gt; cluster modify -node clA-02 -epsilon false
+cluster1::*&gt; cluster modify -node clA-04 -epsilon true
+
+cluster1::*&gt; cluster unjoin -node clA-02
+
+После чего вы увидите следующее сообщение:
+cluster1::*&gt; cluster unjoin -node clA-02
+
+Warning: This command will unjoin node "clA-02" from the cluster. You
+         must unjoin the failover partner as well. After the node is
+         successfully unjoined, erase its configuration and initialize all
+         disks by using the "Clean configuration and initialize all disks (4)"
+         option from the boot menu.
+
+Do you want to continue? {y|n}: y
+
+[Job 32] Cleaning cluster database[Job 32] Job succeeded: Cluster unjoin succeeded    
+Замечания по ошибкам и предложения правок в тексте прошу направлять в ЛС.
+
+      
+      
+    

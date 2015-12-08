@@ -1,0 +1,500 @@
+﻿#TITLE:Разносим общий функционал приложений и конфигурации Gradle в отдельные модули
+
+      Часто встречается ситуация когда необходимо использовать один и тот же код в разных проектах и при этом поддерживать его актуальность на каждом из них. В этой статье я покажу как можно вынести такой код в отдельные компоненты и использовать их через dependencies внутри build.gradle. Кроме общего кода так же будет рассмотрен пример с вынесением общих настроек build.gradle файла, кочующих из приложения в приложение.
+Если у вас возникало отвращение при копировании одного и того же кода по проектам и желание как то это исправить, добро пожаловать под кат.
+Первым делом необходимо понять что получится в итоге и как этим пользоваться. Весь код, который будет использоваться в приложениях нужно разбить на компоненты, каждый из которых будет указан в зависимостях приложения. Под компонентами я подразумеваю отдельный jar файл, содержащий конкретную реализацию, т.е. мы не будем собирать один большой jar со всеми классами, наша цель вынести каждую из функциональностей в отдельный компонент. Например, в приложении есть несколько пакетов, которые мы хотели бы использовать повторно, допустим это классы для логирования и еще какие то вспомогательные. 
+src/
+├── main
+│   ├── java
+│   │   └── com
+│   │       └── example
+│   │           ├── logger
+│   │           └── util
+
+Следовательно мы хотим получить 2 компонента, logger и util. Для того чтобы была возможность получить компонент в своем приложении необходимо хранить его в удаленном maven репозитории. Я долго выбирал что же лучше использовать для этой цели и в итоге остановился на Artifactory. Он легко управляется через веб-интерфейс, есть плагин для Gradle, позволяющий легко публиковать код и все прекрасно работает из коробки. Настраивал по этой статье.
+В конце концов мы создадим отдельный проект для всех компонентов, а пакеты logger и util заменим пару строчек в блоке dependencies build.gradle файла.
+Но это еще не все. Кроме копирования классов часто приходится копировать конфигурацию из build.gradle. Изза этого бывают ситуации когда конфиги меняются не синхронно, где то остается неправильно указанная минимальная версия, где то добавляются дополнительные параметры для proguard или lint. Чтобы избежать этого часть build-файла тоже можно вынести в компоненты. Это можно сделать с помощью gradle плагинов. Поэтому мы будем создавать 2 вида компонентов, плагины и пакеты.
+В данной статье я не буду рассматривать тему создания плагинов для Gradle, если вы не знакомы с их работой, на habrahabr уже была не одна статья на эту тему, поэтому не вижу смысла переписывать это по новому. К тому же весь код с реализацией плагинов доступен на github (ссылка в конце).
+Первым делом создадим проект, и перенесем в него необходимые пакеты. Теперь необходимо написать конфиг для того чтобы Gradle собрал нам из этих пакетов отдельные jar файлы и опубликовал в Artifactory. Дальше я буду приводить части конфига, чтобы описать конкретное действие, полный файл можно будет посмотреть в конце.
+Для начала добавим в build.gradle основную информацию о репозиториях и подключим плагины для публикации компонентов.Базовые настройкиbuildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'org.jfrog.buildinfo:build-info-extractor-gradle:3.1.1'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+//Плагин Artifactory
+apply plugin: 'com.jfrog.artifactory'
+
+//Плагин для возможности публиковать артефакты
+apply plugin: 'maven-publish'
+
+//Этот плагин понадобится в дальнейшем, при сборке плагинов
+apply plugin: 'groovy'
+
+//А все что касается настройки самих компонентов вынесем в отдельный файл
+apply from: 'components.gradle'
+
+dependencies {
+	//Для плагинов Gradle необходимо Gradle API 
+	compile gradleApi()
+}
+
+Все что касается непосредственно работы с компонентами вынесено в файл components.gradle.
+Все возможные компоненты добавим в массив, каждый элемент которго содержит информацию об имени и версии. В принципе, при необходимости, можно добавить еще что нибудь, например описание, лицензию и т.д.//Список компонентов
+def components = [
+        [name: 'logger',    version:'1.0'],
+        [name: 'util',      version:'1.0']
+]
+
+Если выполнить команду ./gradlew jar, то в папке build/libs будет создан jar файл со всеми классами, но т.к. нас интересуют отдельные компоненты, будем создавать отдельную задачу на каждый компонент. Следующий код добавлен для понимания процесса, итоговый файл будет отличаться.Создание компонентов//Создаем отдельные задачи для сборки каждого отдельного компонента. 
+//В нашем случае получим две задачи compileUtil и compileLogger, все они наследуются от jar
+components.each { component -&gt;
+    task "compile${component.name.capitalize()}" (type: Jar) {
+        version component.version
+	    classifier component.classifier
+	    baseName component.name
+	    from sourceSets.main.output
+
+	    //Предполагается что имя компонента совпадает с именем пакета
+	    //указываем какие конкретно классы нужно упаковывать. 
+	    //Указав include можно не указывать exclude, будут использовать только указанные классы
+	    task.include "com/example/${component.name}/**"
+    }
+} 
+
+Теперь если выполнить одну из задач compileUtil или compileLogger, получим jar файл с конкретным пакетом внутри. Это полезно если необходимо обновить конкретный компонент, но если нужно собрать все сразу, то хочется избежать ввода всех этих задач. Для этого нам придется пронаследовать наши задачи своим типом и создать задачу для их выполнения.Создание компонентов//создаем свой тип, по которому будем определять задачи для выполнения
+class ComponentsJar extends Jar {
+}
+
+//из предыдущего примера заменяем только тип задачи
+task "compile${component.name.capitalize()}" (type: ComponentsJar) {
+
+//Создаем отдельную задачу для сборки всех компонентов
+task compileComponents {}
+
+//Для которой указываем зависимость на все задачи по сборке компонентов
+compileComponents.dependsOn {
+    tasks.withType(ComponentsJar)
+}
+Теперь у нас есть задача compileComponents, которая зависит от всех выше созданных, выполнив ее получим 2 jar файла:
+build/libs/
+├── logger-1.0.jar
+└── util-1.0.jar
+
+Что касается плагинов, единственное их отличие от просто собранных классов, в них необходимо дополнительно указать имя плагина и класс, который отвечает за его реализацию. При применении плагина с помощью apply plugin: 'pluginName', Gradle ищет внутри jar файл с соответствующим именем и расширением properties: META-INF/gradle-plugins/pluginName.properties. Внутри этого файла указывается класс обработчик.implementation-class=com.example.MyPluginClass
+
+Поэтому для плагинов нам придется дополнительно запаковывать такой файл.Создание плагинов//Список плагинов Gradle
+//В отличии от простых компонентов, тут добавлено свойство packagePrefix. 
+//Имя плагина сделано более понятным чем просто название пакета, 
+//свойство packagePrefix будет использоваться для подстановки правильного имени пакета
+def plugins = [
+        [name:'android-signing',              version:'1.0',  packagePrefix:'signing'],
+        [name:'android-library-publishing',   version:'1.0',  packagePrefix:'publishing'],
+        [name:'android-base',                 version:'1.0',  packagePrefix:'android']
+]
+
+//Создаем отдельные задачи для сборки каждого отдельного плагина
+plugins.each { component -&gt;
+    task "compile${component.name.capitalize()}" (type: ComponentsJar) {
+        //для плагинов добавляем в название jar файла 'plugin'
+        appendix 'plugin'
+
+        version component.version
+	    classifier component.classifier
+	    baseName component.name
+	    from sourceSets.main.output
+
+	    def componentPackages = []
+	    
+	    //для плагинов обязательным условием является наличие файла с его именем, в котором будет указан класс с его реализацией
+        componentPackages.add("META-INF/gradle-plugins/${component.name}.properties")
+
+	    //Если указан префикс, подставляем его, во всех остальных случаях пакет называется также как и компонент
+	    componentPackages.add(component.packagePrefix ? "com/example/${component.packagePrefix}/**" : "com/example/${component.name}/**")
+
+	    include componentPackages
+    }
+}
+В предыдущем примере в секции include указывалось два пути, один из них «META-INF/gradle-plugins/${component.name}.properties», берутся эти файлы из папки resources. Поэтому для каждого плагина необходимо создать такой файл
+src/main/
+└── resources
+    └── META-INF
+        └── gradle-plugins
+            ├── android-base.properties
+            ├── android-library-publishing.properties
+            └── android-signing.properties 
+
+Содержимое android-base.properties выглядит так:implementation-class=com.example.android.BaseAndroidConfiguration
+
+Учитывая что конфигурация Gradle пишется на Groovy, логично что и плагины будут написаны на Groovy. В принципе их можно написать и на java, но оно вам ни к чему. Поэтому реализация плагинов находится в соответсвующей папке groovy: 
+src/main/
+└── groovy
+    └── com
+        └── example
+            ├── android
+            │   └── BaseAndroidConfiguration.groovy
+            ├── publishing
+            │   └── LibraryPublishingPlugin.groovy
+            └── signing
+                └── SigningPlugin.groovy
+
+В своем примере я вынес 3 настройки. Базовая, в которой указываются стандартные настройки android сборки, конфиг для публикации библиотек в Artifactory и настройка подписи приложения.
+Собственно, теперь наша задача compileComponents создает все необходимые файлы:
+build/libs/
+├── android-base-plugin-1.0.jar
+├── android-library-publishing-plugin-1.0.jar
+├── android-signing-plugin-1.0.jar
+├── logger-1.0.jar
+└── util-1.0.jar
+
+Теперь эти jar-ники необходимо опубликовать в нашем репозитории.
+Первым делом необходимо подготовить артефакты для maven. Опять же для возможности работать с одним компонентом будем создавать отдельные публикации для maven.Настройки публикации//вспомогательный класс, содержащий данные о компоненте
+class Artifact {
+    String path, groupId, version, id, name
+}
+
+//массив объектов Artifact, содержащий информацию о всех возможных компонентах
+//наполняется при выполнении задачи compileComponents (см. полный конфиг)
+def artifacts = [];
+
+//массив объектов Artifact, содержащий информацию только о тех компонентах,
+//которые будут скомпилированы и опубликованы
+def activeArtifacts = [];
+
+//Готовим отдельную публикацию для каждого из компонентов
+//выполняется на этапе конфигурации, поэтому в любом случае создаются публикации для всех возможных компонентов
+//поэтому используется переменная artifacts
+publishing {
+    publications {
+        artifacts.each { art -&gt;
+            "$art.name"(MavenPublication) {
+                groupId art.groupId
+                version = art.version
+                artifactId art.id
+
+                artifact(art.path)
+            }
+        }
+    }
+}
+
+//Для artifactory добавляем публикацию на этапе выполнения, поэтому используется переменная activeArtifacts 
+//в которой находятся только запрашиваемые артефакты. Благодаря этому есть возможность публиковать только указанные сборки.
+artifactoryPublish {
+    doFirst {
+        activeArtifacts.each { artifact -&gt;
+            publications(artifact.name)
+        }
+    }
+}
+
+//Т.к. эта секция выполняется на этапе конфигурации не указываем никаких 
+//артефактов для публикации, они будут добавлены на этапе выполнения
+artifactory {
+    contextUrl = ArtifactoryUrl
+    publish {
+        repository {
+            //имя репозитория, в который будут добавлятся сборки
+            repoKey = 'libs-release-local'
+
+            username = ArtifactoryUser
+            password = ArtifactoryPassword
+        }
+    }
+}
+
+В принципе по комментариям все понятно, для Artifactory мы не указываем все публикации сразу (как обычно делают в примерах работы с Artifactory), а наполняем их по необходимости. Это позволяет запустив задачи compileUtil artifactoryPublish скомпилировать и опубликовать только один компонент — util. Единственное что осталось это сгенерировать pom.xml для каждого из компонентов, но с этим все просто. Maven плагин создает отдельную задачу для каждой публикации, с названием generatePomFileForNAMEPublication, а т.к. мы создавали публикации по имени компонента, то соответственно создаются задачи generatePomFileForUtilPublication и т.д.
+Теперь когда все детали описаны, соберем все в кучу.Итоговый файл components.gradle//создаем свой тип задачи, по которому будем определять задачи для выполнения
+class ComponentsJar extends Jar {
+}
+
+//вспомогательный класс, содержащий данные о компоненте
+class Artifact {
+    String path, groupId, version, id, name
+}
+
+//массив объектов Artifact, содержащий информацию о всех возможных компонентах
+def artifacts = [];
+
+//массив объектов Artifact, содержащий информацию только о тех компонентах,
+//которые будут скомпилированы и опубликованы
+def activeArtifacts = [];
+
+//Список компонентов
+def components = [
+        [name: 'logger',    version:'1.0'],
+        [name: 'util',      version:'1.0']
+]
+
+//Список плагинов Gradle
+def plugins = [
+        [name:'android-signing',              version:'1.0',  packagePrefix:'signing'],
+        [name:'android-library-publishing',   version:'1.0',  packagePrefix:'publishing'],
+        [name:'android-base',                 version:'1.0',  packagePrefix:'android']
+]
+
+//Общие настройки задачи для плагинов и компонентов
+def baseTask = { task, component, packages -&gt;
+    task.version component.version
+    task.classifier component.classifier
+    task.baseName component.name
+    task.from sourceSets.main.output
+    def componentPackages = []
+
+    //Если указан префикс, подставляем его, во всех остальных случаях пакет называется также как и компонент
+    componentPackages.add(component.packagePrefix ? "com/example/${component.packagePrefix}/**" : "com/example/${component.name}/**")
+    if (packages != null) {
+        componentPackages.addAll(packages)
+    }
+    task.include componentPackages
+
+    //Для каждой задачи создаем артефакт с информацией о компоненте
+    def art = new Artifact(
+            name: component.name,
+            groupId: "com.example",
+            path: "$buildDir/libs/$task.archiveName",
+            id: task.appendix == null ? component.name : "$component.name-$task.appendix",
+            version: component.version
+    )
+
+    //этот массив заполнится на этапе конфигурации
+    artifacts.add(art)
+
+    //Первым делом при выполнении задачи сохраняем ее артефакт, для дальнейшей работы с ним
+    task.doFirst {
+    	//а этот массив уже заполняется на этапе выполнения
+        activeArtifacts.add(art)
+    }
+
+    //После выполнения задачи вызываем задачу по генерации pom.xml для этой сборки
+    task.doLast {
+        tasks."generatePomFileFor${art.name.capitalize()}Publication".execute()
+    }
+}
+
+//Создаем отдельные задачи для сборки каждого отдельного компонента
+components.each { component -&gt;
+    task "compile${component.name.capitalize()}" (type: ComponentsJar) {
+        baseTask(it, component, component.package)
+    }
+}
+
+//Создаем отдельные задачи для сборки каждого отдельного плагина
+plugins.each { component -&gt;
+    task "compile${component.name.capitalize()}" (type: ComponentsJar) {
+        //для плагинов добавляем в название jar файла добавляем 'plugin' (хотя это никак не влияет на название при публикации)
+        appendix 'plugin'
+
+        //для плагинов обязательным условием является наличие файла с его именем, в котором будет указан класс с его реализацией
+        def packages = ["META-INF/gradle-plugins/${component.name}.properties"]
+        if (component.package != null) {
+            packages.addAll(component.package)
+        }
+        baseTask(it, component, packages);
+    }
+}
+
+//Создаем отдельную задачу для сборки всех компонентов
+task compileComponents {}
+
+//Для которой указываем зависимость на все задачи по сборке компонентов
+compileComponents.dependsOn {
+    tasks.withType(ComponentsJar)
+}
+
+jar {
+    //После выполнения задачи удаляем jar собранный из всех пакетов
+    doLast {
+        new File(it.destinationDir, "${project.name}.jar").delete()
+    }
+}
+
+//Готовим отдельную публикацию для каждого из компонентов
+//выполняется на этапе конфигурации, поэтому в любом случае создаются публикации для всех возможных компонентов
+//для этого используется переменная artifacts
+publishing {
+    publications {
+        artifacts.each { art -&gt;
+            "$art.name"(MavenPublication) {
+                groupId art.groupId
+                version = art.version
+                artifactId art.id
+
+                artifact(art.path)
+            }
+        }
+    }
+}
+
+//Для artifactory добавляем публикацию на этапе выполнения, поэтому есть возможность публиковать только указанные сборки
+artifactoryPublish {
+    doFirst {
+        activeArtifacts.each { artifact -&gt;
+            publications(artifact.name)
+        }
+    }
+}
+
+artifactory {
+    contextUrl = ArtifactoryUrl
+    publish {
+        repository {
+            //имя репозитория, в который будут добавлятся сборки
+            repoKey = 'libs-release-local'
+
+            username = ArtifactoryUser
+            password = ArtifactoryPassword
+        }
+    }
+}
+В кофинге используются дополнительные перменные ArtifactoryUser, ArtifactoryPassword и ArtifactoryUrl. Их я специально вынес из проекта. Это позволит легко управлять этими параметрами на разных окружениях. У себя я их добавил глобально в ~/.gradle/gradle.properties файл:ArtifactoryUrl=http://localhost:8081
+ArtifactoryUser=admin
+ArtifactoryPassword=password
+
+Собственно это все. Собранные компоненты теперь можно указывать в зависимостях, после чего в проекте можно спокойно обращаться к необходимым классамdependencie {
+	compile 'com.example:util:1.0'
+	compile 'com.example:logger:1.0'
+}
+Для того чтобы Gradle нашел компоненты необходимо указать наш репозиторийallprojects {
+    repositories {
+        jcenter()
+        maven {
+            url "$ArtifactoryUrl/libs-release-local"
+            credentials {
+                username = ArtifactoryUser
+                password = ArtifactoryPassword
+            }
+        }
+    }
+}
+Плагины подключаются двумя строчками, одна указывается в зависимостях buildscript, вторая непосредственно при применении плагина, теперь можно сравнить какой был build.gradle и каким сталБылоbuildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.3.0'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 22
+    buildToolsVersion "22.0.1"
+    publishNonDefault true
+
+    defaultConfig {
+        minSdkVersion 15
+        targetSdkVersion 21
+    }
+
+    packagingOptions {
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/LICENSE.txt'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+    if(project.hasProperty("debugSigningPropertiesPath") &amp;&amp; project.hasProperty("releaseSigningPropertiesPath")) {
+
+        File debugPropsFile = new File(System.getenv('HOME') +  "/" + project.property("debugSigningPropertiesPath"))
+        File releasePropsFile = new File(System.getenv('HOME') +  "/" + project.property("releaseSigningPropertiesPath"))
+
+        if(debugPropsFile.exists() &amp;&amp; releasePropsFile.exists()) {
+            Properties debugProps = new Properties()
+            debugProps.load(new FileInputStream(debugPropsFile))
+
+            Properties releaseProps = new Properties()
+            releaseProps.load(new FileInputStream(releasePropsFile))
+
+            signingConfigs {
+                debug {
+                    storeFile file(debugPropsFile.getParent() + "/" + debugProps['keystore'])
+                    storePassword debugProps['keystore.password']
+                    keyAlias debugProps['keyAlias']
+                    keyPassword debugProps['keyPassword']
+                }
+                release {
+                    storeFile file(releasePropsFile.getParent() + "/" + releaseProps['keystore'])
+                    storePassword releaseProps['keystore.password']
+                    keyAlias releaseProps['keyAlias']
+                    keyPassword releaseProps['keyPassword']
+                }
+            }
+            buildTypes {
+                debug {
+                    signingConfig signingConfigs.debug
+                }
+                release {
+                    signingConfig signingConfigs.release
+                }
+            }
+        }
+    }
+
+}
+Сталоbuildscript {
+    repositories {
+        jcenter()
+        maven {
+            url "$ArtifactoryUrl/libs-release-local"
+            credentials {
+                username = ArtifactoryUser
+                password = ArtifactoryPassword
+            }
+        }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.3.0'
+        classpath 'org.jfrog.buildinfo:build-info-extractor-gradle:3.1.1'
+        classpath 'com.example:android-library-publishing-plugin:1.0'
+        classpath 'com.example:android-signing-plugin:1.0'
+        classpath 'com.example:android-base-plugin:1.0'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        maven {
+            url "$ArtifactoryUrl/libs-release-local"
+            credentials {
+                username = ArtifactoryUser
+                password = ArtifactoryPassword
+            }
+        }
+    }
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'android-library-publishing'
+apply plugin: 'android-signing'
+apply plugin: 'android-base'
+
+Весь проект я выложил на github. 
+На этом все, конструктивная критика всегда приветствуется.
+
+      
+      
+    

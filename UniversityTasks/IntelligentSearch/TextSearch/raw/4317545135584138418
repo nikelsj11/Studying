@@ -1,0 +1,135 @@
+﻿#TITLE:Основы NHibernate (легкий туториал)
+
+      Перевод статьи «NHibernate Basics» с сайта codeproject.com.Ведение
+Nhibernate это решение для Объектно Реалицонного мапинга для платформы .NET. Этот фреймворк позволяет делать мапинг Объектно ориентированных моделей к традиционным БД. Его основное преимущество маппирование классов .Net к таблицам БД и от типов данных CLR в типы SQL.
+Как указано в заголовке нашей статьи, мы посмотрим: Как загружать бизнес объекты из БД и сохранять измененные объекты обратно в БД.Подготовка
+Демо приложение покажет нам как наиболее легким путем установить и и использовать NHibernate. Приложение создает объект Employee объект и сохраняет его в таблице Employee. Оно также делает некоторые операции такие как получение и удаление объектов Employee. Это приложение было создано с помощью NHibernate 3.2.0, VS 2010 и SQL Server 2008.Использование кодаБаза Данных
+Сначала мы настроим базу данных. Используйте SQL Server Managment Strudio для создания базы данных и работы с ней. Как показано ниже создайте новую БД, и назовите ее NHibernateBasics.
+Затем добавьте таблицу Employee с двумя столбцами;ID и NAME.
+Столбец ID должен быть первичным ключом, и должен быть автоинкрементом. Не забудьте включить Identity Specification в свойствах столбца.Бизнес Объекты
+БД готова для демонстрации. Теперь запускаем Студию и создаем новое приложение WindowsFormApplication, проект назовем NhibernateBasics. 
+Добавьте новый класс, назовите его Employee.cs и вставьте следующий код.namespace NHibernateBasics
+{
+    public class Employee
+    {
+        public virtual int ID { get; set; }
+        public virtual string Name { get; set; }
+    }
+}
+
+Одна из сильных сторон Nhibernate это то что ему не нужно специальных интерфейсов для бизнес классов. Эти объекты не зависят от механизма загрузки и сохранения данных. Однако требуется чтобы свойства класса были описаны как виртуальные, чтобы они могли создавать Proxi.Мапирование XML файла
+Из-за отсутствия специфического кода для гибернации, кто то должен взять на себя ответственность за трансляцию из БД в бизнес-объекты и обратно. Эта трансляция может быть выполнена с помощью связывания через XML файл или связывания атрибутов на классы и свойства.
+В нашем демо приложении, мы использовали маппинг файл чтобы не захламлять класс бизнес объекта.
+Добавьте новый XML файл в проект. XML файл будет использоваться как маппинг файл. Имя файла должно быть Employee.hbm.xml. Файл класса 
+&lt;name&gt;.cs
+ и маппинг файл 
+&lt;name&gt;.hbm.xml
+ должны лежать в одной папке и 
+&lt;name&gt;
+ должно быть одинаково. 
+Добавьте следующий код в файл.&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;hibernate-mapping xmlns="urn:nhibernate-mapping-2.2" 
+	namespace="NHibernateBasics" assembly="NHibernateBasics"&gt;
+  &lt;class name="Employee" table="Employee"&gt;
+    &lt;id name="ID" column="ID"&gt;
+      &lt;generator class="identity"/&gt;
+    &lt;/id&gt;
+    &lt;property name="Name" column="Name"  /&gt;
+  &lt;/class&gt;
+&lt;/hibernate-mapping&gt;
+
+В свойствах XML файла выставите свойство Build Action = Embedded Resource.Конфигурация
+Добавьте новый конфигурационный файл приложения (app.config).
+Скопируйте следующий код.&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;configuration&gt;
+  &lt;configSections&gt;
+    &lt;section name="hibernate-configuration" 
+	type="NHibernate.Cfg.ConfigurationSectionHandler, NHibernate" /&gt;
+  &lt;/configSections&gt;
+  &lt;hibernate-configuration xmlns="urn:nhibernate-configuration-2.2"&gt;
+    &lt;session-factory&gt;
+      &lt;property name="connection.provider"&gt;
+	NHibernate.Connection.DriverConnectionProvider&lt;/property&gt;
+      &lt;property name="dialect"&gt;NHibernate.Dialect.MsSql2005Dialect&lt;/property&gt;
+      &lt;property name="query.substitutions"&gt;hqlFunction=SQLFUNC&lt;/property&gt;
+      &lt;property name="connection.driver_class"&gt;
+	NHibernate.Driver.SqlClientDriver&lt;/property&gt;
+      &lt;property name="connection.connection_string"&gt;
+	Data Source=(Local)\SQL2008;Initial Catalog=NHibernateBasics;
+	Integrated Security=True&lt;/property&gt;
+      &lt;property name="show_sql"&gt;true&lt;/property&gt;
+      &lt;mapping assembly="NHibernateBasics" /&gt;
+    &lt;/session-factory&gt;
+  &lt;/hibernate-configuration&gt;
+&lt;/configuration&gt;
+
+Настройте свойство Connection-string чтобы подключиться к вашей БД. Выставите свойство 
+CATALOG=&lt;Dabase name&gt;
+, значением NHibernateBasics. Выставите свойство 
+mapping assembly=&lt;Class DLL name&gt;
+, опять же значением NHibernateBasics.Демонстрация
+Итак у нас уже почти все готово для демонстрации. Нам только нужен доступ к бизнес объектам, чтобы выполнить пару операций над ними.
+Сохранение:using(mySession.BeginTransaction())
+{
+    // Insert two employees in Database
+    mySession.Save(myInitialObjects[0]); 
+    mySession.Save(myInitialObjects[1]); 
+    mySession.Transaction.Commit(); 
+} 
+
+
+Загрузка:using(mySession.BeginTransaction())
+{
+    // Создаем критерию и загружаем данные
+    ICriteria criteria = mySession.CreateCriteria&lt;employee&gt;();
+    IList&lt;employee&gt; list = criteria.List&lt;employee&gt;();
+    for (int i = 0; i &lt; myFinalObjects.Length; i++)
+    {
+        myFinalObjects[i] = list[i];
+        MessageBox.Show("ID: " + myFinalObjects[i].ID + " 
+			Name: " + myFinalObjects[i].Name);
+    }
+    mySession.Transaction.Commit();
+ }
+
+Сравнение:StringBuilder messageString = new StringBuilder();
+// Сравниваем два обьекта
+for (int i = 0; i &lt; 2; i++)
+{
+    messageString.AppendLine("Comparing Class Object " + 
+	myInitialObjects[i].Name + " and DB Object " + 
+	myFinalObjects[i].Name + ". Result = " + 
+	myInitialObjects[i].Equals(myFinalObjects[i]).ToString());
+}
+MessageBox.Show(messageString.ToString());
+
+Удаление:using (mySession.BeginTransaction())
+{
+    // Delete one object from Database
+    mySession.Delete(myInitialObjects[0]);
+    mySession.Transaction.Commit();
+}
+
+
+Отображение:using (mySession.BeginTransaction())
+{
+     ICriteria criteria = mySession.CreateCriteria&lt;employee&gt;();
+     IList&lt;employee&gt; list = criteria.List&lt;employee&gt;();
+     StringBuilder messageString = new StringBuilder();
+     // Load and display the data
+     foreach (Employee employee in list)
+     {
+         messageString.AppendLine("ID: " + employee.ID + " Name: " + employee.Name);
+     }
+     MessageBox.Show(messageString.ToString());
+}
+
+NHibernte гарантирует нам что две ссылки на объект будут указывать на один и тот же объект если ссылки установлены в одной сессии. Если мы сохраним объекты в одной сессии и загрузим в другой, то два объекта будут разными.
+Надеюсь статья смогла вам понять основы Nhibernate.
+Happy coding /////
+Файл проекта: NHibernateBasics.zip
+Это не последняя статья по Nhiberante. Какие еще статьи вы хотели бы видеть переведенными по Nhibernate тематике?
+
+      
+      
+    

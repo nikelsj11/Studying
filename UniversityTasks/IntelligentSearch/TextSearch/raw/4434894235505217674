@@ -1,0 +1,102 @@
+﻿#TITLE:DI в сложных приложениях. Как не утонуть в зависимостях
+
+      Всем привет.
+При конструировании приложений хорошим тоном является использование Dependency Injection(внедрение зависимостей). Данный подход позволяет делать код слабо связанным, а это в свою очередь обеспечивает легкость сопровождения. Также облегчается тестирование и код становится красивым, универсальным и заменяемым. При разработке наших продуктов с самого начала использовался этот принцип: и в высоконагруженной DSP и в корпоративном Hybrid. Мы писали модули, подключали интеграцию с различными системами, количество зависимостей росло и в какой-то момент стало сложно поддерживать само конфигурирование приложения. Плюс к этому добавлялись неявные регистрации(например, кастомный DependencyResolver для Web Api задавался в настройках Web Api) и начали возникать сложности с порядком вызова модулей конфигурации. В конце концов мы выработали подход для регистрации, конфигурации и инициализации модулей в сложном приложении. О нём и расскажу.
+Для начала надо уточнить, что для обслуживания различных задач(даже в рамках одного продукта) у нас работает несколько типов приложений: сервисы, консольные приложения, asp.net. Соответственно система инициализации везде представляла свой зоопарк, единый только в том, что был класс DependencyConfig с чертовой тучей зависимостей на вкус и цвет. Также в каждом из приложений были свои дополнительные настройки. Например, настройка роутинга, конвертеров, фильтров авторизации в asp.net mvc, которая должна была вызываться после регистрации зависимостей и проверки корректности данной регистрации. Соответственно встала задача:унифицировать конфигурирование для разных типов приложений
+убрать необходимость задавать последовательность инициализации
+разбить регистрацию модулей на легкие, изолированные друг от друга примитивы. 
+
+В итоге мы выделили 3 типа элементарных конфигураций: зависимости(dependency), инициализации(init) и настройки(settings, которые на самом деле объединение двух предыдущих).Зависимости(IDependency)
+Зависимость представляет собой примитив для регистрации, ха-ха, зависимостей одного модуля. В общем случае реализует интерфейс IDependency:public interface IDependency&lt;TContainer&gt;
+{
+    void Register(TContainer container);
+}
+
+где TContainer — IoC-контейнер(В качестве примера контейнера здесь и далее используется SimpleInjector). Соответственно в методе Register регистрируются сервисы одного логического модуля. Также могут регистрироваться другие IDependency-примитивы посредством прямого вызова конструктора и метода Register. Пример:public class TradingDeskDependency : IDependency&lt;Container&gt;
+{
+    public void Register(Container container)
+    {
+          container.Register(() =&gt; new SwiffyClient(new SwiffyOptions{ MillisecondsTimeout = 20000 }));
+          new DspIntegrationDependency().Register(container);
+    }
+}
+Инициализации(IInit)
+Инициализации включают в себя тот код, который должен выполнять после регистрации и проверки зависимостей, но до старта основной логики приложения. Это может быть настройка asp.net mvc и web api или что-то подобное. В общем случае класс инициализации реализует интерфейс IInit:public interface IInit
+{
+    void Init(IDependencyResolver resolver);
+}
+
+гдe IDependencyResolver нужен, если требуется получение какого-нибудь сервиса из зависимостей, либо для получения самих методов получения зависимостей, как в примере:public class AspNetMvcInit: IInit
+{
+    public void Init(IDependencyResolver resolver)
+    {
+        System.Web.Mvc.DependencyResolver.SetResolver(resolver.GetService, resolver.GetServices);
+
+        new RouteInit().Init(resolver);
+    }
+}
+
+Так же, как и для зависимостей можно использовать вложенные примитивы инициализации.Настройки(ISettings)
+Настройки нужны, если в логическом модуле необходима как регистрация зависимостей, так и вызов инициализации после. Описываются они проще всего: public interface ISettings&lt;TContainer&gt; : IDependency&lt;TContainer&gt;, IInit
+ {
+ }
+
+Соответственно, именно настройки представляют полную функциональность для конфигурирования логического модуля: как регистрацию зависимостей, так и дополнительные настройки.Общая конструкция
+Итак, у нас есть примитивы, на которые можно разбить конфигурацию, осталось настроить управление ими. Для этого нам поможет класс Application, реализующий интерфейс IApplication:public interface IApplication&lt;TContainer&gt;
+{
+    IApplication&lt;TContainer&gt; SetDependency&lt;T&gt;(T dependency) where T : IDependency&lt;TContainer&gt;;
+
+    IApplication&lt;TContainer&gt; RemoveDependency&lt;T&gt;() where T : IDependency&lt;TContainer&gt;;
+
+    IApplication&lt;TContainer&gt; SetInit&lt;T&gt;(T init) where T : IInit;
+
+    IApplication&lt;TContainer&gt; RemoveInit&lt;T&gt;() where T : IInit;
+
+    IApplication&lt;TContainer&gt; SetSettings&lt;T&gt;(T settings) where T : ISettings&lt;TContainer&gt;;
+
+    IApplication&lt;TContainer&gt; RemoveSettings&lt;T&gt;() where T : ISettings&lt;TContainer&gt;;
+
+    IAppConfig Build();
+}
+
+Как видно из кода, IApplication позволяет добавлять все типы настроек(а также удалять их). А метод Build вызывает код, собирающий всё эти настройки: сначала выполняется регистрация зависимостей(+ если нужно — проверка, возможно ли всё зарегистрировать), далее — код из IInit-модулей(и методов Init в ISettings). На выходе получаем объект IAppConfig:public interface IAppConfig
+{
+    IDependencyResolver DependencyResolver { get; }
+
+    IAppLogger Logger { get; }
+}
+
+где DependencyResolver позволяет получать сервисы, а Logger сами знаете для чего. Итоговый код для настройки приложения будет прост и прозрачен(хотя в общем случае с некоторыми усложнениями для универсальности):var container = new Container()
+
+var appOptions = new AppOptions
+{
+    DependencyContainer = container,
+    GetServiceFunc = container.GetInstance,
+    GetAllServicesFunc = container.GetAllInstances,
+    VerifyAction = c =&gt; c.Verify(),
+    Logger = new CustomLogger()
+};
+var appConfig = new Application(appOptions).SetDependency(new TradingDeskDependency())
+                                           .SetInit(new AspNetMvcInit())
+                                           .Build();
+
+Единственный класс, который придется определять явно — это CustomLogger. Если мы хотим отслеживать ситуации, когда регистрация зависимостей и инициализаций валится с ошибкой, то задать его следует. Логгер описывается простейшим интерфейсом:public interface IAppLogger
+{
+    void Error(Exception e);
+}
+
+и написать реализацию не составит труда.
+В итоге этот подход можно использовать для любого типа приложения, нам не нужно думать о порядке конфигурирования и в управлении зависимостями мы перешли на уровень логических модулей. Таким образом можно навернуть кучу настроек, зависимостей, инициализаций, сохраняя трезвость мысли и крепость духа.
+Я написал немного упрощенный(но вполне рабочий и легко расширяемый) вариант библиотеки(Jdart.CoreApp), каковой можно изучить или просто использовать: 
+1) GitHub
+2) Nuget. 
+Также доступны адаптеры для
+1) SimpleInjector
+2) Autofac
+3) Ninject
+4) Unity
+Всем спасибо.
+
+      
+      
+    

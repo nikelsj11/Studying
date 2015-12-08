@@ -1,0 +1,164 @@
+﻿#TITLE:Vim-like управление с помощью xmodmap
+
+      Описанная в предыдущей статье реализация Vim-like управления имеет пару существенных недостатков: подходит только к GTK-окружению и для перемещения курсора по редактируемым элементам требуется клавиша модификатор. Получается, в общем-то, не совсем и Vim-like, как было верно подмечено в комментариях. Поэтому, было принято решение описать свой опыт построения вимообразной клавиатурной среды с использованием xmodmap и командной оболочки.
+Первое, что стоит сделать — это создать каталог для ресурсных файлов xmodmap'a, например ~/.keytoggle. 
+Второе — снять текущую раскладку клавиатуры: $xmodmap -pke &gt;~/.keytoggle/input-keymap.rc 
+Далее создаем файл ~/.keytoggle/control-keymap.rc!{{{ override latin
+keycode  24 = q Q 
+keycode  25 = w W 
+keycode  26 = e E 
+keycode  27 = r R 
+keycode  28 = t T 
+keycode  29 = y Y 
+keycode  30 = u U 
+keycode  31 = i I 
+keycode  32 = o O 
+keycode  33 = p P 
+keycode  34 = bracketleft
+keycode  35 = bracketright
+keycode  38 = a A 
+keycode  39 = s S 
+keycode  40 = d D 
+keycode  41 = f F 
+keycode  42 = g G 
+keycode  43 = h H 
+keycode  44 = j J 
+keycode  45 = k K 
+keycode  46 = l L 
+keycode  47 = semicolon colon 
+keycode  48 = apostrophe quotedbl 
+keycode  49 = Escape Escape Escape Escape
+!keycode  49 = grave asciitilde 
+keycode  52 = z Z 
+keycode  53 = x X 
+keycode  54 = c C 
+keycode  55 = v V 
+keycode  56 = b B 
+keycode  57 = n N 
+keycode  58 = m M 
+keycode  59 = comma less 
+keycode  60 = period greater 
+!}}}
+
+!{{{ override numbers
+
+! keycode  10 = 1 exclam 1 1 exclam
+! keycode  11 = 2 at 2 2 quotedbl
+! keycode  12 = 3 numbersign 3 3 numerosign
+! keycode  13 = 4 dollar 4 4 semicolon
+! keycode  14 = 5 percent 5 5 percent
+! keycode  15 = 6 asciicircum 6 6 colon
+! keycode  16 = 7 ampersand 7 7 question
+! keycode  17 = 8 asterisk 8 8 asterisk
+! keycode  18 = 9 parenleft 9 9 parenleft
+! keycode  19 = 0 parenright 0 0 parenright
+
+!}}}
+
+!{{{ bindings
+!esc
+keycode 9 = grave asciitilde 
+!h
+keycode  43 = Left Left 
+
+!j
+keycode 44 = Down Down
+
+!k
+keycode 45 = Up Up
+
+!l
+keycode 46 = Right Right
+
+!p
+keycode 33 = Prior Prior 
+
+!n
+keycode 57 = Next Next 
+
+!d
+!keycode 40 = Delete Delete
+
+![
+keycode 34 = Home Home
+
+!]
+keycode 35 = End End
+
+!m
+keycode 58 = F7
+!}}}
+
+Все биндинги описаны в комментариях, замечу лишь, что в моем случае используются ремапы Ctrl-CapsLock, Esc-~ и еще несколько персональных переназначений.
+Собственно, переключение режимов ввод-редактирование осуществляется попросту выполнением xmodmap с нужным нам ресурсом. Можно повесить на пару хоткеев, а можно написать скрипт вроде этого:~/bin/kt#!/bin/bash
+DIR="$HOME/.keytoggle"
+
+function toggle(){
+if [ -e $DIR/lock ]
+then
+	xmodmap $DIR/input-keymap.rc
+	rm $DIR/lock
+else
+	xmodmap $DIR/control-keymap.rc
+	touch $DIR/lock
+fi
+}
+
+function show(){
+if [ -e $DIR/lock ]
+then
+	echo --
+else
+	echo -- INSERT --
+fi
+}
+
+case $1 in
+t) toggle;;
+*) show;;
+esac
+
+Вызов «kt t» меняет режим, без аргументов — отдает на стандартный вывод состояние, которое можно выводить в статусной строке оконного менеджера, через osd_cat или любой другой нотификатор по вкусу. Например вот так:~/.ion3/main/cfg_statusbar.luamod_statusbar.create{
+    screen=0,
+    pos='bl',
+    fullsize=true,
+    systray=true,
+    template="%date"..
+		 "[ %&gt;workspace_name ]"..
+		 "[ %exec_xkb ]"..
+		 "[ M: %exec_mounted ]"..
+		 "%filler"..
+		 "%&gt;exec_lt"
+}
+mod_statusbar.launch_statusd{
+	load={
+		update_interval=10*1000,
+	},
+    date={
+        date_format='[ %H:%M ]',
+    },
+exec = {
+	lt={
+		program = "mps s",
+		retry_delay = 3 * 1000,
+	},
+	xkb={
+		program = "kt",
+		retry_delay = 1 * 1000,
+	},
+	mounted={
+		program ="fmounted",
+		retry_delay=2 * 1000,
+			},
+}
+}
+
+И финальный аккорд — повесить переключение режимов на хоткей. Например, у меня переключение было назначено на &lt;Super_R&gt;:$grep 'kt t'  ~/.ion3/main/cfg_ion.lua
+kpress("Super_R", "ioncore.exec_on(_, 'kt t')"),
+
+Такая реализация не зависит от используемого тулкита, а еще очень порадует любителей Vim, которым приходится много работать с Windows по rdp, я думаю. 
+Почему я от всего этого отказался? Практически все программное обеспечение, что нужно мне каждый день, имеет управление в стиле Vim «из коробки». В результате, потребность в дополнительном режиме клавиатуры попросту отпала. На смену ему пришли описанные в предыдущей статье сочетания mod1+[hjklqw] в некоторых полях ввода (webkit, командная строка dwb). К слову, такие горячие клавиши я использую и при редактировании в Vim'е — порой это быстрее, чем менять режимы.
+
+      
+      
+    

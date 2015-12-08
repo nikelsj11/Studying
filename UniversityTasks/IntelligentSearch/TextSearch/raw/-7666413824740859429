@@ -1,0 +1,1047 @@
+﻿#TITLE:Incoding Framework — Get started
+
+      disclaimer: данная статья является пошаговым руководством, которое поможет ознакомиться с основными возможностями Incoding Framework. Результатом следования данному руководству будет покрытое юнит-тестами приложение, реализующее работу с БД (CRUD + data filters). О Incoding framework ранее уже были статьи на habrahabr, но в них раскрываются отдельные части инструмента.Часть 0. Введение
+Для начала приведем краткое описание фреймворка. Incoding Framework состоит из трех пакетов: Incoding framework – back-end проекта, Incoding Meta Language – front-end проекта и Incoding tests helpers – юнит-тесты для back-end’а. Эти пакеты устанавливаются независимо друг от друга, что позволяет интегрировать фреймворк в проект частями: Вы можете подключить только клиентскую или только серверную часть (тесты очень сильно связаны с серверной частью, поэтому их можно позиционировать как дополнение).
+В проектах, написанных на Incoding Framework, в качестве серверной архитектуры используется CQRS. В качестве основного инструмента построения клиентской части используется Incoding Meta Language. В целом Incoding Framework покрывает весь цикл разработки приложения.
+Типичный solution, созданный с помощью Incoding Framework, имеет 3 проекта:Domain (class library)  — отвечает за бизнес-логику и работу с базой данных.
+UI (ASP.NET MVC project) - клиентская часть, основанная на ASP.NET MVC.
+UnitTests (class library)  — юнит-тесты для Domain.
+Domain
+После установки пакета Incoding framework через Nuget в проект помимо необходимых dll устанавливается файл Bootstrapper.cs. Основная задача этого файла — инициализация приложения: инициализация логирования, регистрация IoC, установка настроек Ajax-запросов и пр. В качестве IoC framework по умолчанию устанавливается StructureMap, однако есть провайдер для Ninject, а также есть возможность написания своих реализаций.namespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using System.Configuration;
+    using System.IO;
+    using System.Linq;
+    using System.Web.Mvc;
+    using FluentNHibernate.Cfg;
+    using FluentNHibernate.Cfg.Db;
+    using FluentValidation;
+    using FluentValidation.Mvc;
+    using Incoding.Block.IoC;
+    using Incoding.Block.Logging;
+    using Incoding.CQRS;
+    using Incoding.Data;
+    using Incoding.EventBroker;
+    using Incoding.Extensions;
+    using Incoding.MvcContrib;
+    using NHibernate.Tool.hbm2ddl;
+    using StructureMap.Graph;
+
+    #endregion
+
+    public static class Bootstrapper
+    {
+        public static void Start()
+        {
+            //Initialize LoggingFactory
+            LoggingFactory.Instance.Initialize(logging =&gt;
+                {
+ string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Log");
+ logging.WithPolicy(policy =&gt; policy.For(LogType.Debug).Use(FileLogger.WithAtOnceReplace(path,
+                                          () =&gt; "Debug_{0}.txt".F(DateTime.Now.ToString("yyyyMMdd")))));
+                });
+
+            //Initialize IoCFactory
+            IoCFactory.Instance.Initialize(init =&gt; 
+                 init.WithProvider(new StructureMapIoCProvider(registry =&gt;
+                {
+                registry.For&lt;IDispatcher&gt;().Use&lt;DefaultDispatcher&gt;();
+                registry.For&lt;IEventBroker&gt;().Use&lt;DefaultEventBroker&gt;();
+                registry.For&lt;ITemplateFactory&gt;().Singleton().Use&lt;TemplateHandlebarsFactory&gt;();
+
+                //Configure FluentlyNhibernate
+                var configure = Fluently
+                       .Configure()
+                       .Database(MsSqlConfiguration.MsSql2008
+                .ConnectionString(ConfigurationManager.ConnectionStrings["Example"].ConnectionString))
+                       .Mappings(configuration =&gt; configuration.FluentMappings
+                                                     .AddFromAssembly(typeof(Bootstrapper).Assembly))
+                       .ExposeConfiguration(cfg =&gt; new SchemaUpdate(cfg).Execute(false, true))
+                       .CurrentSessionContext&lt;NhibernateSessionContext&gt;();
+
+                registry.For&lt;INhibernateSessionFactory&gt;()
+                        .Singleton()
+                        .Use(() =&gt; new NhibernateSessionFactory(configure));
+                registry.For&lt;IUnitOfWorkFactory&gt;().Use&lt;NhibernateUnitOfWorkFactory&gt;();
+                registry.For&lt;IRepository&gt;().Use&lt;NhibernateRepository&gt;();
+
+                //Scan currenlty Assembly and registrations all Validators and Event Subscribers
+                registry.Scan(r =&gt;
+                                    {
+                                r.TheCallingAssembly();
+                                r.WithDefaultConventions();
+                                r.ConnectImplementationsToTypesClosing(typeof(AbstractValidator&lt;&gt;));
+                                r.ConnectImplementationsToTypesClosing(typeof(IEventSubscriber&lt;&gt;));
+                                r.AddAllTypesOf&lt;ISetUp&gt;();
+                                    });
+                })));
+
+            ModelValidatorProviders.Providers
+                          .Add(new FluentValidationModelValidatorProvider(new IncValidatorFactory()));
+            FluentValidationModelValidatorProvider.Configure();
+
+            //Execute all SetUp
+            foreach (var setUp in IoCFactory.Instance.ResolveAll&lt;ISetUp&gt;().OrderBy(r =&gt; r.GetOrder()))
+            {
+                setUp.Execute();
+            }
+
+            var ajaxDef = JqueryAjaxOptions.Default;
+            ajaxDef.Cache = false; //Disable Ajax cache
+        }
+    }
+}
+
+Далее в Domain дописываются команды (Command) и запросы (Query), которые выполняют операции с базой данных либо какие-то другие действия, связанные с бизнес-логикой приложения.UI
+Пакет Incoding Meta Language при установке добавляет в проект необходимые dll, а также файлы IncodingStart.cs и DispatcherController.cs (часть MVD) необходимые для работы с Domain.public static class IncodingStart
+{
+    public static void source Start()
+    {
+        Bootstrapper.Start();
+        new DispatcherController(); // init routes
+    }
+}public class DispatcherController : DispatcherControllerBase
+{
+    #region Constructors
+
+    public DispatcherController()
+            : base(typeof(Bootstrapper).Assembly) { }
+
+    #endregion
+}
+После установки в UI дописывается клиентская логика с использованием IML.UnitTests
+При установке Incoding tests helpers в проект добавляется файл MSpecAssemblyContext.cs, в котором настраивается connection к тестовой базе данных.public class MSpecAssemblyContext : IAssemblyContext
+{
+    #region IAssemblyContext Members
+
+    public void OnAssemblyStart()
+    {
+        //Настройка подключения к тестовой БД
+        var configure = Fluently
+                .Configure()
+                .Database(MsSqlConfiguration.MsSql2008
+                         .ConnectionString(ConfigurationManager.ConnectionStrings["Example_Test"].ConnectionString)
+                                            .ShowSql())
+                .Mappings(configuration =&gt; configuration.FluentMappings.AddFromAssembly(typeof(Bootstrapper).Assembly));
+
+        PleasureForData.StartNhibernate(configure, true);
+    }
+
+    public void OnAssemblyComplete() { }
+
+    #endregion
+}Часть 1. Установка
+Итак, приступим к выполнению поставленной в disclamer задаче - начнем писать наше приложение. Первый этап создания приложения — создание структуры solution'а проекта и добавление projects в него. Solution проекта будет называться Example и, как уже было сказано во введении, будет иметь три projects. Начнем с project'а, который будет отвечать за бизнес-логику приложения — с Domain.
+Создаем class library Domain.
+Далее перейдем к клиентской части — создаем и устанавливаем как запускаемый пустой проект ASP.NET Web Application UI с сылками на MVC packages.
+И наконец, добавим class library UnitTests, отвечающую за юнит-тестирование.Внимание: хотя юнит-тесты и не являются обязательной частью приложения, мы рекомендуем Вам всегда покрывать код тестами, так как это позволит в будущем избежать множества проблем с ошибками в коде за счет автоматизации тестирования.
+После выполнения всех вышеперечисленных действий должен получится следующий Solution:
+После создания структуры Solution'а необходимо собственно установить пакеты Incoding Framework из Nuget в соответствующие projects.
+Установка происходит через Nuget. Для всех projects алгоритм установки один:Кликните правой кнопкой по проекту и выберите в контекстном меню пункт Manage Nuget Packages...
+В поиске введите incoding
+Выберите нужный пакет и установите его
+
+Сначала устанавливаем Incoding framework в Domain.
+Далее добавляем в файл Domain -&gt; Infrastructure -&gt; Bootstrapper.cs ссылку на StructureMap.Graph.
+В UI нужно установить два пакета:Incoding Meta Language
+Incoding Meta Language Contrib
+Внимание: убедитесь, что для References -&gt; System.Web.Mvc.dll свойство «Copy Local» установлено в «true»
+Теперь файл Example.UI -&gt; Views -&gt; Shared -&gt; _Layout.cshtml измените таким образом, чтобы он выглядел так:@using Incoding.MvcContrib
+&lt;!DOCTYPE html&gt;
+&lt;html &gt;
+&lt;head&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery-1.9.1.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery-ui-1.10.2.min.js")"&gt;&lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/underscore.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery.form.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery.history.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery.validate.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/jquery.validate.unobtrusive.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/handlebars-1.1.2.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/incoding.framework.min.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/incoding.meta.language.contrib.js")"&gt; &lt;/script&gt;
+    &lt;script type="text/javascript" src="@Url.Content("~/Scripts/bootstrap.min.js")"&gt; &lt;/script&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/bootstrap.min.css")"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/themes/base/jquery.ui.core.css")"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/themes/base/jquery.ui.datepicker.css")"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/themes/base/jquery.ui.dialog.css")"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/themes/base/jquery.ui.theme.css")"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="@Url.Content("~/Content/themes/base/jquery.ui.menu.css")"&gt;
+    &lt;script&gt;
+        TemplateFactory.Version = '@Guid.NewGuid().ToString()';
+    &lt;/script&gt;
+&lt;/head&gt;
+@Html.Incoding().RenderDropDownTemplate()
+&lt;body&gt;
+@RenderBody()
+&lt;/body&gt;
+&lt;/html&gt;
+Осталось добавить ссылку на Bootstrapper.cs в файлы Example.UI -&gt; App_Start -&gt; IncodingStart.cs и Example.UI -&gt; Controllers -&gt; DispatcherController.cs.Внимание: если вы используете MVC5, то для работы framework'а необходимо добавить следующий код в файл Web.config&lt;dependentAssembly&gt;
+  &lt;assemblyIdentity name="System.Web.Mvc" publicKeyToken="31bf3856ad364e35" culture="neutral" /&gt;
+  &lt;bindingRedirect oldVersion="0.0.0.0-5.0.0.0" newVersion="5.0.0.0" /&gt;
+&lt;/dependentAssembly&gt;
+Осталось установить Incoding tests helpers в UnitTests и добавить ссылку на Bootstrapper.cs в Example.UnitTests -&gt; MSpecAssemblyContext.cs.
+Последний этап подготовки проектов к работе — создание структуры папок для projects.
+Добавьте следующие папки в проект Example.Domain:Operations — command и query проекта
+Persistences — сущности для маппинга БД
+Specifications — where и order спецификации для фильтрации данных при запросах
+
+В проекте Example.UnitTests создайте такую же структуру папок как и в Example.Domain.Часть 2. Настройка DB connection
+Для начала создадим БД, с которыми будем работать. Откройте SQL Managment Studio и создайте две базы данных: Example и Example_test.
+Для того чтобы работать с БД в необходимо настроить connection. Добавьте в файлы Example.UI -&gt; Web.config и Example.UnitTests -&gt; app.config connection string к базе данных:  &lt;connectionStrings&gt;
+    &lt;add name="Example" connectionString="Data Source=INCODING-PC\SQLEXsource SS;Database=Example;Integrated Security=false; User Id=sa;Password=1" providerName="System.Data.SqlClient" /&gt;
+    &lt;add name="Example_Test" connectionString="Data Source=INCODING-PC\SQLEXsource SS;Database=Example_Test;Integrated Security=true" providerName="System.Data.SqlClient" /&gt;
+  &lt;/connectionStrings&gt;
+В файле Example.Domain -&gt; Infrastructure -&gt; Bootstrapper.cs зарегистрируйте по ключу «Example» соответствующую строку подключения://Configure FluentlyNhibernate
+var configure = Fluently
+        .Configure()
+        .Database(MsSqlConfiguration.MsSql2008.ConnectionString(ConfigurationManager
+                                                .ConnectionStrings["Example"].ConnectionString))
+        .Mappings(configuration =&gt; configuration.FluentMappings
+                                                .AddFromAssembly(typeof(Bootstrapper).Assembly))
+        .ExposeConfiguration(cfg =&gt; new SchemaUpdate(cfg).Execute(false, true))
+        .CurrentSessionContext(); //Configure data base
+
+В файле Example.UnitTests -&gt; MSpecAssemblyContext.cs  зарегистрируйте по ключу «Example_Test» строку подключения к базе данных для тестов://Configure connection to Test data base
+var configure = Fluently
+        .Configure()
+        .Database(MsSqlConfiguration.MsSql2008
+             .ConnectionString(ConfigurationManager.ConnectionStrings["Example_Test"].ConnectionString)
+        .ShowSql())
+        .Mappings(configuration =&gt; configuration.FluentMappings
+                                                .AddFromAssembly(typeof(Bootstrapper).Assembly));
+Внимание: базы данных Example и Example_Test должны существовать.Часть 3. CRUD
+После выполнения всех приведенных выше действий мы подошли к самой интересной части — написанию кода, реализующего CreateReadUpdateDelete-функционал приложения. Для начала необходимо создать класс сущности, которая будет маппиться на БД. В нашем случае это будет Human.cs, который добавим в папку Example.Domain -&gt; Persistences.Human.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using Incoding.Data;
+
+    #endregion
+
+    public class Human : IncEntityBase
+    {
+        #region Properties
+
+        public virtual DateTime Birthday { get; set; }
+
+        public virtual string FirstName { get; set; }
+
+        public virtual string Id { get; set; }
+
+        public virtual string LastName { get; set; }
+
+        public virtual Sex Sex { get; set; }
+
+        #endregion
+
+        #region Nested Classes
+
+        public class Map : NHibernateEntityMap&lt;Human&gt;
+        {
+            #region Constructors
+
+            protected Map()
+            {
+                IdGenerateByGuid(r =&gt; r.Id);
+                MapEscaping(r =&gt; r.FirstName);
+                MapEscaping(r =&gt; r.LastName);
+                MapEscaping(r =&gt; r.Birthday);
+                MapEscaping(r =&gt; r.Sex);
+            }
+
+            #endregion
+        }
+
+        #endregion
+    }
+
+    public enum Sex
+    {
+        Male = 1,
+
+        Female = 2
+    }
+}
+Наш класс содержит несколько полей, в которые мы будем записывать данные, и вложенный класс маппинга (class Map).Заметка: после создания класса Human Вам больше не нужно производить никаких действий (дописывание xml-маппинга) благодаря FluentNhibernate.
+Теперь добавим команды (Command) и запросы (Query), которые будут отвечать за реализацию CRUD-операций. Первая комманда будет отвечать за добавление новой или изменение существующей записи типа Human. Комманда довольно простая: мы либо получаем из Repository сущность по ключу (Id), либо, если такой сущности нет, создаем новую. В обоих случаях сущность получает значения, которые указаны в свойствах класса AddOrEditHumanCommand. Добавим файл  Example.Domain -&gt; Operations -&gt; AddOrEditHumanCommand.cs в проект.AddOrEditHumanCommand.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using FluentValidation;
+    using Incoding.CQRS;
+    using Incoding.Extensions;
+
+    #endregion
+
+    public class AddOrEditHumanCommand : CommandBase
+    {
+        #region Properties
+
+        public DateTime BirthDay { get; set; }
+
+        public string FirstName { get; set; }
+
+        public string Id { get; set; }
+
+        public string LastName { get; set; }
+
+        public Sex Sex { get; set; }
+
+        #endregion
+
+        public override void Execute()
+        {
+            var human = Repository.GetById&lt;Human&gt;(Id) ?? new Human();
+
+            human.FirstName = FirstName;
+            human.LastName = LastName;
+            human.Birthday = BirthDay;
+            human.Sex = Sex;
+
+            Repository.SaveOrUpdate(human);
+        }
+    }
+}
+Следующая часть CRUD — Read — запрос на чтение сущностей из базы. Добавьте файл Example.Domain -&gt; Operations -&gt; GetPeopleQuery.cs.GetPeopleQuery.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System.Collections.Generic;
+    using System.Linq;
+    using Incoding.CQRS;
+
+    #endregion
+
+    public class GetPeopleQuery : QueryBase&lt;List&lt;GetPeopleQuery.Response&gt;&gt;
+    {
+        #region Properties
+
+        public string Keyword { get; set; }
+
+        #endregion
+
+        #region Nested Classes
+
+        public class Response
+        {
+            #region Properties
+
+            public string Birthday { get; set; }
+
+            public string FirstName { get; set; }
+
+            public string Id { get; set; }
+
+            public string LastName { get; set; }
+
+            public string Sex { get; set; }
+
+            #endregion
+        }
+
+        #endregion
+
+        protected override List&lt;Response&gt; ExecuteResult()
+        {
+            return Repository.Query&lt;Human&gt;().Select(human =&gt; new Response
+                                                                 {
+                                                                         Id = human.Id,
+                                                                         Birthday = human.Birthday.ToShortDateString(),
+                                                                         FirstName = human.FirstName,
+                                                                         LastName = human.LastName,
+                                                                         Sex = human.Sex.ToString()
+                                                                 }).ToList();
+        }
+    }
+}
+И оставшаяся часть функционала — это Delete — удаление записей из БД по ключу (Id).  Добавьте файл Example.Domain -&gt; Operations -&gt; DeleteHumanCommand.cs.DeleteHumanCommand.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using Incoding.CQRS;
+
+    #endregion
+
+    public class DeleteHumanCommand : CommandBase
+    {
+        #region Properties
+
+        public string HumanId { get; set; }
+
+        #endregion
+
+        public override void Execute()
+        {
+            Repository.Delete&lt;Human&gt;(HumanId);
+        }
+    }
+}
+Для того чтобы наполнить БД начальными данными добавьте файл Example.Domain -&gt; InitPeople.cs  — этот файл наследуется от интерфейса ISetUp.ISetupusing System;
+
+namespace Incoding.CQRS
+{
+  public interface ISetUp : IDisposable
+  {
+    int GetOrder();
+
+    void Execute();
+  }
+}
+Все экземпляры классов, унаследованных от ISetUp, регистрируются через IoC в Bootstrapper.cs (был приведен во введении). После регистрации они запускаются на исполнение (public void Execute()) по порядку (public int GetOrder()).InitPeople.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using Incoding.Block.IoC;
+    using Incoding.CQRS;
+    using NHibernate.Util;
+
+    #endregion
+
+    public class InitPeople : ISetUp
+    {
+        public void Dispose() { }
+
+        public int GetOrder()
+        {
+            return 0;
+        }
+
+        public void Execute()
+        {
+            //получение Dispatcher для выполнения Query и Command
+            var dispatcher = IoCFactory.Instance.TryResolve&lt;IDispatcher&gt;();
+            
+            //не добавлять записи, если в базе есть хотя бы одна запись
+            if (dispatcher.Query(new GetEntitiesQuery&lt;Human&gt;()).Any())
+                return;
+
+            //добавление записей
+            dispatcher.Push(new AddOrEditHumanCommand
+                                {
+                                        FirstName = "Hellen",
+                                        LastName = "Jonson",
+                                        BirthDay = Convert.ToDateTime("06/05/1985"),
+                                        Sex = Sex.Female
+                                });
+            dispatcher.Push(new AddOrEditHumanCommand
+                                {
+                                        FirstName = "John",
+                                        LastName = "Carlson",
+                                        BirthDay = Convert.ToDateTime("06/07/1985"),
+                                        Sex = Sex.Male
+                                });
+        }
+    }
+}
+Back-end реализация CRUD готова. Теперь надо добавить клиентский код. Также как и в случае с серверной частью, начнем реализацию с части создания/редактирования записи. Добавьте файл Example.UI -&gt; Views -&gt; Home -&gt; AddOrEditHuman.cshtml. Представленный IML-код создает стандартную html-форму и работает с командой AddOrEditHumanCommand, отправляя на сервер соответствующий Ajax-запрос.AddOrEditHuman.cshtml@using Example.Domain
+@using Incoding.MetaLanguageContrib
+@using Incoding.MvcContrib
+@model Example.Domain.AddOrEditHumanCommand
+@*Формирование формы для Ajax-отправки на выполнение AddOrEditHumanCommand*@
+@using (Html.When(JqueryBind.Submit)
+            @*Прерывание поведения по умолчанию и отправка формы через Ajax*@
+            .PreventDefault()
+            .Submit()
+            .OnSuccess(dsl =&gt;
+                           {
+                               dsl.WithId("PeopleTable").Core().Trigger.Incoding();
+                               dsl.WithId("dialog").JqueryUI().Dialog.Close();
+                           })
+            .OnError(dsl =&gt; dsl.Self().Core().Form.Validation.Refresh())
+            .AsHtmlAttributes(new
+                                  {
+                                          action = Url.Dispatcher().Push(new AddOrEditHumanCommand()),
+                                          enctype = "multipart/form-data",
+                                          method = "POST"
+                                  })
+            .ToBeginTag(Html, HtmlTag.Form))
+{
+    &lt;div&gt;
+        @Html.HiddenFor(r =&gt; r.Id)
+        @Html.ForGroup(r =&gt; r.FirstName).TextBox(control =&gt; control.Label.Name = "First name")
+        &lt;br/&gt;
+        @Html.ForGroup(r =&gt; r.LastName).TextBox(control =&gt; control.Label.Name = "Last name")
+        &lt;br/&gt;
+        @Html.ForGroup(r =&gt; r.BirthDay).TextBox(control =&gt; control.Label.Name = "Birthday")
+        &lt;br/&gt;
+        @Html.ForGroup(r =&gt; r.Sex).DropDown(control =&gt; control.Input.Data = typeof(Sex).ToSelectList())
+    &lt;/div&gt;
+
+    &lt;div&gt;
+        &lt;input type="submit" value="Save"/&gt;
+        @*Закрытие диалога*@
+        @(Html.When(JqueryBind.Click)
+              .PreventDefault()
+              .StopPropagation()
+              .Direct()
+              .OnSuccess(dsl =&gt; { dsl.WithId("dialog").JqueryUI().Dialog.Close(); })
+              .AsHtmlAttributes()
+              .ToButton("Cancel"))
+    &lt;/div&gt;
+}
+Далее следует template, который является шаблоном для загрузки данных, полученных от GetPeopleQuery. Здесь описывается таблица, которая будет отвечать не только за вывод данных, но и за удаление и редактирование отдельных записей: добавьте файл Example.UI -&gt; Views -&gt; Home -&gt; HumanTmpl.cshtml.HumanTmpl.cshtml@using Example.Domain
+@using Incoding.MetaLanguageContrib
+@using Incoding.MvcContrib
+@{
+    using (var template = Html.Incoding().Template&lt;GetPeopleQuery.Response&gt;())
+    {
+        &lt;table class="table"&gt;
+            &lt;thead&gt;
+            &lt;tr&gt;
+                &lt;th&gt;
+                    First name
+                &lt;/th&gt;
+                &lt;th&gt;
+                    Last name
+                &lt;/th&gt;
+                &lt;th&gt;
+                    Birthday
+                &lt;/th&gt;
+                &lt;th&gt;
+                    Sex
+                &lt;/th&gt;
+                &lt;th&gt;&lt;/th&gt;
+            &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+            @using (var each = template.ForEach())
+            {
+                &lt;tr&gt;
+                    &lt;td&gt;
+                        @each.For(r =&gt; r.FirstName)
+                    &lt;/td&gt;
+                    &lt;td&gt;
+                        @each.For(r =&gt; r.LastName)
+                    &lt;/td&gt;
+                    &lt;td&gt;
+                        @each.For(r =&gt; r.Birthday)
+                    &lt;/td&gt;
+                    &lt;td&gt;
+                        @each.For(r =&gt; r.Sex)
+                    &lt;/td&gt;
+                    &lt;td&gt;
+                        @*Кнопка открытия диалога для редактирования*@
+                        @(Html.When(JqueryBind.Click)
+                              .AjaxGet(Url.Dispatcher().Model&lt;AddOrEditHumanCommand&gt;(new
+                                                                                         {
+                                                             Id = each.For(r =&gt; r.Id),
+                                                             FirstName = each.For(r =&gt; r.FirstName),
+                                                             LastName = each.For(r =&gt; r.LastName),
+                                                             BirthDay = each.For(r =&gt; r.Birthday),
+                                                             Sex = each.For(r =&gt; r.Sex)
+                                                                                         })
+                                                                .AsView("~/Views/Home/AddOrEditHuman.cshtml"))
+                              .OnSuccess(dsl =&gt; dsl.WithId("dialog").Behaviors(inDsl =&gt;
+                                                                                   {
+                                                                 inDsl.Core().Insert.Html();
+                                                                 inDsl.JqueryUI().Dialog.Open(option =&gt;
+                                                                                                           {
+                                                                                     option.Resizable = false;
+                                                                                     option.Title = "Edit human";
+                                                                                                           });
+                                                                                   }))
+                              .AsHtmlAttributes()
+                              .ToButton("Edit"))
+
+                        @*Кнопка удаления записи*@
+                        @(Html.When(JqueryBind.Click)
+                              .AjaxPost(Url.Dispatcher().Push(new DeleteHumanCommand() { HumanId = each.For(r =&gt; r.Id) }))
+                              .OnSuccess(dsl =&gt; dsl.WithId("PeopleTable").Core().Trigger.Incoding())
+                              .AsHtmlAttributes()
+                              .ToButton("Delete"))
+                    &lt;/td&gt;
+                &lt;/tr&gt;
+            }
+            &lt;/tbody&gt;
+        &lt;/table&gt;
+    }
+}
+Задача открытия диалогового окна достаточно распространена, поэтому код, отвечающий за это действие, можно вынести в extension.
+Последняя часть — изменение стартовой страницы так, чтобы при ее загрузке выполнялся Ajax-запрос на сервер для получения данных от GetPeopleQuery и отображения их через HumanTmpl: измените файл Example.UI -&gt; Views -&gt; Home -&gt; Index.cshtml так, чтобы он соответствовал представленному ниже коду.Index.cshtml@using Example.Domain
+@using Incoding.MetaLanguageContrib
+@using Incoding.MvcContrib
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+&lt;div id="dialog"&gt;&lt;/div&gt;
+
+@*Загрузка записей, полученных из GetPeopleQuery, через HumanTmpl*@
+@(Html.When(JqueryBind.InitIncoding)
+      .AjaxGet(Url.Dispatcher().Query(new GetPeopleQuery()).AsJson())
+      .OnSuccess(dsl =&gt; dsl.Self().Core().Insert.WithTemplateByUrl(Url.Dispatcher().AsView("~/Views/Home/HumanTmpl.cshtml")).Html())
+      .AsHtmlAttributes(new { id = "PeopleTable" })
+      .ToDiv())
+@*Кнопка добавления новой записи*@
+@(Html.When(JqueryBind.Click)
+      .AjaxGet(Url.Dispatcher().AsView("~/Views/Home/AddOrEditHuman.cshtml"))
+      .OnSuccess(dsl =&gt; dsl.WithId("dialog").Behaviors(inDsl =&gt;
+                                                           {
+                                                               inDsl.Core().Insert.Html();
+                                                               inDsl.JqueryUI().Dialog.Open(option =&gt;
+                                                                                                {
+                                      option.Resizable = false;
+                                      option.Title = "Add human";
+                                                                                                });
+                                                           }))
+      .AsHtmlAttributes()
+      .ToButton("Add new human"))
+В реальных приложениях валидация введенных данных форм — одна из самых частых задач. Поэтому добавим валидацию данных на форму добавления/редактирования сущности Human. Первая часть — добавление серверного кода. Добавьте следующий код в AddOrEditHumanCommand как nested class:#region Nested Classes
+
+public class Validator : AbstractValidator
+{
+    #region Constructors
+
+    public Validator()
+    {
+        RuleFor(r =&gt; r.FirstName).NotEmpty();
+        RuleFor(r =&gt; r.LastName).NotEmpty();
+    }
+
+    #endregion
+}
+
+#endregion
+На форме AddOrEditHuman.cshtml мы использовали конструкции вида:&lt;@Html.ForGroup()
+Поэтому нет необходимости дополнительно добавлять@Html.ValidationMessageFor()
+для полей — ForGroup() сделает это за нас.
+Таким образом, мы написали код приложения, которое реализует CRUD-функционал для одной сущности БД.Часть 4. Specifications — фильтрация данных
+Еще одна из задач, которые часто встречаются в реальных проектах — фильтрация запрашиваемых данных. В Incoding Framework для удобства написания кода и соблюдения принципа инкапсуляции для фильтрации получаемых в Query данных используются WhereSpecifications. Добавим в написанный код возможность фильтрации получаемых в GetPeopleQuery данных по FirstName и LastName. В первую очередь добавим два файла спецификаций Example.Domain -&gt; Specifications -&gt; HumanByFirstNameWhereSpec.cs и Example.UI -&gt; Specifications -&gt; HumanByLastNameWhereSpec.csHumanByFirstNameWhereSpec.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using System.Linq.Exsource ssions;
+    using Incoding;
+
+    #endregion
+
+    public class HumanByFirstNameWhereSpec : Specification
+    {
+        #region Fields
+
+        readonly string firstName;
+
+        #endregion
+
+        #region Constructors
+
+        public HumanByFirstNameWhereSpec(string firstName)
+        {
+            this.firstName = firstName;
+        }
+
+        #endregion
+
+        public override Exsource ssion&lt;Func&lt;Human, bool&gt;&gt; IsSatisfiedBy()
+        {
+            if (string.IsNullOrEmpty(this.firstName))
+                return null;
+
+            return human =&gt; human.FirstName.ToLower().Contains(this.firstName.ToLower());
+        }
+    }
+}HumanByLastNameWhereSpec.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using System.Linq.Exsource ssions;
+    using Incoding;
+
+    #endregion
+
+    public class HumanByLastNameWhereSpec : Specification
+    {
+        #region Fields
+
+        readonly string lastName;
+
+        #endregion
+
+        #region Constructors
+
+        public HumanByLastNameWhereSpec(string lastName)
+        {
+            this.lastName = lastName.ToLower();
+        }
+
+        #endregion
+
+        public override Exsource ssion&lt;Func&lt;Human, bool&gt;&gt; IsSatisfiedBy()
+        {
+            if (string.IsNullOrEmpty(this.lastName))
+                return null;
+
+            return human =&gt; human.LastName.ToLower().Contains(this.lastName);
+        }
+    }
+}
+Теперь используем написанные спецификации в запросе GetPeopleQuery. При помощи связок .Or()/.And() атомарные спецификации можно соединять в более сложные, что помогает использовать созданные спецификации многократно и при их помощи тонко настраивать необходимые фильтры данных (в нашем примере мы используем связку .Or()).GetPeopleQuery.csnamespace Example.Domain
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System.Collections.Generic;
+    using System.Linq;
+    using Incoding.CQRS;
+    using Incoding.Extensions;
+
+    #endregion
+
+    public class GetPeopleQuery : QueryBase&lt;List&lt;GetPeopleQuery.Response&gt;&gt;
+    {
+        #region Properties
+
+        public string Keyword { get; set; }
+
+        #endregion
+
+        #region Nested Classes
+
+        public class Response
+        {
+            #region Properties
+
+            public string Birthday { get; set; }
+
+            public string FirstName { get; set; }
+
+            public string Id { get; set; }
+
+            public string LastName { get; set; }
+
+            public string Sex { get; set; }
+
+            #endregion
+        }
+
+        #endregion
+
+        protected override List&lt;Response&gt; ExecuteResult()
+        {
+            return Repository.Query(whereSpecification:new HumanByFirstNameWhereSpec(Keyword)
+                                                      .Or(new HumanByLastNameWhereSpec(Keyword)))
+                             .Select(human =&gt; new Response
+                                                  {
+                                                       Id = human.Id,
+                                                       Birthday = human.Birthday.ToShortDateString(),
+                                                       FirstName = human.FirstName,
+                                                       LastName = human.LastName,
+                                                       Sex = human.Sex.ToString()
+                                                  })
+                             .ToList();
+        }
+    }
+}
+
+И наконец, осталось немного модифицировать Index.cshtml, чтобы добавить поисковую строку, задействующую при запросе поле Keyword для фильтрации данных.Index.cshtml@using Example.Domain
+@using Incoding.MetaLanguageContrib
+@using Incoding.MvcContrib
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+&lt;div id="dialog"&gt;&lt;/div&gt;
+
+@*При нажатии кнопки Find инициируется событие InitIncoding и PeopleTable выполняет запрос GetPeopleQuery с параметром Keyword*@
+&lt;div&gt;
+    &lt;input type="text" id="Keyword"/&gt;
+    @(Html.When(JqueryBind.Click)
+          .Direct()
+          .OnSuccess(dsl =&gt; dsl.WithId("PeopleTable").Core().Trigger.Incoding())
+          .AsHtmlAttributes()
+          .ToButton("Find"))
+&lt;/div&gt;
+
+@(Html.When(JqueryBind.InitIncoding)
+      .AjaxGet(Url.Dispatcher().Query(new GetPeopleQuery { Keyword = Selector.Jquery.Id("Keyword") }).AsJson())
+      .OnSuccess(dsl =&gt; dsl.Self().Core().Insert.WithTemplateByUrl(Url.Dispatcher().AsView("~/Views/Home/HumanTmpl.cshtml")).Html())
+      .AsHtmlAttributes(new { id = "PeopleTable" })
+      .ToDiv())
+
+@(Html.When(JqueryBind.Click)
+      .AjaxGet(Url.Dispatcher().AsView("~/Views/Home/AddOrEditHuman.cshtml"))
+      .OnSuccess(dsl =&gt; dsl.WithId("dialog").Behaviors(inDsl =&gt;
+                                                           {
+                                                               inDsl.Core().Insert.Html();
+                                                               inDsl.JqueryUI().Dialog.Open(option =&gt;
+                                                                                                {
+                                                                  option.Resizable = false;
+                                                                  option.Title = "Add human";
+                                                                                                });
+                                                           }))
+      .AsHtmlAttributes()
+      .ToButton("Add new human"))Часть 5. Юнит-тесты.
+Покроем написанный код тестами. Первый тест отвечает за проверку маппинга сущности Human. Файл When_save_Human.cs добавим в папку Persisteces проекта UnitTests.When_save_Human.csnamespace Example.UnitTests.Persistences
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using Example.Domain;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(Human))]
+    public class When_save_Human : SpecWithPersistenceSpecification
+    {
+        #region Fields
+
+        It should_be_verify = () =&gt; persistenceSpecification.VerifyMappingAndSchema();
+
+        #endregion
+    }
+}
+
+Данный тест работает с тестовой базой данных (Example_test): создается экземпляр класса Human с автоматически заполненными полями, сохраняется в базу, а затем извлекается и сверяется с созданным экземпляром.
+Теперь добавим тесты для WhereSpecifications в папку Specifications.When_human_by_first_name.csnamespace Example.UnitTests.Specifications
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using Example.Domain;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(HumanByFirstNameWhereSpec))]
+    public class When_human_by_first_name
+    {
+        #region Fields
+
+        Establish establish = () =&gt;
+                                  {
+          Func&lt;string, Human&gt; createEntity = (firstName) =&gt;
+               Pleasure.MockStrictAsObject(mock =&gt; mock.SetupGet(r =&gt; r.FirstName).Returns(firstName));
+
+          fakeCollection = Pleasure.ToQueryable(createEntity(Pleasure.Generator.TheSameString()),
+                                                    createEntity(Pleasure.Generator.String()));
+                                  };
+
+        Because of = () =&gt;
+                         {
+          filterCollection = fakeCollection
+             .Where(new HumanByFirstNameWhereSpec(Pleasure.Generator.TheSameString()).IsSatisfiedBy())
+             .ToList();
+                         };
+
+        It should_be_filter = () =&gt;
+                                  {
+                                      filterCollection.Count.ShouldEqual(1);
+                                      filterCollection[0].FirstName.ShouldBeTheSameString();
+                                  };
+
+        #endregion
+
+        #region Establish value
+
+        static IQueryable fakeCollection;
+
+        static List filterCollection;
+
+        #endregion
+    }
+}
+When_human_by_last_name.csnamespace Example.UnitTests.Specifications
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using Example.Domain;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(HumanByLastNameWhereSpec))]
+    public class When_human_by_last_name
+    {
+        #region Fields
+
+        Establish establish = () =&gt;
+                                  {
+          Func&lt;string, Human&gt; createEntity = (lastName) =&gt;
+           Pleasure.MockStrictAsObject(mock =&gt;mock.SetupGet(r =&gt; r.LastName).Returns(lastName));
+
+          fakeCollection = Pleasure.ToQueryable(createEntity(Pleasure.Generator.TheSameString()),
+                                               createEntity(Pleasure.Generator.String()));
+                                  };
+
+        Because of = () =&gt;
+                         {
+           filterCollection = fakeCollection
+            .Where(new HumanByLastNameWhereSpec(Pleasure.Generator.TheSameString()).IsSatisfiedBy())
+            .ToList();
+                         };
+
+        It should_be_filter = () =&gt;
+                                  {
+                                      filterCollection.Count.ShouldEqual(1);
+                                      filterCollection[0].LastName.ShouldBeTheSameString();
+                                  };
+
+        #endregion
+
+        #region Establish value
+
+        static IQueryable fakeCollection;
+
+        static List filterCollection;
+
+        #endregion
+    }
+}
+
+Теперь осталось добавить тесты для команды и запроса (папка Operations), причем для команды необходимо добавить два теста: один для проверки создания новой сущности и второй для проверки редактирования уже существующей сущности.When_get_people_query.csnamespace Example.UnitTests.Operations
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using System.Collections.Generic;
+    using Example.Domain;
+    using Incoding.Extensions;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(GetPeopleQuery))]
+    public class When_get_people
+    {
+        #region Fields
+
+        Establish establish = () =&gt;
+                                  {
+                            var query = Pleasure.Generator.Invent&lt;GetPeopleQuery&gt;();
+                            //Create entity for test with auto-generate
+                            human = Pleasure.Generator.Invent&lt;Human&gt;();
+
+                            expected = new List&lt;GetPeopleQuery.Response&gt;();
+    
+                            mockQuery = MockQuery&lt;GetPeopleQuery, List&lt;GetPeopleQuery.Response&gt;&gt;
+                             .When(query)
+                              //"Stub" on query to repository
+                             .StubQuery(whereSpecification: 
+                                             new HumanByFirstNameWhereSpec(query.Keyword)
+                                                  .Or(new HumanByLastNameWhereSpec(query.Keyword)),
+                                       entities: human);
+                                  };
+
+        Because of = () =&gt; mockQuery.Original.Execute();
+        
+        // Compare result 
+        It should_be_result = () =&gt; mockQuery
+.ShouldBeIsResult(list =&gt; list.ShouldEqualWeakEach(new List&lt;Human&gt;() { human }, (dsl, i) =&gt; 
+               dsl.ForwardToValue(r =&gt; r.Birthday, human.Birthday.ToShortDateString())
+                  .ForwardToValue(r =&gt; r.Sex, human.Sex.ToString())));
+
+        #endregion
+
+        #region Establish value
+
+        static MockMessage&lt;GetPeopleQuery, List&lt;GetPeopleQuery.Response&gt;&gt; mockQuery;
+
+        static List&lt;GetPeopleQuery.Response&gt; expected;
+
+        static Human human;
+
+        #endregion
+    }
+}
+When_add_human.csnamespace Example.UnitTests.Operations
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using Example.Domain;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(AddOrEditHumanCommand))]
+    public class When_add_human
+    {
+        #region Fields
+
+        Establish establish = () =&gt;
+                                  {
+                                      var command = Pleasure.Generator.Invent&lt;AddOrEditHumanCommand&gt;();
+
+                                      mockCommand = MockCommand&lt;AddOrEditHumanCommand&gt;
+                                              .When(command)
+                                              //"Stub" on repository
+                                              .StubGetById&lt;Human&gt;(command.Id, null);
+                                  };
+
+        Because of = () =&gt; mockCommand.Original.Execute();
+
+        It should_be_saved = () =&gt; mockCommand
+            .ShouldBeSaveOrUpdate&lt;Human&gt;(human =&gt; human.ShouldEqualWeak(mockCommand.Original));
+
+        #endregion
+
+        #region Establish value
+
+        static MockMessage&lt;AddOrEditHumanCommand, object&gt; mockCommand;
+
+        #endregion
+    }
+}
+When_edit_human.csnamespace Example.UnitTests.Operations
+{
+    #region &lt;&lt; Using &gt;&gt;
+
+    using Example.Domain;
+    using Incoding.MSpecContrib;
+    using Machine.Specifications;
+
+    #endregion
+
+    [Subject(typeof(AddOrEditHumanCommand))]
+    public class When_edit_human
+    {
+        #region Fields
+
+        Establish establish = () =&gt;
+                                  {
+                                      var command = Pleasure.Generator.Invent&lt;AddOrEditHumanCommand&gt;();
+
+                                      human = Pleasure.Generator.Invent&lt;Human&gt;();
+
+                                      mockCommand = MockCommand&lt;AddOrEditHumanCommand&gt;
+                                              .When(command)
+                                              //"Stub" on repository
+                                              .StubGetById(command.Id, human);
+                                  };
+
+        Because of = () =&gt; mockCommand.Original.Execute();
+
+        It should_be_saved = () =&gt; mockCommand
+                    .ShouldBeSaveOrUpdate&lt;Human&gt;(human =&gt; human.ShouldEqualWeak(mockCommand.Original));
+
+        #endregion
+
+        #region Establish value
+
+        static MockMessage&lt;AddOrEditHumanCommand, object&gt; mockCommand;
+
+        static Human human;
+
+        #endregion
+    }
+}
+Список материалов для изученияCQRS — архитектура серверной части
+MVD — описание паттерна Model View Dispatcher
+IML introduction
+IML TODO MVC
+
+    

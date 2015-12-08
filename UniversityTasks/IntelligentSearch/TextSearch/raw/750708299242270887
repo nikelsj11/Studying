@@ -1,0 +1,206 @@
+﻿#TITLE:Functional C#: работа с ошибками
+
+      В этой части мы рассмотрим как иметь дело со сбоями и ошибками ввода в функциональном стиле.Functional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+Работа с ошибками в C#: стандартный подход
+Концепция валидации и обработки ошибок хорошо отработана, но код, необходимый для этого, может быть весьма неуклюжим в таких языках как C#. Эта статья написана под впечатлением от Railway Oriented Programming — идеи, представленной Скотом Влашиным (Scott Wlaschin) в его презентации на NDC Oslo.
+Рассмотрим код ниже:[HttpPost]
+public HttpResponseMessage CreateCustomer(string name, string billingInfo)
+{
+    Customer customer = new Customer(name);
+ 
+    _repository.Save(customer);
+ 
+    _paymentGateway.ChargeCommission(billingInfo);
+ 
+    _emailSender.SendGreetings(name);
+ 
+    return new HttpResponseMessage(HttpStatusCode.OK);
+}
+
+Метод прост и понятен. Сначала мы создаем кастомера, потом сохраняем его, после этого чаржим комиссию и, наконец, отправляем письмо с приветствием. Проблема здесь в том, что этот код обрабатывает только позитивный сценарий — сценарий, когда всё идет по плану.
+Если мы начинаем рассматривать потенциальные неудачи, ошибки ввода и логирование, метод сильно разрастается:[HttpPost]
+public HttpResponseMessage CreateCustomer(string name, string billingInfo)
+{
+    Result&lt;CustomerName&gt; customerNameResult = CustomerName.Create(name);
+    if (customerNameResult.Failure)
+    {
+        _logger.Log(customerNameResult.Error);
+        return Error(customerNameResult.Error);
+    }
+ 
+    Result&lt;BillingInfo&gt; billingInfoResult = BillingInfo.Create(billingInfo);
+    if (billingInfoResult.Failure)
+    {
+        _logger.Log(billingInfoResult.Error);
+        return Error(billingInfoResult.Error);
+    }
+ 
+    Customer customer = new Customer(customerNameResult.Value);
+ 
+    try
+    {
+        _repository.Save(customer);
+    }
+    catch (SqlException)
+    {
+        _logger.Log(“Unable to connect to database”);
+        return Error(“Unable to connect to database”);
+    }
+ 
+    _paymentGateway.ChargeCommission(billingInfoResult.Value);
+ 
+    _emailSender.SendGreetings(customerNameResult.Value);
+ 
+    return new HttpResponseMessage(HttpStatusCode.OK);
+}
+
+Более того, если нам нужно отлавливать ошибки в обоих методах — Save и ChargeCommission, — возникает необходимость в компенсационном механизме: мы должны откатить изменения в случае если один из методов закончился неудачей:[HttpPost]
+public HttpResponseMessage CreateCustomer(string name, string billingInfo)
+{
+    Result&lt;CustomerName&gt; customerNameResult = CustomerName.Create(name);
+    if (customerNameResult.Failure)
+    {
+        _logger.Log(customerNameResult.Error);
+        return Error(customerNameResult.Error);
+    }
+ 
+    Result&lt;BillingInfo&gt; billingIntoResult = BillingInfo.Create(billingInfo);
+    if (billingIntoResult.Failure)
+    {
+        _logger.Log(billingIntoResult.Error);
+        return Error(billingIntoResult.Error);
+    }
+ 
+    try
+    {
+        _paymentGateway.ChargeCommission(billingIntoResult.Value);
+    }
+    catch (FailureException)
+    {
+        _logger.Log(“Unable to connect to payment gateway”);
+        return Error(“Unable to connect to payment gateway”);
+    }
+ 
+    Customer customer = new Customer(customerNameResult.Value);
+    try
+    {
+        _repository.Save(customer);
+    }
+    catch (SqlException)
+    {
+        _paymentGateway.RollbackLastTransaction();
+        _logger.Log(“Unable to connect to database”);
+        return Error(“Unable to connect to database”);
+    }
+ 
+    _emailSender.SendGreetings(customerNameResult.Value);
+ 
+    return new HttpResponseMessage(HttpStatusCode.OK);
+}
+
+Наш 5-строчный метод превратился в 35 строк, т.е. стал в 7 раз больше! Такой код довольно сложно читать, т.к. 5 строк кода, несущих смысловую нагрузку, теперь «закопаны» в куче шаблонного кода.Обработка ошибок в функциональном стиле
+Давайте посмотрим как можно исправить этот метод.
+Вы возможно заметили, что здесь используется тот же подход, что и в статье про primitive obsession: вместо использования строк в качестве имени и billing информации, мы оборачиваем их в классы CustomerName и BillingInfo.
+Статический метод Create возвращает специальный класс Result, в котором инкапсулирована вся информация касательно результатов выполнения операции: сообщение об ошибке в случае если операция не удалась и результат в случае если она прошла успешно.
+Также обратите внимание, что потенциальные ошибки отлавливаются блоками try/catch. Это не лучший способ работы с исключениями, т.к. здесь мы отлавливаем их не на самом нижнем уровне. Чтобы исправить ситуацию, мы можем отрефакторить методы ChargeCommission и Save таким образом, чтобы они возвращали объект класса Result, точно так же, как это делает метод Create:[HttpPost]
+public HttpResponseMessage CreateCustomer(string name, string billingInfo)
+{
+    Result&lt;CustomerName&gt; customerNameResult = CustomerName.Create(name);
+    if (customerNameResult.Failure)
+    {
+        _logger.Log(customerNameResult.Error);
+        return Error(customerNameResult.Error);
+    }
+ 
+    Result&lt;BillingInfo&gt; billingIntoResult = BillingInfo.Create(billingInfo);
+    if (billingIntoResult.Failure)
+    {
+        _logger.Log(billingIntoResult.Error);
+        return Error(billingIntoResult.Error);
+    }
+ 
+    Result chargeResult = _paymentGateway.ChargeCommission(billingIntoResult.Value);
+    if (chargeResult.Failure)
+    {
+        _logger.Log(chargeResult.Error);
+        return Error(chargeResult.Error);
+    }
+ 
+    Customer customer = new Customer(customerNameResult.Value);
+    Result saveResult = _repository.Save(customer);
+    if (saveResult.Failure)
+    {
+        _paymentGateway.RollbackLastTransaction();
+        _logger.Log(saveResult.Error);
+        return Error(saveResult.Error);
+    }
+ 
+    _emailSender.SendGreetings(customerNameResult.Value);
+ 
+    return new HttpResponseMessage(HttpStatusCode.OK);
+}
+
+Класс Result довольно схож с Maybe, обсуждавшимся в прошлой статье: он позволяет нам обдумывать код, не глядя на детали имплементации вложенных методов. Вот как выглядит сам класс (некоторые детали опущены для краткости):public class Result
+{
+    public bool Success { get; private set; }
+    public string Error { get; private set; }
+    public bool Failure { /* … */ }
+ 
+    protected Result(bool success, string error) { /* … */ }
+ 
+    public static Result Fail(string message) { /* … */ }
+ 
+    public static Result&lt;T&gt; Ok&lt;T&gt;(T value) {  /* … */ }
+}
+ 
+public class Result&lt;T&gt; : Result
+{
+    public T Value { get; set; }
+ 
+    protected internal Result(T value, bool success, string error)
+        : base(success, error)
+    {
+        /* … */
+    }
+}
+
+Теперь мы можем использовать функциональный подход:[HttpPost]
+public HttpResponseMessage CreateCustomer(string name, string billingInfo)
+{
+    Result&lt;BillingInfo&gt; billingInfoResult = BillingInfo.Create(billingInfo);
+    Result&lt;CustomerName&gt; customerNameResult = CustomerName.Create(name);
+ 
+    return Result.Combine(billingInfoResult, customerNameResult)
+        .OnSuccess(() =&gt; _paymentGateway.ChargeCommission(billingInfoResult.Value))
+        .OnSuccess(() =&gt; new Customer(customerNameResult.Value))
+        .OnSuccess(
+            customer =&gt; _repository.Save(customer)
+                .OnFailure(() =&gt; _paymentGateway.RollbackLastTransaction())
+        )
+        .OnSuccess(() =&gt; _emailSender.SendGreetings(customerNameResult.Value))
+        .OnBoth(result =&gt; Log(result))
+        .OnBoth(result =&gt; CreateResponseMessage(result));
+}
+
+Если вы знакомы с функциональными языками, вы можете заметить, что метод OnSuccess — это в действительности Bind метод. Я назвал его OnSuccess потому, что так более понятно его назначение в этом конкретном случае.
+Метод OnSuccess проверяет результат выполнения предыдущего метода и если тот успешен, выполняет переданный делегат. Иначе он возвращает предыдущий результат. Таким образом, цепочка выполняется до тех пор, пока одна из операций не зафейлится. В этом случае, операции следующие за той, что закончилась неудачей, будут пропущены.
+Метод OnFailure выполняется только в случае если предыдущая операция прошла неуспешно. Это отличное место для компенсационной логики, которую мы должны привести в действие в случае если обращение к БД не удалось.
+OnBoth размещается в конце цепочки. Основные сценарии использования для него — логирование результатов операции и создание результирующего сообщения.
+Таким образом, мы имеем в точности такое же поведение, что и в первоначальном варианте, но с гораздо меньшим количеством шаблонного кода. Читать такой код намного проще.Что насчет CQS принципа?
+А как насчет принципа Command-Query Separation? Подход, описанный выше, использует возвращаемые значения (которые, в нашем случае, являются объектами класса Result) даже если сам метод является командой (т.е. меняет состояние объекта). Не противоречит ли этот подход CQS?
+Нет. Более того, он улучшает читаемость еще больше. Описанный выше подход не только позволяет узнать является ли метод командой или запросом, он также указывает на то, может или нет этот метод окончиться неудачей.
+Проектирование с учетом неудачного выполнения расширяет количество информации, которую мы можем получить из сигнатуры метода. Вместо двух возможных вариантов (void для команд и какое-то значение для запросов), мы теперь имеем 4.Метод является командой и не может закончиться неудачей:public void Save(Customer customer)
+Метод является запросом и не может закончиться неудачей:public Customer GetById(long id)
+Метод является командой и может закончиться неудачей:public Result Save(Customer customer)
+Метод является запросом и может закончиться неудачей:public Result&lt;Customer&gt; GetById(long id)
+
+Теперь мы можем видеть, что если метод возвращает Customer, а не Result&lt;Customer&gt;, это означает, что неудача в таком методе будет исключительной ситуацией.Заключение
+Четкое выражение своих намерений при написании кода крайне важно для улучшения его читаемости. В сочетании с тремя остальными практиками — неизменяемые типы, отход от одержимостью примитивами и ненулевыми ссылочными типами — этот подход представляет собой довольно полезный прием, который может существенно увеличить вашу продуктивность.ИсходникиИсходный код примеров из статьиОстальные статьи в серииFunctional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+
+    

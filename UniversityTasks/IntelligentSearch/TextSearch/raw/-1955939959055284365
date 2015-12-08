@@ -1,0 +1,88 @@
+﻿#TITLE:Настройка Vim-like управления в GTK
+
+      Текстовый редактор Vim я использую практически для всех задач, связанных с интерактивным редактированием текста: для конфигурационных файлов и исходного кода, как среду верстки LaTeX, для написания писем в связке с mutt и даже как внешний редактор в web-браузере. 
+Хорошо прижившиеся горячие клавиши управления курсором [hjkl] начали перемещаться за пределы редактора, например, в командную оболочку (в связке с модификатором).
+Однако, хотелось бы иметь привычные хоткеи в графических приложениях. Собственно, далее речь пойдет о настройке GTK-окружения. 
+Пожалуй, многим известно про существование gtk-emacs-биндингов, расположенных в /usr/share/themes/Emacs, кои достаточно встроить в пользовательский конфигурационный файл GTK. Для Vim, к сожалению, готовых рецептов «из коробки» не предоставляется, кроме того, реализация многорежимности — задача нетривиальная, потому придется обходиться одним режимом с использованием модификаторов.
+Клавиши управления курсором решено было повесить на Mod1+[hjkl], начало/конец строки Mod1+[wq], плюс описать классические биндинги вида ^H, ^U и ^W.
+Не мудрствуя лукаво, привожу примеры файлов:~/.gtkrc-2.0binding "vim-like"
+{
+  bind "&lt;ctrl&gt;u" { "delete-from-cursor" (paragraph-ends, -1) }
+  bind "&lt;ctrl&gt;h" { "delete-from-cursor" (chars, -1) }
+  bind "&lt;ctrl&gt;w" { "delete-from-cursor" (word-ends, -1) }
+
+  bind "&lt;alt&gt;j" { "move-cursor" (display-lines, 1, 0) }
+  bind "&lt;alt&gt;k" { "move-cursor" (display-lines, -1, 0) }
+  bind "&lt;alt&gt;l" { "move-cursor" (logical-positions, 1, 0) }
+  bind "&lt;alt&gt;h" { "move-cursor" (logical-positions, -1, 0) }
+
+  bind "&lt;shift&gt;&lt;alt&gt;j" { "move-cursor" (display-lines, 1, 1) }
+  bind "&lt;shift&gt;&lt;alt&gt;k" { "move-cursor" (display-lines, -1, 1) }
+  bind "&lt;shift&gt;&lt;alt&gt;l" { "move-cursor" (logical-positions, 1, 1) }
+  bind "&lt;shift&gt;&lt;alt&gt;h" { "move-cursor" (logical-positions, -1, 1) }
+
+  bind "&lt;alt&gt;q" { "move-cursor" (paragraph-ends, -1, 0) }
+  bind "&lt;shift&gt;&lt;alt&gt;q" { "move-cursor" (paragraph-ends, -1, 1) }
+  bind "&lt;alt&gt;w" { "move-cursor" (paragraph-ends, 1, 0) }
+  bind "&lt;shift&gt;&lt;alt&gt;w" { "move-cursor" (paragraph-ends, 1, 1) }
+}
+
+class "GtkEntry" binding "vim-like"
+class "GtkTextView" binding "vim-like"
+~/.config/gtk-3.0/settings.inigtk-key-theme-name=Vim
+~/.themes/Vim/gtk-3.0/gtk-keys.css@binding-set gtk-vi-text-entry
+{
+
+  bind "&lt;ctrl&gt;u" { "delete-from-cursor" (paragraph-ends, -1) };
+  bind "&lt;ctrl&gt;h" { "delete-from-cursor" (chars, -1) };
+  bind "&lt;ctrl&gt;w" { "delete-from-cursor" (word-ends, -1) };
+
+
+  bind "&lt;alt&gt;j" { "move-cursor" (display-lines, 1, 0) };
+  bind "&lt;alt&gt;k" { "move-cursor" (display-lines, -1, 0) };
+  bind "&lt;alt&gt;l" { "move-cursor" (logical-positions, 1, 0) };
+  bind "&lt;alt&gt;h" { "move-cursor" (logical-positions, -1, 0) };
+
+  bind "&lt;shift&gt;&lt;alt&gt;j" { "move-cursor" (display-lines, 1, 1) };
+  bind "&lt;shift&gt;&lt;alt&gt;k" { "move-cursor" (display-lines, -1, 1) };
+  bind "&lt;shift&gt;&lt;alt&gt;l" { "move-cursor" (logical-positions, 1, 1) };
+  bind "&lt;shift&gt;&lt;alt&gt;h" { "move-cursor" (logical-positions, -1, 1) };
+  bind "&lt;alt&gt;q" { "move-cursor" (paragraph-ends, -1, 0) };
+  bind "&lt;shift&gt;&lt;alt&gt;q" { "move-cursor" (paragraph-ends, -1, 1) };
+  bind "&lt;alt&gt;w" { "move-cursor" (paragraph-ends, 1, 0) };
+  bind "&lt;shift&gt;&lt;alt&gt;w" { "move-cursor" (paragraph-ends, 1, 1) };
+}
+
+
+@binding-set gtk-vi-text-view
+{
+    bind "j" { "move-cursor" (display-lines, 1, 0) };
+    bind "k" { "move-cursor" (display-lines, -1, 0) };
+    bind "l" { "move-cursor" (logical-positions, 1, 0) };
+    bind "h" { "move-cursor" (logical-positions, -1, 0) };
+}
+
+@binding-set gtk-vi-tree-view
+{
+    bind "j" { "move-cursor" (display-lines, 1) };
+    bind "k" { "move-cursor" (display-lines, -1) };
+    bind "l" { "move-cursor" (logical-positions, 1) };
+    bind "h" { "move-cursor" (logical-positions, -1) };
+
+}
+
+GtkEntry {
+  gtk-key-bindings: gtk-vi-text-entry;
+}
+
+GtkTextView {
+  gtk-key-bindings: gtk-vi-text-entry, gtk-vi-text-view;
+}
+
+GtkTreeView {
+  gtk-key-bindings: gtk-vi-tree-view;
+}
+
+За основу была взята статья Vi key bindings in gtk, где описана подобная процедура для read-only окружений.
+      
+    

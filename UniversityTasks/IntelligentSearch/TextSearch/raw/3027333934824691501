@@ -1,0 +1,49 @@
+﻿#TITLE:Добавляем рекламу AdMob в Android приложение на платформе Adobe Air
+
+      После того, как я разработал свое первое, простейшее приложение для Android на Adobe Air, мне захотелось добавить в него рекламу, хотя бы для того, чтобы в будущем знать, как это делается. Я потратил на это довольно много времени, не найдя ничего об этом в интернете на русском языке. Поэтому решил написать краткое руководство к действию, для тех, кому это еще понадобится. Добавлять будем рекламу из Google AdMob.1. Загружаем ANE
+Для работы со сторонними сервисами (AdMob, GameCenter и тп.), а также с некоторыми техническими возможностями устройств (гироскоп, вибрация и тп.) Adobe предлагает использовать Adobe Native Extensions (ANE) — что-то похожее на внешние библиотеки. ANE — это файлы с расширением .ane, которые содержат описания классов Action Script 3, с которыми можно взаимодействовать после подключения расширения.
+На сайте (Adobe) есть список рекомендуемых ANE, разработанных как разработчиками компании, так и сторонними разработчиками. Что касается AdMob, то для взаимодействием с этим сервисом Adobe предлагает только коммерческие ANE от Milkman Games ($29,99 на момент написания поста) и от distriqt ($40 на момент написания поста). Разумеется у меня не возникло желания платить такую сумму и я отправился в путешествие по просторам интернета для поиска бесплатной версии.
+Поиски в конечном счете привели к AdMobAne от Code-Alchemy. Это расширение представлено в открытом доступе в в репозитории GitHub. Загружаем его архивом, распаковываем, находим папку «anes_builds», выбираем нужный ANE файл (в зависимосте от того пишете вы приложения для Android, iOS или для обеих платформ) и отправляем его в папку со своим проектом.2. Подключаем ANE
+Теперь подключаем ANE к проекту. Если вы используете Flash Professional, нужно перейти на страницу настроек ActionScript 3.0, затем нажать на кнопку «Перейти к файлу с собственным расширением (ANE)» и указать путь к файлу .ane:
+Теперь расширение должно появиться в списке ниже.3. Редактируем манифест приложения
+Для того, чтобы в ваше приложение можно было успешно вставить рекламу, нужно во-первых объявить в манифесте, что приложению требуется доступ в интернет, а во-вторых добавить новую активность. Добавляем в манифест следующие строки:&lt;manifestAdditions&gt;
+&lt;![CDATA[&lt;manifest&gt; 
+&lt;uses-permission android:name="android.permission.INTERNET"/&gt; 
+&lt;uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/&gt;
+&lt;uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/&gt; 
+&lt;application&gt;
+&lt;meta-data android:name="com.google.android.gms.version" android:value="4452000"/&gt; 
+&lt;activity android:name="com.google.android.gms.ads.AdActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize" /&gt;
+&lt;/application&gt; 
+&lt;/manifest&gt;]]&gt;
+&lt;/manifestAdditions&gt;
+Для того, чтобы манифест успешно разбирался парсером, необходимо использовать, как минимум, AIR 3.4, в случае использования более старой версии будете получать неприятную критическую ошибку. Кроме того, необходимо периодически убеждаться, что в манифесте после очередной публикации приложения остаются строки, описывающие новую активность (то что вы только что добавили), так как после изменения настроек публикации Flash может автоматически переписать манифест и удалить их — а вы будете долго и упорно искать ошибку.
+Проверьте также, что в вашем манифесте присутствует следующее:&lt;extensions&gt;
+    &lt;extensionID&gt;com.codealchemy.ane.admobane&lt;/extensionID&gt;
+&lt;/extensions&gt;
+4. Пишем код
+Подробное описание классов, методов и свойств приведено на странице ANE в GitHub. Расскажу, как создать обычный баннер:
+1. Импортируем необходимые классы.import com.codealchemy.ane.admobane.AdMobManager;
+import com.codealchemy.ane.admobane.AdMobPosition;
+import com.codealchemy.ane.admobane.AdMobSize;
+
+2. Получаем менеджер.var adMobManager:AdMobManager;
+adMobManager = AdMobManager.manager;
+
+3. Проверяем, поддерживается ли класс AdMobManager.if (adMobManager.isSupported) { ... }
+
+4. Если поддерживается: устанавливаем режим работы в PROD_MODE (продакшн — отладка не доступна), указываем ID баннера, создаем баннер с размером BANNER и положением BOTTON_CENTER (определены в классах AdMobSize и AdMobPosition). NULL указывает на то, что мы используем ранее указанный ID баннера, можно вместо NULL указать другой ID. True указывает на то что, что баннер будет показан, как только загрузится. «BottomBanner» — идентификатор баннера в нашем приложении (придумываем сами).adMobManager.operationMode = AdMobManager.PROD_MODE;
+adMobManager.bannersAdMobId = "ca-app-pub-3036271947968278/6206838142";
+adMobManager.createBanner(AdMobSize.BANNER,AdMobPosition.BOTTOM_CENTER,"BottomBanner", null, true);
+
+Не забудьте поменять ID баннера на свой собственный.
+5. Для того, чтобы спрятать или показать баннер используем следующие методы:adMobManager.showBanner("BottomBanner");
+adMobManager.hideBanner("BottomBanner");
+
+Аналогично создаем fullscreen рекламу:adMobManager.interstitialAdMobId = "ADMOB_INTERSTITIAL_ID";
+adMobManager.createInterstitial(null,true);
+
+Доступные позиции для баннера: TOP_LEFT, TOP_CENTER, TOP_RIGHT, MIDDLE_LEFT, MIDDLE_CENTER, MIDDLE_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT. Доступные размеры: BANNER, MEDIUM_RECTANGLE, LARGE_BANNER, FULL_BANNER, LEADERBOARD, WIDE_SKYSCRAPER, SMART_BANNER, SMART_BANNER_PORT, SMART_BANNER_LAND.5. Заключение
+Данное расширение позволяет настраивать возраст целевой аудитории, прослушивать события и многое другое. Обо всем этом можно почитать на GitHub. Спасибо за внимание.
+      
+    

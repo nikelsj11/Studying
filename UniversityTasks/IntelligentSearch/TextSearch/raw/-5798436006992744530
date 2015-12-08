@@ -1,0 +1,144 @@
+﻿#TITLE:Первый взгляд на Scaleway
+
+      Случайно попалось упоминание о хостинге Scaleway.
+Плюсы:4 ядра
+2 гигабайта оперативки
+50 гигабайт SSD диск
+bare-metal! (то есть, нет никаких, даже чисто теоретических накладных расходов на виртуализацию)
+за все это всего 3 евро в месяц! Очень дешево!
+
+Но есть особенность: это ARM процессор. Да-да! Это 4-ядерный ARM процессор. Первые шаги
+Зарегался, скормил им номер карточки. Тут все ОК, я не парюсь.
+Выбрал ОС. Есть три версии Ubuntu, две версии Debian, и еще несколько разных дистрибутивов. Я выбрал Ubuntu 14.04 — то, что хорошо знаю.Update: Список доступных ОС: Gentoo, ubuntu 12.04, ubuntu 14.04, ubuntu 15.04, archlinux, fedora 22, openSUSE 13.2, Alpine Linux 3.2, Debian Jessie (8.1), Debian Wheezy (7.8).Update2: Спасибо пользователю  MrFrizzy увидел, что у них можно инстанс из докер образа. Можно использовать образы из ImageHub или загрузить свой.
+Стартанул новый инстанс. В отличие от, например, Digital Ocean, здесь нельзя сделать SSH по паролю, только по ключу. Сразу вызывает уважение. Это идеологически ближе к AWS, но ключ я здесь генерирую сам у себя (AWS умеет генерить на своей стороне). Когда я зашел туда обнаружил в домашней папке рута файлик pw с его паролем в системе. ОК, Бог с ним.
+Но в настройках SSH демона логин по паролю (параметр PasswordAuthentication) был разрешен! Что я считаю довольно существенно дырой. Как-то это выглядит сыро.
+Доступ по ssh к этому инстансу разрешен для пользователя root, что я считаю минусом, но не большим. Точно также сделано на Digital Ocean, но на AWS используется пользователь ubuntu, который добавлен в sudoers на выполнение всех административных функций без пароля. Мне такая схема кажется привычней. Но, на самом деле, это уже дело вкуса.
+Кстати, дата-центр расположен во Франции. Пинг от меня около 52мс. Для меня нормально.Железо
+Что там за процессор?#cat /proc/cpuinfo
+Processor : Marvell PJ4Bv7 Processor rev 2 (v7l)
+processor : 0
+BogoMIPS : 1332.01
+
+processor : 1
+BogoMIPS : 1332.01
+
+processor : 2
+BogoMIPS : 1332.01
+
+processor : 3
+BogoMIPS : 1332.01
+
+Features : swp half thumb fastmult vfp edsp vfpv3 tls
+CPU implementer : 0x56
+CPU architecture: 7
+CPU variant : 0x2
+CPU part : 0x584
+CPU revision : 2
+
+Hardware : Online Labs C1
+Revision : 0000
+Serial : 0000000000000000
+
+Итак, у меня в распоряжении 32 битный ARM v7 процессор. Насчет 4 ядер — истинная правда. 1332 богомипс… ну… Это близко к какому нибудь Pentium III/666. На микроинстансе AWS, например, 3591 могомипс, к тому же там 64 битный процессор и ОС.
+То есть, потенциально, 4*1332=5328, будет быстрее, чем микроинстанс, даже в прыжке. Микроинстанс AWS, это, как известно, это burstable инстанс. То есть, он может давать большую производительность в течение короткого времени. Насколько я понимаю, как раз 3591 он мне будет давать в течение короткого времени. А потом будет тормозить. У меня нет точных цифр насколько сильно будет тормозить, но субъективные ощущения — в несколько раз.
+Еще информация о системе:
+# uname -a
+Linux scw-b715a9 3.2.34-30 #17 SMP Mon Apr 13 15:53:45 UTC 2015 armv7l armv7l armv7l GNU/Linux
+
+Почти ничего нового я не узнал.
+Еще посмотрим на память.# cat /proc/meminfo
+MemTotal: 2072392 kB
+MemFree: 1288544 kB
+Buffers: 60532 kB
+Cached: 664280 kB
+SwapCached: 0 kB
+Active: 383292 kB
+Inactive: 352528 kB
+Active(anon): 11032 kB
+Inactive(anon): 7452 kB
+Active(file): 372260 kB
+Inactive(file): 345076 kB
+Unevictable: 0 kB
+Mlocked: 0 kB
+HighTotal: 1269756 kB
+HighFree: 592840 kB
+LowTotal: 802636 kB
+LowFree: 695704 kB
+SwapTotal: 0 kB
+SwapFree: 0 kB
+Dirty: 16 kB
+Writeback: 0 kB
+AnonPages: 11008 kB
+Mapped: 4988 kB
+Shmem: 7476 kB
+Slab: 40676 kB
+SReclaimable: 26164 kB
+SUnreclaim: 14512 kB
+KernelStack: 568 kB
+PageTables: 296 kB
+NFS_Unstable: 0 kB
+Bounce: 0 kB
+WritebackTmp: 0 kB
+CommitLimit: 1036196 kB
+Committed_AS: 55844 kB
+VmallocTotal: 122880 kB
+VmallocUsed: 168 kB
+VmallocChunk: 122696 kB
+
+Ну что же, реально 2 гигабайта, не обманули. Ну и ядро в памяти занимает несколько меньше, чем я привык в последнее время на x86-64 линюксах.ТестыUpdate5: По совету в комментариях провел тесты. Насколько я понимаю, dd не очень хороший тест для IOPS, но привожу здесь.# dd if=/dev/nbd0 of=/dev/null bs=1M count=10000
+10000+0 records in
+10000+0 records out
+10485760000 bytes (10 GB) copied, 95.602 s, 110 MB/s
+# dd if=/dev/zero of=bigfile bs=1M count=10000 conv=fsync
+10000+0 records in
+10000+0 records out
+10485760000 bytes (10 GB) copied, 101.59 s, 103 MB/s
+
+Большими кусками прокачивать данные не сложно. Уменьшаю блок до 4к.# dd if=/dev/nbd0 of=/dev/null bs=4k count=2560000
+2560000+0 records in
+2560000+0 records out
+10485760000 bytes (10 GB) copied, 92.5033 s, 113 MB/s
+# dd if=/dev/zero of=bigfile bs=4k count=2560000 conv=fsync
+2560000+0 records in
+2560000+0 records out
+10485760000 bytes (10 GB) copied, 98.951 s, 106 MB/s
+
+Думаю, что ~100 MB это я уперся в гигабитный сетевой интерфейс. Еще провел тест с 1к блоком.# dd if=/dev/nbd0 of=/dev/null bs=1k count=10240000
+10240000+0 records in
+10240000+0 records out
+10485760000 bytes (10 GB) copied, 131.106 s, 80.0 MB/s
+# dd if=/dev/zero of=bigfile bs=1k count=10240000 conv=fsync
+10240000+0 records in
+10240000+0 records out
+10485760000 bytes (10 GB) copied, 150.614 s, 69.6 MB/s
+
+Здесь падение скорости уже заметно. Но IOPS все равно очень большой. Не уверен, что ограничение диска, возможно, ограничение, опять-же, сетевого интерфейса. Но в целом все выглядит весьма неплохо. # wget -O- https://freevps.us/downloads/bench.sh | bash
+CPU model :
+Number of cores :
+CPU frequency :  MHz
+Total amount of ram : 2023 MB
+Total amount of swap : 0 MB
+System uptime :   2 days, 10:11,
+Download speed from CacheFly: 71.8MB/s
+Download speed from Coloat, Atlanta GA: 3.96MB/s
+Download speed from Softlayer, Dallas, TX: 2.97MB/s
+Download speed from Linode, Tokyo, JP: 1.41MB/s
+Download speed from i3d.net, Rotterdam, NL: 27.7MB/s
+Download speed from Leaseweb, Haarlem, NL: 30.1MB/s
+Download speed from Softlayer, Singapore: 1.47MB/s
+Download speed from Softlayer, Seattle, WA: 2.39MB/s
+Download speed from Softlayer, San Jose, CA: 2.32MB/s
+Download speed from Softlayer, Washington, DC: 3.69MB/s
+I/O speed :  102 MB/s
+Софт
+А как развернуть на нем свои проекты?
+А давайте попробуем docker... Здесь меня ждало разочарование. Он говорит, что работает только на 64 битных системах. Хотя у меня сомнения, что он вообще умеет работать на ARM. Но, по крайней мере, ошибку он мне вывалил, именно про 64 бита. Вообщем, отпадает.Update3: Спасибо всем, кто отписал в комментарии ( MrFrizzy,  alexac,  WGH). На самом деле, нельзя установить докер тем путем, что рекомендуется самим докером: docs.docker.com/linux/step_one. Из репозитариев Убунты он ставится номрально, но там версия 1.4, что не применимо. Зато можно использовать докер образы при старте инстанса.
+Другой вариант, который я ранее несколько раз использовал для своих pet проектов — bitnami. Он, конечно-же тоже не поддерживает ARM. Тоже отпадает.
+Придется все ставить самому…
+Ставлю из репозитария nginx, php5-fpm, mysql-server. Все нашлось сразу, все заработало.
+Oracle java8 для ARM процессора из репозитария webupd8team/java тоже поставилась и заработала. На самом деле, для текущих проектов java мне не нужна. Но на будущее проверить, хотя бы ее наличие было необходимо.Выводы
+Облачный хостинг на ARM процессорах существует! И с первого сентября это очень дешево. Конечно, еще хочется погонять реальный сайт, под какой нибудь известной CMS под нагрузкой… Но это не сейчас. Еще тесты такой же системы можно посмотреть в этой статье. Они, правда, тоже обещали какой-то реальный тест, но так и не сделали.
+
+      
+      
+    

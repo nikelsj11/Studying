@@ -1,0 +1,96 @@
+﻿#TITLE:Mikrotik. Построение VPN туннелей ipsec с динамическими ip клиентов
+
+      Занимался переводом сети их VPN туннелей с оборудования D link DV 804 HV на Mikrotik. При переводе возникли проблемы решением которых поделюсь с Вами.
+Но для начала немного вводных данных.
+Дано 192.168.0.0/21 моя локальная сеть; 192.168.112.0/24 локальная сеть удаленного офиса; y.y.y.y мой белый ip, а x.x.x.x белый ip удаленного офиса (динамический).
+Настройки Микротик сервера:/ip ipsec peer 
+address.0.0.0/0 port=500 auth-methodre-shared-key secret="12345678" 
+     generate-policy=no exchange-mode=main send-initial-contact=yes 
+     nat-traversal=no my-id-user-fqdn="" proposal-checkbey 
+     hash-algorithm=sha1 enc-algorithm=3des dh-group=modp768 lifetime=1d 
+     lifebytes dpd-interval=2m dpd-maximum-failures=5 
+Политки:/ip ipsec policy
+src-address=192.168.0.0/21 src-port=any dst-address=192.168.112.0/24 dst-port=any protocol=all action=encrypt level=require ipsec-protocols=esp tunnel=yes sa-src-address=y.y.y.y sa-dst-address=0.0.0.0 comment=pobug
+&lt;/code&gt;
+
+В результате подымается туннель с той стороны и вижу 3 installed-sa:
+
+&lt;source&gt;
+0 E  spi src-address=y.y.y.y dst-address=0.0.0.0 auth-algorithm=none 
+      enc-algorithm=none replay state=larval add-lifetimes/30s 
+ 
+1 E spi=0x2010010 src-address=y.y.y.y dst-address=z.z.z.z
+      auth-algorithm=sha1 enc-algorithm=3des replay=4 state=mature 
+      auth-key="sss" 
+      enc-key="fff" 
+      addtime=jun/10/2013 12:42:47 expires-in=7h41m33s add-lifetime=6h24m/8h 
+      current-bytes=240 
+ 
+ 
+2 E  spixDBEA2D2 src-address=z.z.z.z dst-address=y.y.y.y
+      auth-algorithm=sha1 enc-algorithm=3des replay=4 state=mature 
+      auth-key="sss" 
+      enc-key="fff" 
+      addtime=jun/10/2013 12:42:47 expires-in=7h41m33s add-lifetime=6h24m/8h 
+      current-bytes=3376 
+
+И как результат трафик в обратную сторону идет через туннель с номером 0, а не через динамически созданный при подключении клиента. Для себя решил эту проблему путем использования ddns записи у удаленных клиентов и определения их ip c подстановкой в соответствующую политику. DDNS на удаленных роутерах у меня был уже настроен.
+Вот скрипт который достает из дднс имени удаленного пира ip адрес и вставляет его в нужную политику. Так как политик для разных сетей уже не сколько тот добавляем для каждой политики комментарий, по которому будем определять нужную.:local nname pobug;
+
+:log info  "start $nname";
+
+:local newip [:resolve "lanlan69.zapto.org"];
+
+:local curip [/ip ipsec policy get [/ip ipsec policy find comment=$nname] sa-dst-address];
+
+:log info "newip = $newip";
+
+:log info "currentip = $curip";
+
+:if ($newip != $curip) do={
+
+:log info "ip $nname is $curip not $newip";
+
+/ip ipsec policy set [/ip ipsec policy find comment=$nname] sa-dst-address=$newip;
+
+:log info "end $nname";
+}
+И добавляем выполнение данного скрипта в планировщик: /system scheduler
+add disabled=no interval=7m name=pobug on-event=lan112 policy=\
+    read,write,policy,test,sensitivei start-date=jun/12/2013   start-time=08:11:19
+
+Если использовать в качестве роутеров в удаленных офисах Микротики то полезными будет пара скриптов.
+Скрипт, который подставляет на удаленной стороне текущий ip в политику::global lastip
+:local wanip
+:local wanif "pppoe-out1"
+
+:if ([ :typeof $lastip ] = nil ) do={ :global lastip "0" }
+
+:local wanip [ /ip address get [/ip address find interface=$wanif ] address ]
+
+:if  ([ :typeof $wanip ] = nil ) do={
+:log info ("WANIP: no ip address on $wanif  .")
+} else= {
+
+:for i from=( [:len $wanip] - 1) to=0 do={ 
+:if ( [:pick $wanip $i] = "/") do={ 
+:set wanip [:pick $wanip 0 $i];
+:log info ("wan ip now is $wanip")
+} 
+}
+
+:if ($wanip != $lastip) do={
+:log info ("Renew ipsec Policy: $wanif -&gt; $wanip")
+
+#Подставляем в политику  ipsec
+
+/ip ipsec policy set 0  sa-src-address=$wanip 
+:global lastip $wanip
+}
+}
+
+Как на микротике обновлять No-ip.com сервис описано тут: wiki.mikrotik.com/wiki/Dynamic_DNS_Update_Script_for_No-IP_DNS
+
+      
+      
+    

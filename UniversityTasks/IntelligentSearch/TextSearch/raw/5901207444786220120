@@ -1,0 +1,805 @@
+﻿#TITLE:Интегрируем оплату через Paypal в web-приложение
+
+      В данной статье рассмотрена интеграция разовых платежей, а также оплаты по подписке с помощью Paypal в веб-приложение. Примеры реализованы на PHP, но, в принципе, без особых проблем то же самое можно сделать с помощью других технологий. Данный метод выбран как компромисс между простотой и гибкостью. Это попытка написать руководство, которое поможет быстро разобраться в теме и интегрировать оплату через Paypal в свой проект.
+Статья ориентирована в основном на тех, кто раньше с этой системой не работал. Знатоки Paypal вряд ли найдут здесь для себя что-то новое. Но, возможно, они укажут на недостатки данного метода или посоветуют, как можно было бы по-другому это реализовать.Создание аккаунта
+Для реализации данной схемы нам потребуется business аккаунт. PayPal Payments Standard должно быть достаточно.
+Переходим по ссылке и создаем аккаунт.Создание sandbox аккаунта
+Для тестирования нашего приложения будем использовать Paypal Sandbox. Нам потребуется 2 sandbox аккаунта. Аккаунт покупателя(buyer) и аккаунт продавца(facilitator). Прежде всего нужно задать пароль для обоих sandbox аккаунтов. Для этого переходим на сайт paypal в раздел для разработчиков. Логинимся, затем переходим в dashboard. В меню слева находим раздел Sandbox, вкладку accounts. Здесь мы можем увидеть 2 sandbox аккаунта(Buyer и Facilitator).
+Нажимаем на profile, в появившемся модальном окне кликаем change password, затем сохраняем пароль. 
+Устанавливаем пароли для обоих аккаунтов. После этого можно перейти на сайт Paypal Sandbox и попробовать залогиниться.Настройка Paypal
+Теперь нам нужно настроить Paypal Facilitator аккаунт, на который мы будем получать средства. Переходим на сайт Sandbox, логинимся с помощью facilitator аккаунта и переходим в настройки профиля. Открываем меню profile, выбираем пункт my selling tools. 
+В разделе Selling online выбираем пункт Website preferences, нажимаем Update. Здесь можно включить перенаправление пользователя. После завершения платежа пользователь по умолчанию будет перенаправлен на указанный url. Но также есть возможность перенаправить пользователя на другой url (см. ниже). 
+Также необходимо активировать Paypal Instant Payment Notifications. Для этого в разделе Getting paid and managing my risk выбираем пункт Instant payment notifications и также нажимаем Update.
+В настройках IPN указываем URL, на котором будет работать наш IPN Listener. Этот URL обязательно должен быть доступен глобально т.к. на него будут приходить уведомления о проведении операций.
+Включаем Message delivery и сохраняемся. На этом настройка аккаунта завершена. Можно приступить к настройке непосредственно платежей.Разовые Платежи
+Для начала реализуем разовые платежи. Это, вероятно, наиболее распространенный вариант использования. Пользователь просто хочет купить какой-нибудь товар или разовую услугу. Ну и хочется, чтобы нам ничего больше не нужно было менять в настройках paypal. Список товаров и цены хранились бы в базе нашего приложения, мы могли бы их менять как нам хочется. Для разовых платежей будем использовать Payment Buttons (PayPal Payments Standard).Структура данных
+Список товаров храниться в базе данных нашего приложения. Мы можем добавлять удалять и редактировать товары в любой момент. Здесь представлена наиболее простая структура, вся информация храниться в одной таблице.
+Но можно и усложнить задачу. Например, менять цену в зависимости от количества заказанных товаров, или менять стоимость в зависимости от дня недели и времени. 
+Или включить в заказ много различных товаров.
+products — здесь будем хранить товары:id
+name
+price
+description
+1
+Product 1
+1.0
+...
+2
+Product 2
+4.0
+...
+
+users — здесь будем хранить пользователей:id
+firstname
+lastname
+email
+password
+315
+Alan
+Smith
+alansmith@example.com
+$1$2z4.hu5.$E3A3H6csEPDBoH8VYK3AB0
+316
+Joe
+Doe
+joedoe@example.com
+$1$Kd4.Lf0.$pGc1h7vwmy9N6EJxac953/
+
+products_users — кому мы и что отгрузили:id
+user_id
+product_id
+items_count
+created_date
+1
+315
+1
+3
+2015-09-03 08:23:05
+
+Также будем хранить в нашей базе историю транзакций в таблице transactions:txn_id
+txn_type
+mc_gross
+mc_currency
+quantity
+payment_date
+payment_status
+business
+receiver_email
+payer_id
+payer_email
+relation_id
+relation_type
+created_date
+Форма оплаты
+Для начала создадим форму заказа. Генерируем форму в нашем приложении, где указываем основные параметры заказа(название товара, цена, количество).
+Здесь мы можем указать любую цену, название, количество и т.д. Поле custom полезно тем, что в нем можно передавать любые данные. Здесь мы будем передавать id товара, id пользователя и, возможно, другую информацию. Эти данные понадобятся нам для дальнейшей обработки платежа.
+Если нужно передать несколько параметров, можно использовать json или сериализацию. Либо можно использовать дополнительные поля вида on0, on1, os0 and os1. Лично я это не проверял, информацию нашел здесь. 
+Ниже приведен пример формы:&lt;?php
+$payNowButtonUrl = 'https://www.sandbox.paypal.com/cgi-bin/websc';
+$userId = 315 // id текущего пользователя
+
+$receiverEmail = 'xxx-facilitator@yandex.ru'; //email получателя платежа(на него зарегестрирован paypal аккаунт) 
+
+$productId = 1;
+$itemName = 'Product 1';	// название продукта
+$amount = '1.0'; // цена продукта(за 1 шт.)
+$quantity = 3;	// количество
+
+$returnUrl = 'http://your-site.com/single_payment?status=paymentSuccess';
+$customData = ['user_id' =&gt; $userId, 'product_id' =&gt; $productId];
+?&gt;
+
+&lt;form action="&lt;?php echo $payNowButtonUrl; ?&gt;" method="post"&gt;
+    &lt;input type="hidden" name="cmd" value="_xclick"&gt;
+    &lt;input type="hidden" name="business" value="&lt;?php echo $receiverEmail; ?&gt;"&gt;
+    &lt;input id="paypalItemName" type="hidden" name="item_name" value="&lt;?php echo $itemName; ?&gt;"&gt;
+    &lt;input id="paypalQuantity" type="hidden" name="quantity" value="&lt;?php echo $quantity; ?&gt;"&gt;
+    &lt;input id="paypalAmmount" type="hidden" name="amount" value="&lt;?php echo $amount; ?&gt;"&gt;
+    &lt;input type="hidden" name="no_shipping" value="1"&gt;
+    &lt;input type="hidden" name="return" value="&lt;?php echo $returnUrl; ?&gt;"&gt;
+
+    &lt;input type="hidden" name="custom" value="&lt;?php echo json_encode($customData);?&gt;"&gt;
+
+    &lt;input type="hidden" name="currency_code" value="USD"&gt;
+    &lt;input type="hidden" name="lc" value="US"&gt;
+    &lt;input type="hidden" name="bn" value="PP-BuyNowBF"&gt;
+
+    &lt;button type="submit"&gt;
+        Pay Now        
+    &lt;/button&gt;
+ &lt;/form&gt;
+
+На самом деле, параметров может быть гораздо больше, подробную информацию можно найти в документации. После отправки формы пользователь попадает на страницу оплаты paypal, где он снова видит детали заказа.
+Здесь пользователь может оплатить заказ с помощью paypal аккаунта либо с помощью банковской карты. Далее пользователь переадресовывается обратно на наш сайт(параметр return), где мы можем ему сообщить, что его платеж находится в обработке.Instant Payment Notification(IPN)
+После того, как пользователь совершил платеж, Paypal обрабатывает его и отправляет подтверждение в наше приложение. Для этого используется сервис Instant Payment Notification(IPN).
+В начале статьи мы настраивали наш Paypal аккаунт и устанавливали IPN Notification URL. Сейчас самое время создать IPN listener, который будет обрабатывать IPN запросы. Paypal предоставляет пример реализации IPN listener. Подробное объяснение работы сервиса можно найти здесь. В двух словах, как это работает: Paypal обрабатывает платеж пользователя, видит что все хорошо и платеж успешно завершен. После этого IPN отправляет на наш Notification URL такого вида Post запрос:mc_gross=37.50&amp;protection_eligibility=Ineligible&amp;payer_id=J86MHHMUDEHZU&amp;tax=0.00&amp;payment_date=07%3A04%3A48+Mar+30%2C+2015+PDT&amp;payment_status=Completed&amp;charset=windows-1252&amp;first_name=test&amp;mc_fee=1.39&amp;notify_version=3.8&amp;custom=%7B%22user_id%22%3A314%2C%22service_provider%22%3A%22twilio%22%2C%22service_name%22%3A%22textMessages%22%7D&amp;payer_status=verified&amp;business=antonshel-facilitator%40gmail.com&amp;quantity=150&amp;verify_sign=AR-ITpb83c-ktcbmApqG4jM17OeQAx2RSvfYZo4XU8YFZrTSeF.iYsSx&amp;payer_email=antonshel-buyer%40gmail.com&amp;txn_id=30R69966SH780054J&amp;payment_type=instant&amp;last_name=buyer&amp;receiver_email=antonshel-facilitator%40gmail.com&amp;payment_fee=1.39&amp;receiver_id=VM2QHCE6FBR3N&amp;txn_type=web_accept&amp;item_name=GetScorecard+Text+Messages&amp;mc_currency=USD&amp;item_number=&amp;residence_country=US&amp;test_ipn=1&amp;handling_amount=0.00&amp;transaction_subject=%7B%22user_id%22%3A314%2C%22service_provider%22%3A%22twilio%22%2C%22service_name%22%3A%22textMessages%22%7D&amp;payment_gross=37.50&amp;shipping=0.00&amp;ipn_track_id=6b01a2c76197
+
+Наш IPN Listener должен этот запрос обработать. В частности:Проверить тип запроса(разовый платеж либо подписка). В зависимости от этого по-разному будем его обрабатывать. В нашем случае это будет разовый платеж — web_accept.
+Выбрать окружение — sandbox либо live.
+Проверить достоверность запроса. Зная как выглядит IPN запрос и, зная наш IPN Notification URL, любой желающий может отправить нам поддельный запрос. Поэтому мы обязательно должны выполнить эту проверку.
+&lt;?php
+/**
+ * Class PaypalIpn
+ */
+class PaypalIpn{
+
+    private $debug = true;
+    private $service;
+
+    /**
+     * @throws Exception
+     */
+    public function createIpnListener(){
+        $postData = file_get_contents('php://input');
+        $transactionType = $this-&gt;getPaymentType($postData);
+
+        $config = Config::get();
+
+		// в зависимости от типа платежа выбираем клас
+        if($transactionType == PaypalTransactionType::TRANSACTION_TYPE_SINGLE_PAY){
+            $this-&gt;service = new PaypalSinglePayment();
+        }
+        elseif($transactionType == PaypalTransactionType::TRANSACTION_TYPE_SUBSCRIPTION){
+            $this-&gt;service = new PaypalSubscription($config);
+        }
+        else{
+            throw new Exception('Wrong payment type');
+        }
+
+        $raw_post_data = file_get_contents('php://input');
+
+        $raw_post_array = explode('&amp;', $raw_post_data);
+        $myPost = array();
+        foreach ($raw_post_array as $keyval) {
+            $keyval = explode ('=', $keyval);
+            if (count($keyval) == 2)
+                $myPost[$keyval[0]] = urldecode($keyval[1]);
+        }
+
+        $customData = $customData = json_decode($myPost['custom'],true);
+        $userId = $customData['user_id'];
+
+        // read the post from PayPal system and add 'cmd'
+        $req = 'cmd=_notify-validate';
+        if(function_exists('get_magic_quotes_gpc')) {
+            $get_magic_quotes_exists = true;
+        }
+        else{
+            $get_magic_quotes_exists = false;
+        }
+
+
+        foreach ($myPost as $key =&gt; $value) {
+            if($get_magic_quotes_exists == true &amp;&amp; get_magic_quotes_gpc() == 1) {
+                $value = urlencode(stripslashes($value));
+            } else {
+                $value = urlencode($value);
+            }
+            $req .= "&amp;$key=$value";
+        }
+
+        $myPost['customData'] = $customData;
+
+        $paypal_url = 'https://www.sandbox.paypal.com/cgi-bin/websc';
+        //$paypal_url = 'https://www.paypal.com/cgi-bin/websc';
+
+		// проверка подлинности IPN запроса
+        $res = $this-&gt;sendRequest($paypal_url,$req);
+
+        // Inspect IPN validation result and act accordingly
+        // Split response headers and payload, a better way for strcmp
+        $tokens = explode("\r\n\r\n", trim($res));
+        $res = trim(end($tokens));
+
+        /**/
+        if (strcmp ($res, "VERIFIED") == 0) {
+			// продолжаем обраюотку запроса
+            $this-&gt;service-&gt;processPayment($myPost);
+        } else if (strcmp ($res, "INVALID") == 0) {
+            // запрос не прощел проверку
+            self::log([
+                'message' =&gt; "Invalid IPN: $req" . PHP_EOL,
+                'level' =&gt; self::LOG_LEVEL_ERROR
+            ], $myPost);
+        }
+        /**/
+    }
+
+    private function sendRequest($paypal_url,$req){
+        $debug = $this-&gt;debug;
+
+        $ch = curl_init($paypal_url);
+        if ($ch == FALSE) {
+            return FALSE;
+        }
+        curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $req);
+
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 1);
+
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($ch, CURLOPT_FORBID_REUSE, 1);
+        if($debug == true) {
+            curl_setopt($ch, CURLOPT_HEADER, 1);
+            curl_setopt($ch, CURLINFO_HEADER_OUT, 1);
+        }
+
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+		//передаем заголовок, указываем User-Agent - название нашего приложения. Необходимо для работы в live режиме
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Connection: Close', 'User-Agent: ' . $this-&gt;projectName));
+
+        $res = curl_exec($ch);
+        curl_close($ch);
+
+        return $res;
+    }
+	
+	public function getPaymentType($rawPostData){
+        $post = $this-&gt;getPostFromRawData($rawPostData);
+		
+        if(isset($post['subscr_id'])){
+            return "subscr_payment";
+        }
+        else{
+            return "web_accept";
+        }
+    }
+
+    /**
+     * @param $raw_post_data
+     * @return array
+     */
+    public function getPostFromRawData($raw_post_data){
+        $raw_post_array = explode('&amp;', $raw_post_data);
+        $myPost = array();
+        foreach ($raw_post_array as $keyval) {
+            $keyval = explode ('=', $keyval);
+            if(count($keyval) == 2)
+                $myPost[$keyval[0]] = urldecode($keyval[1]);
+        }
+
+        return $myPost;
+    }
+}   
+?&gt;
+
+После этого, если Paypal подтвердил подлинность запроса, можем приступить к его дальнейшей обработке.Обработка платежа
+В первую очередь нам потребуется получить значение поля custom, где мы передавали id заказа, id пользователя или еще что-то(зависит от логики нашего приложения). Соответственно мы сможем получить из нашей базы данных информацию о пользователе/заказе. Также нужно получить id транзакции. 
+Paypal может несколько раз присылать подтверждение одной и той же транзакции. Поэтому нужно проверить и, если транзакция не обрабатывалась, обрабатываем ее. Если транзакция уже обрабатывалась, тогда ничего не делаем.
+Проводим валидацию платежа. Если все нормально, тогда можно сохранить информацию о платеже в базу и выполнить дальнейшие действия (присвоить пользователю статус «premium», заказу статус «оплачен» и т.д.). Если платеж не прошел валидацию, необходимо установить причину и связаться с пользователем. Дальнейшие операции, в частности, отмена платежа, проводятся вручную.&lt;?php
+	function processPayment($myPost){
+
+        $customData = json_decode($myPost['custom'],true);
+        $userId = $customData['user_id'];
+		$productId = $customData['product_id'];
+
+		//
+        $userService = new UserService();
+        $userInfo = $userService-&gt;getUserData($userId);
+
+		//получаем информацию о транзакции из базы данных
+        $transactionService = new TransactionService();
+        $transaction = $transactionService-&gt;getTransactionById($myPost['txn_id']);
+
+        if($transaction === null){
+			//получаем информацию о продукте из бд
+			$productService = new ProductService();
+            $product = $productService-&gt;getProductById($productId);
+
+			// проводим валидацию транзакции
+            if($this-&gt;validateTransaction($myPost,$product)){
+				// оплата прошла успешно. сохраняем транзакцию в базу данных. 
+                $transactionService-&gt;createTransaction($myPost);
+				
+				// Выполняем какие-либо другие действия
+            }
+			else{
+				// платеж не прошел валидацию. Необходимо проверить вручную
+			}
+        }
+        else{
+			//дубликат, эту транзакцию мы уже обработали. ничего не делаем
+        }
+    }
+?&gt;	
+Валидация платежа
+Валидация платежа сильно зависит от бизнес-логики вашего приложения. Могут быть добавлены специфические условия. Например пользователь оплатил 15 единиц товара, а в наличии есть всего 10. Нельзя пропустить такой заказ.
+Впрочем, такие вещи имеет смысл проверять еще на этапе генерации формы. Валидация платежа нужна скорее для предотвращения мошенничества(например пользователь в форме оплаты вручную увеличил количество товара, а цену оставил прежней).
+Есть несколько вещей, которые в любом случае стоит проверить:Проверить соответствие цены в платеже и в нашей базе данных
+Проверить что итоговая стоимость не равна 0(паранойя т.к. предыдущий пункт покрывает этот случай)
+Проверить, что указан правильный получатель платежа
+Проверить статус платежа
+Проверить валюту платежа
+&lt;?php
+    function validateTransaction($myPost,$product){
+        $valid = true;
+
+		/*
+		 * Проверка соответствия цен
+		 */
+        if($product-&gt;getTotalPrice($myPost['quantity']) != $myPost['payment_gross']){
+            $valid = false;
+        }
+		/*
+		 * Проверка на нулевую цену
+		 */
+        elseif($myPost['payment_gross'] == 0){
+            $valid = false;
+        }
+		/*
+		 * Проверка статуса платежа
+		 */
+        elseif($myPost['payment_status'] !== 'Completed'){
+            $valid = false;
+        }
+		/*
+		 * Проверка получателя платежа
+		 */
+        elseif($myPost['receiver_email'] != 'YOUR PAYPAL ACCOUNT'){
+            $valid = false;
+        }
+		/*
+		 * Проверка валюты
+		 */
+        elseif($myPost['mc_currency'] != 'USD'){
+            $valid = false;
+        }
+
+        return $valid;
+    }
+?&gt;	
+
+Ну и, конечно, добавляйте свои проверки.
+В итоге у вас должны работать разовые платежи. На этапе создания формы платежа мы можем указывать любые параметры. Например, можно гибко управлять ценой товара(2 по цене 3, каждому 101 покупателю скидка 30% и т.д.). Нам для этого не нужно ничего менять в Paypal.Подписки
+Теперь рассмотрим реализацию подписок. Принцип тот же, что и с разовыми платежами. Только платежи повторяющиеся. Поэтому их реализация несколько сложнее.
+Доступно несколько тарифных планов, например Free — бесплатно, Pro — 5$ за пользователя в месяц, Premium — 10$ за пользователя в месяц. 
+Пользователь может отменить подписку с возвратом денег за неиспользованный период. Также пользователь может менять условия подписки, например, перейти на другой тарифный план, либо изменить количество пользователей.
+Понятно, что для Free подписки paypal вообще не нужен. Возможно, этот тарифный план должен активироваться автоматически, сразу при регистрации пользователя в нашем приложении. Данная схема хороша тем, что показывает типичное использование для какой-нибудь SaaS системы. И с ходу не очень понятно, как реализовать это с использованием Paypal.
+Для работы с подписками понадобятся дополнительные таблицы:
+subscription_plans — для хранения тарифных планов:id
+service_provider
+service_name
+price
+price_type
+period
+1
+Service
+pro
+5.00
+user
+month
+2
+Service
+enterprise
+10.00
+user
+month
+3
+Service
+free
+0.00
+user
+month
+
+subscriptions — для хранения подписок:id
+user_id
+plan_id
+subscription_id
+created_date
+updated_date
+payment_date
+items_count
+status
+Форма оформления подписки
+Форма оформления подписки очень похожа на форму создания разового платежа.&lt;?php
+$payNowButtonUrl = 'https://www.sandbox.paypal.com/cgi-bin/websc';
+$userId = 1 // id текущего пользователя
+
+$receiverEmail = 'xxx-facilitator@gmail.com'; //email получателя платежа(на него зарегестрирован paypal аккаунт) 
+
+$serviceId = 1;
+$serviceName = 'Service Pro';	// название подписки(тарифный план)
+$servicePrice = '5.00'; // стоимость сервиса - 5$ за 1 пользователя за месяц
+$quantity = 3;	// количество пользователей
+
+$amount = $servicePrice * $quantity;	// стоимость подписки - 15$ в месяц
+
+$returnUrl = 'http://your-site.com/subscription?status=paymentSuccess';
+$customData = ['user_id' =&gt; $userId, 'service_id' =&gt; $serviceId ];
+?&gt;
+
+&lt;form id="createSubscription" action="&lt;?php echo $payNowButtonUrl; ?&gt;" method="post" target="_top"&gt;
+    &lt;input type="hidden" name="cmd" value="_xclick-subscriptions"&gt;
+    &lt;input type="hidden" name="business" value="&lt;?php echo $receiverEmail; ?&gt;"&gt;
+    &lt;input type="hidden" name="lc" value="GB"&gt;
+
+    &lt;input type="hidden" name="item_name" value="&lt;?php echo $serviceName; ?&gt;"&gt;
+    &lt;input type="hidden" name="no_note" value="1"&gt;
+    &lt;input type="hidden" name="no_shipping" value="1"&gt;
+	
+	&lt;input type="hidden" name="return" value="&lt;?php echo $returnUrl; ?&gt;"&gt;
+
+    &lt;input type="hidden" name="src" value="1"&gt;
+    &lt;input type="hidden" name="a3" value="&lt;?php echo $amount; ?&gt;"&gt;
+    
+	&lt;input type="hidden" name="p3" value="1"&gt;
+    &lt;input type="hidden" name="t3" value="M"&gt;
+
+    &lt;input id="customData" type="hidden" name="custom" value="&lt;?php echo json_encode($customData); ?&gt;"&gt;
+    &lt;input type="hidden" name="currency_code" value="USD"&gt;
+
+    &lt;button type="submit"&gt;Subscribe&lt;/button&gt;
+&lt;/form&gt;
+
+Стоимость подписки задается параметром a3. Период подписки задается с помощью параметров p3 и t3(в данном примере платежи происходят каждый месяц).
+Подробное описание этих и других параметров можно посмотреть в документации.IPN
+С IPN принципиально все то же самое, что и с разовыми платежами. Правда, мы будем получать больше запросов т.к. нужно обрабатывать больше событий: создание подписки, платеж по подписке, отмена подписки и т.д. Как и раньше, нужно проверять достоверность для каждого запроса и только после этого обрабатывать.Валидация подписки
+Здесь все немного сложнее, чем с разовыми платежами. Нам нужно валидировать не только платеж, но и создание подписки, отмену подписки, возможно, изменение подписки. Возможно, что-то еще, в зависимости от логики работы приложения. Например, мы хотим, чтобы на тарифном плане Pro можно было создать не более 100 пользователей. Или еще что-нибудь в этом роде. Опять же все это можно попытаться учесть на этапе создания формы.
+Что точно необходимо проверять в данном случае:В случае отмены подписки нужно проверить, что подписка существует
+Для платежа по подписке необходимо проверить, чтоцена не равна 0
+размер платежа равен размеру подписки
+получатель указан правильно
+статус подписки «Completed»
+валюта USD
+
+В случае возврата платежа нужно проверить, что платеж существует и сумма возврата не больше суммы платежа(сумма возврата может быть меньше платежа, в случае, если мы проводим частичный возврат)
+В случае создания подписки нужно проверить что тарифный план существует и цены совпадают
+&lt;?php
+
+	function validateSubscription($subscriptionPlan,$myPost){
+        $userId = $myPost['customData']['user_id'];
+        $userService = new UserService();
+        $userInfo = $userService-&gt;getUserData($userId);
+
+        $customData = $this-&gt;getCustomData($myPost);
+
+		//валидация для отмены подписки
+        if($myPost['txn_type'] == 'subscr_cancel'){
+            $subscriptionService = new SubscriptionService();
+            $subscription = $subscriptionService-&gt;loadBySubscriptionId($myPost['subscr_id']);
+
+            if(!$subscription-&gt;id){
+				//подписка не существует
+
+                return false;
+            }
+        }
+		//валидация для платежа
+        elseif($myPost['txn_type'] == 'subscr_payment'){
+            // проверяем правильность цены
+			if($subscriptionPlan-&gt;price * $myPost['customData']['items_count'] != $myPost['mc_gross']){
+			
+                return false;
+            }
+
+            // проверяем, что цена не равна 0
+			if($myPost['mc_gross'] == 0){
+
+                return false;
+            }
+
+			//проверяем получателя платежа
+            if($myPost['receiver_email'] != 'xxx-facilitator@yandex.ru'){
+
+                return false;
+            }
+
+			//проверяем валюту
+            if($myPost['mc_currency'] != 'USD'){
+
+                return false;
+            }
+
+			//проверяем статус платежа
+            if($myPost['payment_status'] != 'Completed'){
+
+                return false;
+            }
+        }
+		//проверяем возврат платежа
+        elseif($myPost['reason_code'] == 'refund' &amp;&amp; $myPost['payment_status'] == 'Refunded'){
+			$transactionService = new TransactionService();
+            $lastTransaction = $transactionService-&gt;getLastActiveTransactionBySubscription($myPost['subscr_id']);
+
+			//проверяем, что платеж существует
+            if(!$lastTransaction){
+
+                return false;
+            }
+
+			//проверяем, что сумма возврата не больше суммы платежа
+            if(abs($myPost['mc_gross']) &gt; $lastTransaction['mc_gross']){
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+?&gt;
+ Обработка платежа
+После успешной валидации можно продолжить обработку платежа. Здесь у нас возможны несколько состояний подписки:подписка не существует
+подписка активна
+подписка отменена
+
+В зависимости от состояния подписки, запросы будут обрабатываться по-разному.&lt;?php
+	function processPayment($myPost){
+        $customData = $this-&gt;getCustomData($myPost);
+        $userId = $customData['user_id'];
+
+        $userService = new UserService();
+        $userInfo = $userService-&gt;getUserData($userId);
+
+		$subscriptionPlanService = new SubscriptionPlanService();
+        $subscriptionPlan = $subscriptionPlanService-&gt;getSubscriptionPlan($myPost);
+		
+		$transactionService = new TransactionService();
+		$subscriptionService = new SubscriptionService();
+
+        if(validateSubscription($subscriptionPlan,$myPost)){
+            
+            $subscription = $subscriptionService-&gt;loadBySubscriptionId($myPost['subscr_id']);
+
+            $transaction = $transactionService-&gt;getTransactionById($myPost['txn_id']);
+
+			//подписка существует
+            if($subscription-&gt;id){
+                
+				// платеж по подписке
+                if($myPost['txn_type'] == 'subscr_payment'){
+
+					// транзакция еще не обрабатывалась
+                    if(!$transaction){
+					
+						// обновляем подписку
+                        $subscription-&gt;status = 'active';
+                        $subscription-&gt;payment_date = $myPost['payment_date'];
+                        $subscription-&gt;updated_date = date('Y-m-d H:i:s');
+                        $subscription-&gt;save();
+
+						// сохраняем транзакцию
+						$myPost['relation_id'] = $subscription-&gt;id;
+                        $myPost['relation_type'] = 'transaction';
+                        $transactionService-&gt;createTransaction($myPost);
+                    }
+                    else{
+                        //транзакция уже обрабатывалась. ничего не нужно делать
+                    }
+                }
+
+				// отмена подписки
+                if($myPost['txn_type'] == 'subscr_cancel'){
+                    $subscription-&gt;status = 'cancelled';
+                    $subscription-&gt;updated_date = date('Y-m-d H:i:s');
+                    $subscription-&gt;save();
+                }
+
+				// подписка истекла
+                if($myPost['txn_type'] == 'subscr_eot'){
+                    $subscription-&gt;status = 'expired';
+                    $subscription-&gt;updated_date = date('Y-m-d H:i:s');
+                    $subscription-&gt;save();
+                }
+
+				// подписка уже существует
+                if($myPost['txn_type'] == 'subscr_signup'){
+                    
+                }
+
+				// пользователь изменил условия подписки в одностороннем порядке. отменяем подписку. Нужно связаться с пользователем
+                if($myPost['txn_type'] == 'subscr_modify'){
+                    $subscription-&gt;status = 'modified';
+                    $subscription-&gt;updated_date = date('Y-m-d H:i:s');
+                    $subscription-&gt;save();
+                }
+
+				// возврат платежа
+                if($myPost['payment_status'] == 'Refunded' &amp;&amp; $myPost['reason_code'] == 'refund'){
+                    
+					// обновляем транзакцию в нашей базе
+                    $transactionService-&gt;updateTransactionStatus($myPost['parent_txn_id'],'Refunded');
+
+					//сохраняем обратную транзакцию (возврат)
+                    $myPost['txn_type'] = 'refund';
+                    $myPost['relation_id'] = $subscription-&gt;id;
+                    $myPost['relation_type'] = 'subscription';
+                    $transactionService-&gt;createTransaction($myPost);
+                }
+            }
+			// подписка не существует
+            else{
+			
+				// первый платеж по подписке
+                if($myPost['txn_type'] == 'subscr_payment'){
+
+                    
+                    $activeSubscriptions = $subscriptionService-&gt;getActiveSubscriptions($userId);
+
+                    // проверяем, что у пользователя нет активной подписки.
+                    if(count($activeSubscriptions) &gt; 0){
+                        // ошибка, пользователь не может иметь больше одной подписки
+                    }
+                    elseif(!$transaction){
+						// создаем подписку
+                        $subscription = new Subscription();
+                        $subscription-&gt;user_id = $userId;
+                        $subscription-&gt;plan_id = $subscriptionPlan-&gt;id;
+                        $subscription-&gt;subscription_id = $myPost['subscr_id'];
+                        $subscription-&gt;created_date = date("Y-m-d H:i:s");
+                        $subscription-&gt;updated_date = date('Y-m-d H:i:s');
+                        $subscription-&gt;payment_date = $myPost['payment_date'];
+                        $subscription-&gt;items_count = $customData['items_count'];
+                        $subscription-&gt;status = 'active';
+                        $subscriptionId = $subscription-&gt;save();
+
+						// сохраняем транзакцию
+                        $myPost['relation_id'] = $subscriptionId;
+                        $myPost['relation_type'] = PaypalTransaction::TRANSACTION_RELATION_SUBSCRIPTION;
+
+                        $transactionService = new PaypalTransaction();
+                        $transactionService-&gt;createTransaction($myPost);
+                    }
+                    else{
+                        // платеж уже обработан
+                    }
+                }
+
+				// создание подписки. можно было бы создавать подписку здесь, но мы создаем ее при обработке первого платежа
+                if($myPost['txn_type'] == 'subscr_signup'){
+                    
+                }
+
+				// изменение подписки. Такого быть не должно т.к. подписка еще не существует
+                if($myPost['txn_type'] == 'subscr_modify'){
+                    
+                }
+            }
+        }
+        else{
+            // подписка не прошла валидацию
+        }
+    }
+?&gt;
+ Отмена подписки
+Реализуем отмену подписки, на случай если пользователю надоест пользоваться нашим приложением. В таком случае воспользуемся Paypal Classic Api для отмены подписки.
+Для работы с API нам понадобятся Username, Password и Signature. Их можно найти в настройках профиля.
+Отмена подписки осуществляется с помощью метода ManageRecurringPaymentsProfileStatus &lt;?php
+// $profile_id - id подписки (параметр $myPost['subscr_id'])
+// $action - 'Cancel'
+
+public function changeSubscriptionStatus($profile_id, $action, $apiCredentials){
+    $api_request = 'USER=' . urlencode( $apiCredentials['username'] )
+        .  '&amp;PWD=' . urlencode( $apiCredentials['password'] )
+        .  '&amp;SIGNATURE=' . urlencode( $apiCredentials['signature'] )
+        .  '&amp;VERSION=76.0'
+        .  '&amp;METHOD=ManageRecurringPaymentsProfileStatus'
+        .  '&amp;PROFILEID=' . urlencode( $profile_id )
+        .  '&amp;ACTION=' . urlencode( $action )
+        .  '&amp;NOTE=' . urlencode( 'Profile cancelled at store' );
+
+    $ch = curl_init();
+
+	curl_setopt( $ch, CURLOPT_URL, 'https://api-3t.sandbox.paypal.com/nvp' ); // For live transactions, change to 'https://api-3t.paypal.com/nvp'
+
+    curl_setopt( $ch, CURLOPT_VERBOSE, 1 );
+
+	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 1);
+
+    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, 1 );
+    curl_setopt( $ch, CURLOPT_POST, 1 );
+
+    // Set the API parameters for this transaction
+    curl_setopt( $ch, CURLOPT_POSTFIELDS, $api_request );
+
+    // Request response from PayPal
+    $response = curl_exec( $ch );
+
+    // If no response was received from PayPal there is no point parsing the response
+    if( ! $response ){
+        return false;
+    }
+
+    curl_close( $ch );
+
+    // An associative array is more usable than a parameter string
+    parse_str( $response, $parsed_response );
+
+    return $parsed_response;
+}
+?&gt;
+
+Есть некоторая проблема с этим методом, т.к. мы не можем отменить подписку, если она уже отменена. Но и проверить статус подписки мы тоже не можем. Потому приходится отменять подписку вселпую (в нормальной ситуации нам не придется отменять подписку дважды). Данная проблема описана в этом посте. Возврат средств(полный/частичный)
+Возможно, кроме отмены подписки пользователь хотел бы вернуть деньги за неиспользованный период(прим: оформил подписку на месяц, через неделю отменил — нужно вернуть 75% стоимости).
+Для этого также можно использовать Paypal Classic Api, метод RefundTransaction.&lt;?php	
+	// $transaction_id - $myPost['txn_id']
+	// $amount - сумма частичного возврата
+	
+    public function refundTransaction($transaction_id,$apiCredentials$amount = null){
+
+        $transaction_id = $transaction['txn_id'];
+
+        $refundType = 'Full';
+
+        if($amount){
+            $amount = round($amount, 2, PHP_ROUND_HALF_DOWN);
+            $amount = str_replace(',','.',$amount);
+            $refundType = 'Partial';
+        }
+
+        $api_request = 'USER=' . urlencode( $apiCredentials['username'] )
+            .  '&amp;PWD=' . urlencode( $apiCredentials['password'] )
+            .  '&amp;SIGNATURE=' . urlencode( $apiCredentials['signature'] )
+            .  '&amp;VERSION=119'
+            .  '&amp;METHOD=RefundTransaction'
+            .  '&amp;TRANSACTIONID=' . urlencode( $transaction_id )
+            .  '&amp;REFUNDTYPE=' . urlencode( $refundType )
+            .  '&amp;CURRENCYCODE=' . urlencode( 'USD' );
+
+        if($amount){
+            $api_request .= '&amp;AMT=' . urlencode( $amount );
+        }
+
+
+        $ch = curl_init();
+
+		curl_setopt( $ch, CURLOPT_URL, 'https://api-3t.sandbox.paypal.com/nvp' ); // For live transactions, change to 'https://api-3t.paypal.com/nvp'
+
+        curl_setopt( $ch, CURLOPT_VERBOSE, 1 );
+
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 1);
+
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, 1 );
+        curl_setopt( $ch, CURLOPT_POST, 1 );
+
+        // Set the API parameters for this transaction
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, $api_request );
+
+        // Request response from PayPal
+        $response = curl_exec( $ch );
+
+        // If no response was received from PayPal there is no point parsing the response
+        if( ! $response ){
+            return false;
+        }
+
+        curl_close( $ch );
+
+        // An associative array is more usable than a parameter string
+        parse_str( $response, $parsed_response );
+
+        return $parsed_response;
+    }
+?&gt;
+
+Для расчета суммы возврата можно использовать следующий код. Код предназначен для расчета возврата ежемесячной подписки. &lt;?php
+public static function getTransactionRefundAmount($transaction){
+    $paymentDate = date('Y-m-d',strtotime($transaction['payment_date']));
+    $currentDate = date('Y-m-d');
+
+    $paymentDate = new DateTime($paymentDate);
+    $currentDate = new DateTime($currentDate);
+
+    $dDiff = $paymentDate-&gt;diff($currentDate);
+    $days =  $dDiff-&gt;days;
+    $daysInMonth = cal_days_in_month(CAL_GREGORIAN,$currentDate-&gt;format('m'),$currentDate-&gt;format('Y'));
+
+    $amount = $transaction['mc_gross'] - $transaction['mc_gross'] * $days / $daysInMonth;
+    $amount = round($amount, 2, PHP_ROUND_HALF_DOWN);
+    $amount = str_replace(',','.',$amount);
+
+    return $amount;
+}
+?&gt;
+Изменение подписки
+Теперь добавим возможность изменения условий подписки. Это понадобится в случае, если пользователь захочет изменить тарифный план, или количество пользователей. К сожалению, paypal накладывает определенные ограничения на изменение подписки.
+Эта проблема обсуждается здесь
+На себе проверять эту информацию не хочется. В то же время, возможна ситуация, когда пользователь захочет поменять тарифный план, и стоимость подписки сильно изменится. В таком случае можно сначала отменить текущую подписку и провести частичный возврат средств. Затем создать новую подписку с другими параметрами.
+Возможно, не очень красиво, но работает без нареканий. В итоге остановился на этом варианте. хотя, в принципе, по ссылке выше есть информация, как сделать изменение подписки более правильно.Заключение
+В результате получаем возможность работать с разовыми платежами и подписками Paypal. Логика работы с разовыми платежами подписками находится в нашем веб-приложении.
+Со временем мы можем добавлять новые тарифные планы и менять старые (нужно делать это осторожно, проверять валидацию и т.д.). 
+На этом заканчиваю повествование. Всем спасибо за внимание. Надеюсь статья оказалась полезной. Буду рад ответить на вопросы в комментариях.Upd: Спасибо,  Daniyar94. Можно использовать PDT в дополнение к IPN. Это поможет немедленно выводить сообщение об успешном платеже. Подробности здесь habrahabr.ru/post/266091/#comment_8560801
+      
+    

@@ -1,0 +1,152 @@
+﻿#TITLE:Урок по BabylonJS — создание базовой сцены
+
+      Думаю, что ты наслышан о технологии WebGL. Позволь мне познакомить тебя с одним чудесным фреймворком для этой технологии — BabylonJS. Это open-source фреймворк, для отображения двух и трехмерной графики через HTML5-элемент Canvas.
+В первом уроке я предлагаю тебе создать первую сценку с использованием этого фреймворка. 
+Первое, что нужно тебе — это скачать сам фреймворк — любезно приложенная ссылка. Из всех файлов тебе нужен только babylon.2.1.js из папки dist.
+Второе — любой редактор кода, я использую Notepad++.
+Теперь, давай приступим непосредственно к созданию сценки:
+Для начала необходимо создать базовую веб-страницу стандарта HTML 5. Назовём её стандартным именем — index.html 
+На этой странице мы разместим:Каркас (элементы html, head, body)
+Таблицу стилей (элемент style внутри тега head)
+Подключенный фреймворк (элемент script, внутри тега head, со ссылкой на js-файл)
+Холст (элемент canvas внутри тега body)
+Сцену (раскрытый элемент script внутри тега body)
+Каркас&lt;!DOCTYPE html&gt;
+&lt;html xmlns="http://www.w3.org/1999/xhtml"&gt;
+	&lt;head&gt;
+		&lt;meta http-equiv="Content-Type" content="text/html" charset="utf-8"&gt;
+		&lt;title&gt;BabylonJS&lt;/title&gt;
+	&lt;/head&gt;
+	&lt;body&gt;
+
+	&lt;/body&gt;
+&lt;/html&gt;
+Таблица стилей
+Далее, внутри тега head мы добавим элемент style и раскроем его, добавив туда стили страницы и холста:		&lt;style&gt;
+			html. body {
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			}
+			
+			#renderCanvas {
+			width: 100%;
+			height: 100%;
+			touch-action: none;
+			}
+		&lt;/style&gt;
+Подключение фреймворка
+Также, мы подключим сам фреймфорк — это JS-файл с соответствующем названием: 	&lt;script src="babylon.js"&gt;&lt;/script&gt;
+ Холст
+Приступаем к телу страницы (элемент body). Внутри тега добавляем элемент canvas с идентификатором #renderCanvas:	&lt;canvas id="renderCanvas"&gt;&lt;/canvas&gt;
+
+Данный элемент будет использоваться фреймворком для отображения твоего творения.
+Ниже, мы добавляем элемент script и раскрываем его:	&lt;script&gt;
+	
+	&lt;/script&gt;
+
+И давай работать непосредственно с фреймоворком.
+Сцена.
+Первое, что нам необходимо сделать — это инициализировать фреймворк и указать ему с каким элементом canvas взаимодействовать: 	var canvas = document.querySelector("#renderCanvas");
+	var engine = new BABYLON.Engine(canvas, true);
+
+
+После того, как ты инициализировал BabylonJS и указали ему, где отображать результат вызови функцию createScene для создания сцены:	var createScene = function (){
+		var scene = new BABYLON.Scene(engine);
+		scene.clearColor = new BABYLON.Color3(0, 0, 1);
+
+Как ты можешь заметить, последняя строчка явно не относиться к функции создания сцены. Функцией clearColor мы окрашиваем сцену в синий цвет. Подробнее об функции мы поговорим в следующих уроках.
+Теперь тебе нужно через что-то смотреть на сцену, верно? Камера!var camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 5, -10), scene);
+camera.setTarget(BABYLON.Vector3.Zero());
+		camera.attachControl(canvas, false);
+
+Это свободная камера, управляемая с помощью клавиатуры и мыши. Подробнее об камере я расскажу в следующих уроках.
+И конечно-же освещение! Иначе ничего не будет видно:var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+light.intensity = 0.5;
+
+Добавив эти строчки, ты получишь реалистичное освещение. В следующих уроках я расскажу тебе об различных типах освещения. Пока не надо зацикливаться на этом.
+Теперь, собственно, добавим сферу и плоскость на сцену:var sphere = BABYLON.Mesh.CreateSphere("sphere1", 16, 2, scene);
+sphere.position.y = 1;
+
+var ground = BABYLON.Mesh.CreateGround("ground1", 6, 6, 2, scene);
+
+Сцена готова! Но не спеши сохранять файл и смотреть что ты там накодил. Во-первых, фреймворк ещё не знает, что сцена готова. Так сделай это:	return scene;
+	};
+
+	var scene = createScene();
+	engine.runRenderLoop(function (){
+		scene.render();
+	});
+
+Во-вторых, добавь эти две строчки для автоматического масштабирование сцены под любые разрешения:	window.addEventListener("resize", function (){
+		engine.resize();
+	})
+Готовый код&lt;!DOCTYPE html&gt;
+&lt;html xmlns="http://www.w3.org/1999/xhtml"&gt;
+	&lt;head&gt;
+		&lt;meta http-equiv="Content-Type" content="text/html" charset="utf-8"&gt;
+		&lt;title&gt;BabylonJS&lt;/title&gt;
+
+		&lt;style&gt;
+			html. body {
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			}
+			
+			#renderCanvas {
+			width: 100%;
+			height: 100%;
+			touch-action: none;
+			}
+		&lt;/style&gt;
+	
+	&lt;script src="babylon.js"&gt;&lt;/script&gt;
+
+	&lt;/head&gt;
+	&lt;body&gt;
+		&lt;canvas id="renderCanvas"&gt;&lt;/canvas&gt;
+		&lt;script&gt;
+			// Инициализируем движок и указываем с каким элементом &lt;canvas&gt; ему работать
+				var canvas = document.querySelector("#renderCanvas");
+				var engine = new BABYLON.Engine(canvas, true);
+			// -------------------------------------------------------------
+			// Вызываем функцию создания сцены. И окрашиваем её в синий цвет
+			var createScene = function (){
+				var scene = new BABYLON.Scene(engine);
+				scene.clearColor = new BABYLON.Color3(0, 0, 1);
+			// Устанавливаем камеру
+			var camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 5, -10), scene);
+				camera.setTarget(BABYLON.Vector3.Zero());
+				camera.attachControl(canvas, false);
+			// Освещение
+			var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+				light.intensity = 0.5;
+			// Сфера
+			var sphere = BABYLON.Mesh.CreateSphere("sphere1", 16, 2, scene);
+			sphere.position.y = 1;
+			// Площадка
+			var ground = BABYLON.Mesh.CreateGround("ground1", 6, 6, 2, scene);
+			return scene;
+			};
+			// -------------------------------------------------------------
+			// Указываем фреймворку, что сцена готова и отправляем её на рендеринг
+			var scene = createScene();
+			engine.runRenderLoop(function (){
+				scene.render();
+			});
+			// Масшабируем сцены под любые разрешения
+			window.addEventListener("resize", function (){
+				engine.resize();
+			})
+		&lt;/script&gt;
+	&lt;/body&gt;
+&lt;/html&gt;
+
+Вот теперь всё готово! До встречи в следующих уроках!
+      
+    

@@ -1,0 +1,157 @@
+﻿#TITLE:Развертывание JetBrains Hub + Youtrack + Upsource + Nginx на своем сервере Debian 8
+
+      Несколько дней назад столкнулся с задачей развернуть систему управления разработкой, которую предлагает JetBrains, а именно установить Hub, Youtrack и Upsource при этом обеспечить доступ к ресурсам по удобным для всех url.
+Почитав про продукты и их установку на сервере из zip архивов, решил поделиться опытом и готовым решением (скриптом) для автоматического развертывания с вами.Сразу скажу, что ничего нового того, что вы бы не нашли в документации продуктов я не сообщу, я расскажу об некоторых нюансах и как собрать все хозяйство вместе.
+Речь пойдет о продуктах, которые предоставляются для linux в .zip архивах.
+Все разворачивалось на новом Debian 8 сервере, который только созданы был в облаке, то есть на нем ничего не было кроме самого минимально необходимого.
+При настройке системы руководствовался следующими ресурсами:Инструкция по установке Hub
+Инструкция по установке Youtrack
+Инструкция по установке Upsource
+Рекомендации для сервера
+В инструкции для Upsource сказано, что рекомендуемыми характеристиками для системы является:Более 8 Гб оперативной памяти.
+JRE или JDK 1.8 и новее.
+
+Другие рекомендации для Upsource может прочесть здесь.О процессе установки
+Процесс установки прост:пример показан для hub, другие продукты устанавливаются один в один.Скачиваем архивmkdir -p /usr/opt/jetbrains/hub
+cd /usr/opt/jetbrains/hub
+wget http://download.jetbrains.com/hub/1.0/hub-ring-bundle-1.0.529.zip
+
+Распаковываем в нужную каталог, который будет домашним для продукта.unzip hub-ring-bundle-1.0.529.zip
+
+И потом согласно инструкции можно запустить командой (start для background запуска):/usr/opt/jetbrains/hub/bin/hub.sh run
+
+Затем открываем в браузере yourdomain.local:8080
+И делаем настройку. Указываем имя хоста и порт.
+
+Но если вы планируете использовать субдомены для доступа к ресурсам да и вообще более верный путь это заранее сконфигурировать продукты на нужный порт и имя хоста, так как они должны слушать разные порты как минимум.
+Для этого перед пунктом 3, так как мы планируем использовать nginx в качестве прокси, в конфиг /etc/nginx/sites-enabled/default надо добавить в начало строки:server {
+	listen 80;
+	listen [::]:80;
+	server_name hub.yourdomain.local;
+	server_tokens off;
+	
+	location / {
+		proxy_set_header X-Forwarded-Host $http_host; 
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; 
+		proxy_set_header X-Forwarded-Proto $scheme; 
+		proxy_http_version 1.1;
+	
+		proxy_pass http://localhost:2222/;
+	}
+}
+
+Сделать:service nginx reload
+
+А затем нужно выполнить команду:/usr/opt/jetbrains/hub/bin/hub.sh configure --listen-port 2222 --base-url http://hub.yourdomain.local
+
+Теперь можно выполнить собственно пункт 3 и перейти по настроенному адресу hub.yourdomain.local.О связки продуктов
+Сначала устанавливается и настраивается Hub, затем можно настраивать Youtrack и Upsource.
+Причем при конфигурировании Youtrack и Upsource в браузере на втором шаге нужно указать настроенный вами hub.ВАЖНО! 
+После настройки и конфигурации Youtrack и Upsource, и перезагрузки сервера если Hub еще не запустился то Youtrack и Upsource 
+не смогут запустить и упадут с ошибкой что не существует службы hub. По этому их надо запускать только после успешного старта Hub.
+Но, ни hub ни другие сервисы сами не прописываются в автозагрузку.
+Для этого надо сделать сценарии запуска каждого продукта как сервиса:cat &gt;/etc/init.d/hub &lt;&lt;EOF
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          hub
+# Required-Start:    \$local_fs \$remote_fs \$network \$syslog \$named
+# Required-Stop:     \$local_fs \$remote_fs \$network \$syslog \$named
+# Default-Start:     2 3 4 5
+# Default-Stop:      S 0 1 6
+# Short-Description: initscript for hub
+# Description:       initscript for hub
+### END INIT INFO
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+NAME=hub
+SCRIPT=/usr/opt/jetbrains/\$NAME/bin/\$NAME.sh
+do_start() {
+  \$SCRIPT start soft
+}
+case "\$1" in
+  start)
+    do_start
+    ;;
+  stop|restart|status|run|rerun|help)
+    \$SCRIPT \$1 \$2
+    ;;
+  *)
+    echo "Usage: sudo /etc/init.d/hub {start|stop|restart|status|run|rerun}" &gt;&amp;2
+    exit 1
+    ;;
+esac
+exit 0
+EOF
+
+chmod +x /etc/init.d/hub
+
+update-rc.d hub defaults
+
+Для Youtrack и Upsource надо дополнительно выполнить:update-rc.d youtrack disable
+Потому что они так и так не стартанут сами корректно.
+Для их корректного старта нужно написать для cron скрипт для события 
+@reboot
+, который ждет запуска api Hub:mkdir -p /root/crons
+
+cat &gt;/root/crons/jetbrains&lt;&lt;EOF
+#!/bin/bash
+status=404
+while [ \$status -eq 404 ]; do
+  echo "wait hub..."
+  sleep 60
+  status=\`curl -s -o /dev/null -w "%{http_code}" http://hub.yourdomain.local/hub\`
+  echo "hub status \$status"
+done
+service youtrack start
+service upsource start
+exit 0
+EOF
+
+chmod +x /root/crons/jetbrains
+
+echo "@reboot /root/crons/jetbrains" &gt; /tmp/cron_
+crontab /tmp/cron_
+Заключение
+Для чего я тут грубо пересказал инструкции JetBrains. Во-первых, для того чтобы вы не писали велосипедов а уже могли воспользоваться готовым решением. Да может быть мой скрипт не является эталоном, но он находиться в gist и любой желающий может косяки поправить и предложить свой экспертный взгляд.
+Во-вторых, я просто не нашел решения, которые бы уменьшили мои трудозатраты.
+Благодарю за внимание.
+P.S. Об ошибках пишите в личку.
+
+      	
+		
+
+	
+
+		Пользуетесь ли вы данными продуктами JetBrains
+
+		
+					
+
+				
+					Hub
+				
+			
+					
+
+				
+					Youtrack
+				
+			
+					
+
+				
+					Upsource
+				
+			
+					
+
+				
+					Не пользуюсь
+				
+			Проголосовало 114 человек. Воздержалось 40 человек.
+	
+
+    Только зарегистрированные пользователи могут участвовать в опросе. Войдите, пожалуйста.
+	
+
+      
+    

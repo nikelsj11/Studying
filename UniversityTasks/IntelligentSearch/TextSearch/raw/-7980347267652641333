@@ -1,0 +1,70 @@
+﻿#TITLE:Прикручиваем мультимедиа-клавиши в Яндекс.Радио
+
+      Не так давно открыл я для себя сервис Яндекс.Радио, и вполне успешно им пользуюсь. Но вот чего не хватает: возможности включить следующий трек или поставить на паузу, не переключаясь на вкладку.
+Мое решение под катом.
+В распоряжении есть Arch Linux, Firefox, i3wm и клавиатура с медиаклавишами.1 Расширение в Firefox
+Вероятно, для Хрома есть что-то аналогичное, но тут добрые люди придумали вполне подходящее расширение, суть которого — удаленный запуск javascript. После его включения на выбранной вкладке Firefox открывает порт 32000, на котором принимает и исполняет команды. Все довольно просто.
+Таким образом:Устанавим addons.mozilla.org/ru/firefox/addon/remote-control
+Открываем radio.yandex.ru
+Включаем расширение кнопочкой на панели браузера
+Проверяем порт
+$ netstat -ntpl | grep 32000
+tcp        0      0 127.0.0.1:32000         0.0.0.0:*               LISTEN      3687/firefox
+2 Скрипт для отправки команд
+Далее делаем скрипт для отправки команд в браузер и помещаем его, например, в ~/.opt/bin/radio.yandex.ru-client:#!/bin/bash
+case "$1" in
+    playpause)
+	CMD="Mu.Flow.togglePause();"
+    ;;
+    next)
+	CMD="Mu.Flow.flow.next();"
+    ;;
+esac
+echo $CMD | nc -c localhost 32000
+exit 0
+3 Привязываем медиа клавиши
+Правим конфигурационный файл i3wm ~/.i3/config:bindsym XF86AudioPlay exec ~/.opt/bin/radio.yandex.ru-client playpause
+bindsym XF86AudioNext exec ~/.opt/bin/radio.yandex.ru-client next
+
+На клавиатуре не оказалось клавиши Next, так что пришлось привязать к Super+VolumeUp:bindsym $mod+XF86AudioRaiseVolume exec ~/.opt/bin/radio.yandex.ru-client next
+Попытка 2
+В принципе на этом можно было и закончить, но необходимость включать расширение именно на этой вкладке осталась, да и расширение мне показалось весьма интересным, но несколько ограничивающим возможности.Доработка
+Не хватало возможности обратиться к произвольной вкладке например по имени или по uri. Благо расширение опубликовано на github. Далее fork -&gt; developer.mozilla.org -&gt; готово. Есть pull request, а пока доработанное расширение можно взять тут: raw.githubusercontent.com/irvinzz/FF-Remote-Control/master/remote_control-1.3-fx.xpi.И, соответственно, адаптированный скрипт#!/bin/bash
+case "$1" in
+    playpause)
+	CMD='{"selector":{"uri":"https://radio.yandex.ru/"},"command":"Mu.Flow.togglePause();"}'
+    ;;
+    next)
+	CMD='{"selector":{"uri":"https://radio.yandex.ru/"},"command":"Mu.Flow.flow.next();"}'
+    ;;
+esac
+echo $CMD | nc -c localhost 32000
+exit 0
+
+Для порядка завел репозиторий для скриптов: github.com/irvinzz/sites-remote-control. Готов принимать pull request для других сайтов.
+Благодарю за внимание, думаю, принцип понятен, по аналогии можно адаптировать под Windows, Chrome, прочие сайты с музыкой.
+PS:Под Windows
+Как и ожидалось, адаптация для windows не заставила ждать.Тут обсуждения.
+NetCat — взять Отсюда
+Вот что получилось у меня:
+music.yandex.ru.cmd:@echo off
+GOTO :%1
+:playpause
+  set "CMD=(function(f){f.player.pause()^|^|f.player.resume()^|^|f.play()})(Mu.pages.player.flow);"
+  goto :END
+:next
+  set "CMD=Mu.pages.player.flow.next();"
+  goto :END
+:prev
+  set "CMD=Mu.pages.player.flow.prev();
+  goto :END
+:END
+echo %CMD% &gt; cmd.txt
+type cmd.txt | nc.exe -v -d localhost 32000
+del cmd.txt
+
+Избавиться от моргающего окна можно таким способом:
+music.yandex.ru-playpause.vbs:CreateObject("Wscript.Shell").Run "music.yandex.ru.cmd playpause", 0, True
+
+      
+    

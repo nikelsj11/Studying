@@ -1,0 +1,70 @@
+﻿#TITLE:Немного о реализации головоломки «Кубики сома» (Swift & SceneKit)
+
+      Около года назад я заметил, что в мобильных магазинах нет головоломки Пита Хейна «Soma Cubes», придуманной еще в 1933 году. Желание попробовать написать игру под iOS давно сверлило воспаленный мозг и я наконец решился, тем более что, дизайна особо не требовалось (нарисовать кубик в Blender не в счет). В головоломке 7 элементов из кубиков, из которых собираются другие разнообразные фигуры (Википедия). 
+Требования, сразу предъявленные к игре, сводились к двум пунктам:
+1. Не использовать в разработке сторонние фреймворки.
+2. Для управления фигурами и сценой не должны использоваться кнопки — только Recognizers.
+По п.2 я подразумеваю, что сценарий, когда надо выделить объект и потом нажимать на кнопки управления, не подходит.1. Подготовка
+Экспортируем нарисованный в Blender кубик в файл .dae и кладем в папку «art.scnassets» нашего игрового проекта, при создании которого был указан SceneKit в качестве Game Tech. Доступ к импортируемой сцене и объекту на сцене получаем следующим образом:let cubeScene = SCNScene(named: "art.scnassets/cube.dae")
+let cubeNode1 = cubeScene!.rootNode.childNodeWithName("Cube", recursively: false)
+cubeNode1?.geometry?.materialWithName(CUBE_MATERIAL_NAME)?.diffuse.contents = COLORS_FOR_PRIMITIVES[1]
+
+Третья строка просто раскрашивает грани куба в нужный цвет. Теперь можно клонировать объект, устанавливать координаты и добавлять в родительскую фигуру, которая просто является объектом класса SCNNode. Аналогично размещаем фигуру для сборки по центру сцены, предварительно сделав кубик чуть поменьше. 2. Вращение, поднятие-опускание и перетаскивание объектов
+Для игры необходимо обеспечить возможность поворота фигуры на 90 градусов вокруг всех трех осей, что сначала вызвало некоторые трудности, но потом меня вдруг осенило (через неделю), что достаточно комбинаций поворотов вокруг двух осей для всех случаев. Был выбран UISwipeGestureRecognizer для реализации задуманного. Итак, swipe по фигуре влево-вправо поворачивает вокруг вертикальной оси (Y) вне зависимости от положения камеры, swipe вверх-вниз поворачивает фигуру либо вокруг X, либо вокруг Z (зависит от положения камеры).
+Для перетаскивания объектов по плоскости XZ естественно использовать UIPanGestureRecognizer, однако необходимо задать зависимость между «свайпом» и «перетаскиванием», чтобы работали оба обработчика.panGestureRecognizer.requireGestureRecognizerToFail(swipeGestureRecognizer)Код для перетаскивания объектов для интересующихсяfunc handlePanGestures(recogniser: UIPanGestureRecognizer){
+if recogniser.state == .Began {            
+            let location = recogniser.locationInView(recogniser.view)
+            let hits = sceneView.hitTest(location,options: nil) as! [SCNHitTestResult]
+            for hit in hits {
+                if Utils.nodeHasPrefix(hit.node.parentNode!, prefix: "fig"){                
+                    selectedNode = hit.node.parentNode
+                    saveOldPosition(selectedNode)
+                    let worldCoord = selectedNode.position
+                    let projectedOrigin = sceneView.projectPoint(worldCoord)
+                    curZ = projectedOrigin.z
+                    let unProj = sceneView.unprojectPoint(SCNVector3Make(Float(location.x), Float(location.y), projectedOrigin.z))
+                    ofset = SCNVector3Make(selectedNode.position.x - unProj.x, selectedNode.position.y - unProj.y, selectedNode.position.z - unProj.z)              
+                    break               
+               }
+            }
+        }
+if recogniser.state == .Changed  {           
+                let curScreenPoint = SCNVector3Make(Float(location.x), Float(location.y), curZ)
+                let curWorld = sceneView.unprojectPoint(curScreenPoint)
+                let posPlusOffset = SCNVector3Make(curWorld.x + ofset.x, curWorld.y + ofset.y , curWorld.z + ofset.z)
+                let newPosition = SCNVector3Make(posPlusOffset.x , selectedNode.position.y , posPlusOffset.z  )
+                let projectedOrigin2 = sceneView.projectPoint(newPosition)
+                curZ = projectedOrigin2.z              
+                selectedNode.position = newPosition                
+        }
+if recogniser.state == .Ended || recogniser.state == .Failed{
+                selectedNode.position.x = Utils.clamp(selectedNode.position.x, min : -9 , max: 9)
+                selectedNode.position.y = round(selectedNode.position.y)
+                selectedNode.position.z = Utils.clamp(selectedNode.position.z, min : -9 , max: 9)
+                if testCollision(selectedNode){
+                   selectedNode.position = selectedNodeOldPosition
+                }else{
+                  testGameOver(selectedNode as! SimpleFigure)
+                }
+            selectedNode = nil
+        }
+}
+
+Для поднятия и опускания на одну единицу по оси Y использовано два экземпляра UITapGestureRecognizer, только у одного из них numberOfTapsRequired = 2, и также указана завистимость:tapRecognizer.requireGestureRecognizerToFail(doubleTapRecognizer)
+3. Управление камерой
+Камера добавлена в SCNNode в центре координат на некотором удалении от него и направлена в его сторону. То есть, камера находится как-бы на поверхности сферы, и для вращения камеры достаточно поворачивать родительский SCNNode на определенный угол. Для приближения-удаления используем UIPinchGestureRecognizer и достаточно в обработчике делать «scale» того же SCNNode:        let cameraNode = SCNNode()
+        cameraNode.name="mainCamera"
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera!.zFar = 100
+        cameraNode.position = SCNVector3(x: 0.0, y: 0.0, z: 8.0)
+        
+        let  cameraOrbit = SCNNode()
+        cameraOrbit.position = SCNVector3(x: 0.0, y: 0.0, z: 0.0)
+        cameraOrbit.addChildNode(cameraNode)
+        cameraOrbit.eulerAngles.x = -Float(M_PI_4)
+
+Я использовал свойство eulerAngles объекта cameraOrbit для приращения угла поворота в тех же обработчиках, что и для фигур, предварительно идентифицируя объект в SCNHitTestResult.4. Прочие мелочи
+Для тестирования столкновений просто проверяется совпадение координат каждого кубика текущей фигуры (которую отпустили, повернули и т.д.) с кубиками остальных шести фигур. Уровни представляют собой просто текстовый файл с координатами.
+По итогам разработки этой головоломки хочется сказать, что iOS оставила у меня приятное впечатление, особенно реализация UIGestureRecognizers. Всем спасибо за внимание и надеюсь, кому-то написанное выше поможет.
+      
+    

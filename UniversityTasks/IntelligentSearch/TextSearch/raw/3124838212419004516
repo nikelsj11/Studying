@@ -1,0 +1,99 @@
+﻿#TITLE:Проброс DLNA в удаленную сеть
+
+      Предыстория:
+Итак, появилась необходимость дать возможность просматривать фильмы с моего сервера на телевизоре. Ну казалось бы, поднимаем DLNA, например miniDLNA и проблема решена. Так и было, пока не появилась нужда дать такую же возможность родителям, которые живут в другом месте, и ставить им там сервер или простенький nas не хотелось. Было принято решение объединить наши сети путем туннелирования трафика и дать доступ к моей фильмотеке.Подготовка:
+У родителей я уже давно поставил отличный роутер, с которым я давно работаю и доверяю — Mikrotik 951Ui 12HnD. Кто не знаком с этим великолепным маршрутизатором, советую познакомиться. Ценовая политика позволяет подобрать решения как для дома, так и для офиса. При этом получаем функционал, как у дорогих enterprise решений.
+У меня в квартире так же стоял Mikrotik, лишь с одним отличием, у меня были все порты гигабитные. Я не долго думая поднял pptp туннель и тут началось…Первые проблемы:
+В отличии от классического способа передачи потокового аудио и видео сегмента данных DLNA несколько отличается. И это сразу стало понятно, после того как я посниффил трафик.  Все общение между медиа сервером и телевизором происходит по протоколу HTTP 
+ Телевизор делает мультикаст рассылку SSDP пакетов на адрес 239.255.255.255.250, в которой регистрирует себя как сервис перед лицом медиа серверов.
+DLNA сервера при виде нового сервиса начинают обращаться к телевизору напрямую, после пары пакетов отправляет свою информацию внутри XML&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;root xmlns="urn:schemas-upnp-org:device-1-0" 
+xmlns:dlna="urn:schemas-dlna-org:device-1-0"
+xmlns:sec="http://www.sec.co.kr/dlna"&gt;
+   &lt;specVersion&gt;
+		&lt;major&gt;1&lt;/major&gt;
+		&lt;minor&gt;0&lt;/minor&gt;
+   &lt;/specVersion&gt;
+   &lt;device&gt;
+   	&lt;dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0"&gt;DMS-1.50&lt;/dlna:X_DLNADOC&gt;
+   	&lt;dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0"&gt;M-DMS-1.50&lt;/dlna:X_DLNADOC&gt;
+	  &lt;dlna:X_DLNACAP xmlns:dlna="urn:schemas-dlna-org:device-1-0"&gt;av-upload,image-upload,audio-upload&lt;/dlna:X_DLNACAP&gt;
+    &lt;sec:ProductCap&gt;smi,DCM10,getMediaInfo.sec,getCaptionInfo.sec&lt;/sec:ProductCap&gt;
+    &lt;sec:X_ProductCap&gt;smi,DCM10,getMediaInfo.sec,getCaptionInfo.sec&lt;/sec:X_ProductCap&gt;
+    &lt;deviceType&gt;urn:schemas-upnp-org:device:MediaServer:1&lt;/deviceType&gt;
+		&lt;friendlyName&gt;[PC]DESKTOP-SBP6BH3&lt;/friendlyName&gt;
+		&lt;manufacturer&gt;Samsung Electronics&lt;/manufacturer&gt;
+		&lt;manufacturerURL&gt;http://www.samsung.com/sec&lt;/manufacturerURL&gt;
+		&lt;modelDescription&gt;Samsung PC DMS&lt;/modelDescription&gt;
+		&lt;modelName&gt;PC&lt;/modelName&gt;
+		&lt;modelNumber&gt;AllShare1.0&lt;/modelNumber&gt;
+		&lt;modelURL&gt;http://www.samsung.com/sec&lt;/modelURL&gt;
+		&lt;UDN&gt;uuid:0d1cef00-0032-1000-8823-f46d043e5ae2&lt;/UDN&gt;
+     &lt;sec:deviceID&gt;H3CJEO6BEFKMU&lt;/sec:deviceID&gt;
+     &lt;iconList&gt;
+       &lt;icon&gt;
+         &lt;mimetype&gt;image/jpeg&lt;/mimetype&gt;
+         &lt;width&gt;48&lt;/width&gt;
+         &lt;height&gt;48&lt;/height&gt;
+         &lt;depth&gt;24&lt;/depth&gt;
+         &lt;url&gt;/smp_2_&lt;/url&gt;
+       &lt;/icon&gt;
+       &lt;icon&gt;
+         &lt;mimetype&gt;image/jpeg&lt;/mimetype&gt;
+         &lt;width&gt;120&lt;/width&gt;
+         &lt;height&gt;120&lt;/height&gt;
+         &lt;depth&gt;24&lt;/depth&gt;
+         &lt;url&gt;/smp_3_&lt;/url&gt;
+       &lt;/icon&gt;
+       &lt;icon&gt;
+         &lt;mimetype&gt;image/png&lt;/mimetype&gt;
+         &lt;width&gt;120&lt;/width&gt;
+         &lt;height&gt;120&lt;/height&gt;
+         &lt;depth&gt;24&lt;/depth&gt;
+         &lt;url&gt;/smp_4_&lt;/url&gt;
+       &lt;/icon&gt;
+       &lt;icon&gt;
+         &lt;mimetype&gt;image/png&lt;/mimetype&gt;
+         &lt;width&gt;48&lt;/width&gt;
+         &lt;height&gt;48&lt;/height&gt;
+         &lt;depth&gt;24&lt;/depth&gt;
+         &lt;url&gt;/smp_5_&lt;/url&gt;
+       &lt;/icon&gt;
+     &lt;/iconList&gt;
+     &lt;serviceList&gt;
+       &lt;service&gt;
+         &lt;serviceType&gt;urn:schemas-upnp-org:service:ConnectionManager:1&lt;/serviceType&gt;
+         &lt;serviceId&gt;urn:upnp-org:serviceId:ConnectionManager&lt;/serviceId&gt;
+         &lt;SCPDURL&gt;/smp_7_&lt;/SCPDURL&gt;
+         &lt;controlURL&gt;/smp_8_&lt;/controlURL&gt;
+         &lt;eventSubURL&gt;/smp_9_&lt;/eventSubURL&gt;
+       &lt;/service&gt;
+       &lt;service&gt;
+         &lt;serviceType&gt;urn:schemas-upnp-org:service:ContentDirectory:1&lt;/serviceType&gt;
+         &lt;serviceId&gt;urn:upnp-org:serviceId:ContentDirectory&lt;/serviceId&gt;
+         &lt;SCPDURL&gt;/smp_10_&lt;/SCPDURL&gt;
+         &lt;controlURL&gt;/smp_11_&lt;/controlURL&gt;
+         &lt;eventSubURL&gt;/smp_12_&lt;/eventSubURL&gt;
+       &lt;/service&gt;
+     &lt;/serviceList&gt;
+   &lt;/device&gt;
+&lt;/root&gt;
+
+ После того, как вы выбрали медиа файл, который хотите прослушать\посмотреть начинается обмен по TCP, как я понимаю телевизор начинает кешировать медиа файл. 
+
+Через PPTP некоторые из этих запросов пробегали, некоторые нет. После того как я изучил дамп трафика, пришел к следующим выводам: Со стороны сервера мы должны увеличить ttl трафика от DLNA сервера, ибо по умолчанию ttl=1. (Это необходимо только для SSDP трафика)
+ Установить пакет multicast на микротики, и включить PIM на интерфейсы туннеля.
+ Не забываем прописать маршруты до локальных сетей за туннелями.
+ Со стороны сервера DLNA прописываем маршрут 239.255.255.250 в качестве шлюза указываем туннельный интерфейс.
+
+Казалось бы, все предусмотрел, я на телевизоре родителей увидел свой DLNA сервер, подключился к нему, открыл фильм, и тут я успел увидеть 2 кадра и все. Он просто отключился от сервера. Я начал заново, пробежался по всей конфигурации на обоих маршрутизаторах, грешил на фаервол. Потом опять взглянул на дамп трафика и увидел то самое..don't fragment 
+И тут меня осенило! Размер пакета превышает MTU, который нам предоставляет PPTP, а фрагментировать нельзя! К сожалению в настройках miniDLNA сервера я не смог найти возможность ограничить длину пакета.Победное решение:
+В итоге самый простой IP-IP туннель предоставляет нам нужный MTU, MRU, и MSS, но сталкиваемся с проблемой динамической адресации от провайдера, если у вас на обоих концах статика, вам повезло!
+Еще можно попробовать ограничить mtu на интерфейсе, к которому подключен NAS. В таком случае пакеты будут заведомо с небольшим MTU, который пролезет в любой туннель, но это может существенно нагрузить CPU.Дополнение:
+Не стоит забывать что просмотр фильмов — это нехилая нагрузка на сеть в плане ширины канала. Когда в пределах локальной сети, не страшно, а вот между сетями, когда ширину канала контролирует провайдер… В общем всем советую включить QoS, отдать приоритет своему серверу, и любым подключениям к нему, а мы можем и подождать дополнительных 30 мс для открытия странички.
+Если будут пожелания, опишу детально как настраивать Mikrotik.
+Статьи, которые я использовал:ru.wikipedia.org/wiki/DLNAru.wikipedia.org/wiki/Maximum_transmission_unitwiki.mikrotik.com/wiki/Manual:Routing/Multicast
+Уважаемые! Если вы минусуете статью, пожалуйста, напишите в комментариях почему, и я улучшу ее!
+Буду рад критике и замечаниям!
+      
+    

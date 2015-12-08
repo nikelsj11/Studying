@@ -1,0 +1,106 @@
+﻿#TITLE:Как я Google API с CodeIgniter A3M подружить пытался и что из этого вышло
+
+      
+Недавно возникла задача прикрутить к библиотеке A3M  (это довольно популярная библиотека аутентификации для CodeIgniter) поддержку аутентификации OAuth2 через Google. Все началось с того, что пару месяцев назад ко мне обратился товарищ. У него есть сайт, написанный кем-то в незапамятные времена на CodeIgniter. Естественно, этот кто-то уже исчез в неизвестном направлении.
+Сайт вполне рабочий и проблем особо не делает, поэтому товарищ особо не парился и даже не думал про апдейты или (упаси боже) миграцию куда либо.
+В один прекрасный день он обнаружил что при логине через Google прилетает такое вот сообщение:OpenID 2.0 for Google Accounts is Going Away. OpenID 2.0 is no longer supported. If your app uses OpenID 2.0, you must migrate your app by the shutdown date April 20, 2015, as shown in the migration timetable.
+Хотя мой товарищ ни разу не программист, почуял неладное и обратился ко мне в надежде, что я смогу это дело поправить.
+У него довольно большая база юзеров на сайте, которые логинились через Google, и если до 20-го апреля это дело не пофиксить, многие юзеры внезапно не смогут попасть на сайт.
+«Не проблема, пофиксим», — сказал я и полез в гугловский мануал по миграции. Прочитав первый раз, я понял, что все сложно и решил поискать более простых путей. «Логично же, — думал я, — что авторы A3M-таки тоже в курсе, что Google прекращает поддержку OpenID 2.0 и уже выкатил патч на GitHub». И хотя авторы в общем-то в курсе, особо парится по этому поводу у них нет времени/желание/чего-то там еще.
+Меня послали в beta-branch, где они допиливают интеграцию A3M с HybridAuth, которая должна решить все проблемы человечества логинится через OAuth2. У меня, естественно, этот самый бранч логинится через Google наотрез отказался по всяким разным причинам. Я, в принципе, мог бы и дальше сидеть по ночам с дебаггером и заставил бы это работать, но время шло, 20 апреля неумолимо приближалось, и я решил поискать другой, более эффективный метод.
+Как оказалось, ребята из Google время не теряют и у них уже есть готовый Client API на всех более менее известных языках. Теперь осталось только «познакомить» A3M с google-api-php-client.
+Ну что ж, за работу.
+Итак, сначала скачиваем Google API PHP Client:git clone https://github.com/google/google-api-php-client
+
+Копируем всю папку в application/libraries. Осталось только все красиво подключить.
+Теперь идем сюда: console.developers.google.com. Здесь надо создать новый проект. После этого идем в API’s, находим Google+ API и включаем. Затем идем в «Credentials» и создаем «New Client ID». Необходимо указать правильные Redirect URIs и JavaScript origins. После создания мы получим наш client id и client secret.
+Собственно код:
+Идем в application/controllers/account/connect_google.php. Первым делом подключаем google API. Тут важно указать абсолютный путь до библиотеки, иначе composer не сможет загрузить все нужные компоненты:set_include_path ( get_include_path () . PATH_SEPARATOR . APPPATH .'application/libraries/google-api-php-client/src/Google' );         
+require_once APPPATH . "libraries/google-api-php-client/src/Google/autoload.php";         
+require APPPATH . "libraries/google-api-php-client/src/Google/Client.php";         
+require APPPATH . "libraries/google-api-php-client/src/Google/Service/Oauth2.php";
+
+// Посылаем запрос от клиента, получть доступ к Google API.
+$client = new Google_Client ();         
+$client-&gt;setApplicationName ( "A3M with OAuth2 support" );         
+$client-&gt;setClientId ( $client_id );         
+$client-&gt;setClientSecret ( $client_secret );         
+$client-&gt;setRedirectUri ( $redirect_uri );         
+$client-&gt;addScope ( "email" );  
+$client-&gt;setOpenidRealm ( $redirect_uri ); // Нужно для обратной совместимости с OpenID 2.0
+
+То есть если запросить openid_realm, получим обратно openid_id, которое CodeIgniter использует в качестве уникального ID пользователя в БД.
+Кстати, тут есть один интересный момент. Если у нас (на CodeIgniter сайте) уже существует старя база юзеров, которые логинились через Google, когда он еще поддерживал OpenID 2.0, то скорее всего при попытке аутентификации через OAuth2 мы получим совершенно другой openid_id и, соответсвенно, не сможем идентифицировать юзера из БД.
+Для того, чтобы open_id был всегда одинаковым, надо чтобы Redirect URI в обоих случаях был идентичным.
+Подробнее можно почитать здесь:stackoverflow.com/a/23051643/524743stackoverflow.com/q/29229204/524743
+Вот метод для получения openid_id клиента:// This method extracts openID2 ID form id token for backward compatibility
+private function getOpenIDFromToken($client, $token) {
+	$id_token = json_decode ( $token );
+	$ticket = $client-&gt;verifyIdToken ( $id_token-&gt;{'id_token'} );
+	if ($ticket) {
+		$data = $ticket-&gt;getAttributes ();
+		return $data ['payload'] ['openid_id']; // user ID
+	}
+	return false;
+}
+
+Начинаем процесс аутентификации:$objOAuthService = new Google_Service_Oauth2 ( $client );                  
+
+if (! isset ( $authURL )) // На всякий случай обнуляем сессию чтобы избежать ошибки “Expired Token”            
+     unset ( $_SESSION ['access_token'] );                          
+
+// Порверяем если есть разрешение на аутентификацию
+// Получаем токен и делаем редирект на endpoint         
+if (isset ( $_GET ['code'] )) {             
+     $client-&gt;authenticate ( $_GET ['code'] );             
+     $_SESSION ['access_token'] = $client-&gt;getAccessToken ();             
+     header ( 'Location: ' . filter_var ( $redirect_uri, FILTER_SANITIZE_URL ) );         
+}                  
+
+// Если токен уже получен,  достаем openid_id        
+if (isset ( $_SESSION ['access_token'] ) &amp;&amp; $_SESSION ['access_token']) {             
+    $client-&gt;setAccessToken ( $_SESSION ['access_token'] );             
+    $openid_id = $this-&gt;getOpenIDFromToken ( $client, $client-&gt;getAccessToken () );        
+ }                  
+
+// Плучив токен запрашивает данные пользователя и сохраняем их для дальнейшей         
+if ($client-&gt;getAccessToken ()) {             
+    $userData = $objOAuthService-&gt;userinfo-&gt;get ();             
+    $data ['userData'] = $userData;             
+    $_SESSION ['access_token'] = $client-&gt;getAccessToken ();             
+    $openid_id = $this-&gt;getOpenIDFromToken ( $client, $client-&gt;getAccessToken () );         
+}     
+
+// Если мы еще не проходили процесс аутентификации, редиректимся на нужный URI, для  получения подтверждения от гугла.    
+else {         
+    $authUrl = $client-&gt;createAuthUrl ();             
+    $data ['authUrl'] = $authUrl;             
+    header ( 'Location:' . $authUrl );             
+    die (); // без этого редирект не сработает :)         
+}
+
+….
+Получив данные юзера, проверяем, нет ли его в БД, и если нет, создаем новую запись:if (! $this-&gt;authentication-&gt;is_signed_in ()) {                                          
+    if ($userData) {                         
+         $email = $userData-&gt;getEmail ();                         
+         $openid_google = array('fullname' =&gt; $userData-&gt;getName (),                         
+         $openid_google 'gender' =&gt; $userData-&gt;getGender (),                        
+         $openid_google 'language' =&gt; $userData-&gt;getLocale (),                         
+         $openid_google 'firstname' =&gt; $userData-&gt;getGivenName (), // google only                         
+         $openid_google 'lastname' =&gt; $userData-&gt;getFamilyName (), // google only                         
+    );                     }                                         
+    // Store user's google data in session                     
+    $this-&gt;session-&gt;set_userdata ( 'connect_create', array (                             
+    array (                                     
+                'provider' =&gt; 'openid',                                     
+                'provider_id' =&gt; isset ( $openid_id ) ? $openid_id : NULL,                                     
+                'email' =&gt; isset ( $email ) ? $email : NULL                             ),                             
+                $openid_google                     
+             ) );                                          
+     // Create a3m account                     
+     redirect ( 'account/connect_create' );
+
+Готово! Юзер в БД, аутентификация удалась и все счастливы. 
+Все исходники лежат здесь. Если возникнут вопросы — буду рад помочь.
+      
+    

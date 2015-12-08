@@ -1,0 +1,158 @@
+﻿#TITLE:Мир недокументированного React.js. Context
+
+      Предлагаю читателям «Хабрахабра» перевод статьи «The land of undocumented react.js: The Context».
+Если мы взглянем на React компонент то мы можем увидеть некоторые свойства.State
+Да, каждый React компонент имеет state. Это что-то внутри компонента. Только сам компонент может читать и писать в свой собственный state и как видно из названия — state используется для хранения состояния компонента (Привет, Кэп). Не интересно, давайте дальше.Props
+Или, скажем, properties. Props — это данные, которые оказывают влияние на отображение и поведение компонента. Props могут быть как опциональны так и обязательны и они обеспечиваются через родительский компонент. В идеале, если Вы передаете своему компоненту одинаковые Props — он отрендерит одно и тоже. Не интересно, давайте двигаться дальше.Context
+Встречайте context, причину, по которой я написал этот пост. Context — это недокументированная особенность React и похожа на props, но разница в том, что props передается исключительно от родительского компонента к дочернему и они не распространяются вниз по иерархии, в то время как context просто может быть запрошен в дочернем элементе.Но как?
+Хороший вопрос, давайте нарисуем!
+У нас есть компонент Grandparent, который рендерит компонент Parent A, который рендерит компоненты Child A и Child B. Пусть компонент Grandparent знает что-то что хотели бы знать Child A и Child B, но Parent A это не нужно. Давайте назовем этот кусок данных Xdata. Как бы Grandparent передал Xdata в Child A и Child B?
+Хорошо, используя архитектуру Flux, мы могли бы хранить Xdata внутри store и позволить Grandparent, Child A и Child B подписаться на этот store. Но что если мы хотим, чтобы Child A и Child B были чистыми глупыми компонентами, которые просто рендерят некоторую разметку?
+Ну, тогда мы можем передать Xdata как props в Child A и Child B. Но Grandparent не может протащить props в Child A и Child B, не передавая их в Parent A. И это не такая уж большая проблема если у нас 3 уровня вложенности, но в реальном приложении гораздо больше уровней вложенности, где верхние компоненты действуют как контейнеры, а самые нижние — как обычная разметка. Хорошо, мы можем использовать mixins, чтобы props автоматически переходили вниз по иерархии, но это не элегантное решение. 
+Или мы можем использовать context. Как я говорил ранее, context позволяет дочерним компонентам запрашивать некоторые данные, чтобы они пришли из компонента, расположенного выше по иерархии.
+Как это выглядит:var Grandparent = React.createClass({  
+  childContextTypes: {
+    name: React.PropTypes.string.isRequired
+  },
+  getChildContext: function() {
+    return {name: 'Jim'};
+  },
+  
+  render: function() {
+    return &lt;Parent/&gt;;
+  }
+    
+});
+var Parent = React.createClass({
+ render: function() {
+   return &lt;Child/&gt;;
+ }
+});
+var Child = React.createClass({
+ contextTypes: {
+   name: React.PropTypes.string.isRequired
+ },
+ render: function() {
+  return &lt;div&gt;My name is {this.context.name}&lt;/div&gt;;
+ }
+});
+React.render(&lt;Grandparent/&gt;, document.body);
+
+А здесь JSBin с кодом. Измените Jim на Jack и Вы увидите как Ваш компонент перерендерится.Что произошло?
+Наш Grandparent компонент говорит две вещи:
+1. Я обеспечиваю своих потомков string свойством (context type) name. Это то что происходит в декларировании childContextTypes.
+2. Значение свойства (context type) name — Jim. Это то, что происходить в методе getChildContext.
+И наши дочерние компоненты просто говорят «Эй, я ожидаю context type name!» и они получают это. На сколько я понимаю (я далеко не эксперт во внутренностях React.js), когда react рендерит дочерние компоненты, он проверяет, какие компоненты хотят иметь context и те, что хотят — его получают, если родительский компонент позволяет это (поставляет context).Круто!
+Да, ждите, когда столкнетесь со следующей ошибкой:Warning: Failed Context Types: Required context `name` was not specified in `Child`. Check the render method of `Parent`.
+runner-3.34.3.min.js:1
+Warning: owner-based and parent-based contexts differ (values: `undefined` vs `Jim`) for key (name) while mounting Child (see: http://fb.me/react-context-by-parent)
+
+Да, конечно, я проверил ссылку, она не очень полезна.
+Этот код — причина этого JSBin:var App = React.createClass({
+  render: function() {
+    return (
+      &lt;Grandparent&gt;
+        &lt;Parent&gt;
+          &lt;Child/&gt;
+        &lt;/Parent&gt;
+      &lt;/Grandparent&gt;
+    );
+  }
+});
+var Grandparent = React.createClass({  
+  childContextTypes: {
+    name: React.PropTypes.string.isRequired
+  },
+  getChildContext: function() {
+    return {name: 'Jim'};
+  },
+  
+  render: function() {
+    return this.props.children;
+  }
+    
+});
+var Parent = React.createClass({
+  render: function() {
+    return this.props.children;
+  }
+});
+var Child = React.createClass({
+  contextTypes: {
+    name: React.PropTypes.string.isRequired
+  },
+  render: function() {
+    return &lt;div&gt;My name is {this.context.name}&lt;/div&gt;;
+  }
+});
+React.render(&lt;App/&gt;, document.body);
+
+Это не имеет смысловой нагрузки сейчас. В конце поста я объясню как настроить жизнеспособную иерархию.
+Мне потребовалось много времени, чтобы понять что происходит. Попытки загуглить проблему выдали только обсуждения людей, кто так же столкнулся с этой проблемой. Я смотрел на другие проекты типа react-router или react-redux, которые используют context для проталкивания данных вниз по дереву компонентов, когда в конце концов я понял в чем ошибка.
+Помните, я говорил, что каждый компонент имеет state, props и context? Так же каждый компонент имеет так называемых родителя (parent) и владельца (owner). И если мы перейдем по ссылке из warning (так да, она полезна, я соврал) мы можем понять, что:
+В кратце, владелец — это тот кто создал компонент, когда родитель — это компонент, который выше в DOM дереве.
+Мне потребовалось время, чтобы понять это заявление.
+И так, в моем первом примере владелец компонента Child — это Parent, родитель компонента Child — это тоже Parent. В то время, как во втором примере владелец компонента Child — это App, когда родитель — это Parent.
+Context — это что-то, что странным образом распространяется на всех потомков, но будет доступен только у тех компонентов, кто явно попросил об этом. Но context не распространяется из родителя, он распространяется из владельца. И по-прежнему владелец компонента Child — это App, React пытается найти свойство name в контексте App вместо Parent или Grandparent.
+Здесь соответствующий bug report в React. И pull request, который должен пофиксить context, основанный на родителе в React 0.14.
+Однако React 0.14 еще не там. Фикс (JSBin).var App = React.createClass({
+  render: function() {
+    return (
+      &lt;Grandparent&gt;
+        { function() {
+          return (&lt;Parent&gt;
+            &lt;Child/&gt;
+          &lt;/Parent&gt;)
+        }}
+      &lt;/Grandparent&gt;
+    );
+  }
+});
+var Grandparent = React.createClass({  
+  childContextTypes: {
+    name: React.PropTypes.string.isRequired
+  },
+  getChildContext: function() {
+    return {name: 'Jack'};
+  },
+  
+  render: function() {
+    var children = this.props.children;
+    children = children();
+    return children;
+  }
+    
+});
+var Parent = React.createClass({
+  render: function() {
+    return this.props.children;
+  }
+});
+var Child = React.createClass({
+  contextTypes: {
+    name: React.PropTypes.string.isRequired
+  },
+  render: function() {
+    return &lt;div&gt;My name is {this.context.name}&lt;/div&gt;;
+  }
+});
+React.render(&lt;App/&gt;, document.body);
+
+Вместо экземпляров компонентов Parent и Child внутри App мы возвращаем функцию. Тогда внутри Grandparent мы вызовем эту функцию, следовательно сделаем Grandparent собственником компонентов Parent и Child. Контекст распространяется как надо.ОК, но зачем?
+Помните мою предыдущую статью про локализацию в react? Рассматривалась следующая иерархия:&lt;Application locale="en"&gt;
+  &lt;Dashboard&gt;
+    &lt;SalesWidget&gt;
+      &lt;LocalizedMoney currency="USD"&gt;3133.7&lt;/LocalizedMoney&gt;
+    &lt;/SalesWidget&gt;
+  &lt;/Dashboard&gt;
+&lt;/Application&gt;
+
+Это статичная иерархия, но обычно у Вас есть роутинг и в конечном счете Вы создадите ситуацию где владелец и родитель Вашего нижнего компонента будут различаться.
+Application отвечает за загрузку locale и инициализацию экземпляра jquery/globalize, но оно не использует их. Вы не локализовываете Ваш компонент верхнего уровня. Обычно локализация оказывает влияние на самые нижние компоненты, такие как текстовые узлы, цифры, деньги или время. И я рассказывал ранее о трех возможных путях протаскивания экземпляра globalize вниз по дереву компонентов. 
+Мы храним globalize в store и позволяем самым нижним компонентам подписываться на этот store, но, я думаю, это некорректно. Нижние компоненты должны быть чистыми и глупыми.
+Протаскивание экземпляра globalize как props может быть утомительным. представьте, что ВСЕ Ваши компоненты требуют globalize. Это похоже на создание глобальной переменной globalize и кому надо — пусть пользуется.
+Но самый элегантный путь — это использование контекста. Компонент Application говорит «Эй, у меня экземпляр globalize, если кому надо — дайте знать» и любой нижний компонент кричит «Мне! Мне он нужен!». Это элегантное решение. Нижние компоненты остаются чистыми, они не зависят от store (да, они зависят от контекста, но они должны, потому что им надо отрендериться корректно). Экземпляр globalize не проходит в props через всю иерархию. Все счастливы.
+
+      
+      
+    

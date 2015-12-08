@@ -1,0 +1,221 @@
+﻿#TITLE:Обработка логов с помощью monit.d
+
+      На последнем вебинаре нас просили рассказать, как мы работаем с логами с помощью monit.d. 
+Хоть и с большой задержкой, все же отвечаем.
+Вот пример правила, которое обрабатывает системный лог /var/log/messages и шлет алерт в случае нахождения в нем определенной записи:Пример обработки  /var/log/messagescheck file messages with path /var/log/messages
+    if match 'OOM killed process' then alert
+    if match 'temperature above threshold' then alert
+    if match 'table full, dropping packet' then alert
+    if match 'OOM killed process' for 2 cycles then exec "/bin/bash -c '/usr/bin/monit unmonitor messages &amp;&amp; /bin/sleep 3600 &amp;&amp; /usr/bin/monit monitor messages'"
+    if match 'temperature above threshold' for 2 cycles then exec "/bin/bash -c '/usr/bin/monit unmonitor messages &amp;&amp; /bin/sleep 3600 &amp;&amp; /usr/bin/monit monitor messages'"
+    if match 'table full, dropping packet' for 2 cycles then exec "/bin/bash -c '/usr/bin/monit unmonitor messages &amp;&amp; /bin/sleep 3600 &amp;&amp; /usr/bin/monit monitor messages'"
+    if match 'time wait bucket table overflow' for 2 cycles then exec "/bin/bash -c '/usr/bin/monit unmonitor messages &amp;&amp; /bin/sleep 3600 &amp;&amp; /usr/bin/monit monitor messages'"
+    if match 'blocked for more than 120 seconds' for 2 cycles then exec "/bin/bash -c '/usr/bin/monit unmonitor messages &amp;&amp; /bin/sleep 3600 &amp;&amp; /usr/bin/monit monitor messages'"
+
+В следующем примере monit.d нужен только для запуска скрипта в определенных условиях. 
+Например, если LA сервера превышает 20 в течение 2 циклов проверки, то вызывается скрипт. В monit это выглядит так:
+if loadavg (5min) &gt; 20 for 2 cycles then exec "/srv/southbridge/bin/highload-report.sh"
+
+Теперь о самом срипте. Допустим, что у нас есть сервер apache + nginx + mysql. В какой-то момент нагрузка резко возросла. Monit засечет это и запустит скрипт:Запуск скрипта по алерту#!/bin/sh
+
+PATH="/sbin:/usr/sbin:/usr/local/sbin:/bin:/usr/bin:/usr/local/bin"
+
+RRUN=`ps ax | grep highload-report.sh | grep -v grep | wc -l`
+RRUN=0$RRUN
+if [ $RRUN -gt 2 ]; then
+  echo "Highload Report alredy running"
+  exit
+fi
+
+STAMP=`date +%H%M%S`
+FLAGD=`date +%s`
+REPORT=""
+
+
+if [ -f /tmp/highload-report.flag ]; then
+  FLAGL=`cat /tmp/highload-report.flag | head -1`
+  CNTL=`cat /tmp/highload-report.flag | tail -1`
+  DELTA=$((FLAGD-FLAGL))
+  if [ $DELTA -gt 280 -a $CNTL -eq 1 ]; then
+    echo $FLAGD &gt; /tmp/highload-report.flag
+    echo 5 &gt;&gt; /tmp/highload-report.flag
+    REPORT="5"
+    DELTA=0
+  fi
+  if [ $DELTA -gt 280 -a $CNTL -ne 10 ]; then
+    echo $FLAGD &gt; /tmp/highload-report.flag
+    echo 10 &gt;&gt; /tmp/highload-report.flag
+    REPORT="10"
+    DELTA=0
+  fi
+  if [ $DELTA -gt 1180 ]; then
+    echo $FLAGD &gt; /tmp/highload-report.flag
+    echo 1 &gt;&gt; /tmp/highload-report.flag
+    REPORT="100"
+  fi
+else
+  echo $FLAGD &gt; /tmp/highload-report.flag
+  echo 1 &gt;&gt; /tmp/highload-report.flag
+  REPORT="1"
+fi
+
+echo "&lt;html&gt;&lt;body&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;h3&gt;load average&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo &gt;&gt; /tmp/$STAMP.tmp
+top -b | head -5 &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+echo &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+if [ -f "/root/.mysql" ]; then
+    echo "&lt;h3&gt;mysql processes&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    mysql -u root -p`cat /root/.mysql` -e "SHOW FULL PROCESSLIST" | awk '$5 != "Sleep" &amp;&amp; $7 != "NULL"' | sort -n -k 6 &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+fi
+
+if [ -f "/root/.postgresql" ]; then
+    echo "&lt;h3&gt;postgresql processes&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+
+    if [ -f "/etc/init.d/pgbouncer" ]; then
+        PORT="5454"
+    else
+        PORT="5432"
+    fi
+
+    echo "SELECT datname,procpid,current_query FROM pg_stat_activity;" | psql -U postgres --port=$PORT &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+fi
+
+echo "&lt;h3&gt;memory process list (top100)&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo &gt;&gt; /tmp/$STAMP.tmp
+#ps -ewwwo size,command --sort -size | head -100 | awk '{ hr=$1/1024 ; printf("%13.2f Mb ",hr) } { for ( x=2 ; x&lt;=NF ; x++ ) { printf("%s ",$x) } print "" }' &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+ps -ewwwo pid,size,command --sort -size | head -100 | awk '{ pid=$1 ; printf("%7s ", pid) }{ hr=$2/1024 ; printf("%8.2f Mb ", hr) } { for ( x=3 ; x&lt;=NF ; x++ ) { printf("%s ",$x) } print "" }' &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+echo &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+echo "&lt;h3&gt;process list (sort by cpu)&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo &gt;&gt; /tmp/$STAMP.tmp
+ps -ewwwo pcpu,pid,user,command --sort -pcpu &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+echo &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+LINKSVER=`links -version | grep "2.2" | wc -l`
+if [ $LINKSVER -gt 0 ]; then
+    echo "&lt;h3&gt;apache&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    links -dump -retries 1 -receive-timeout 30 http://localhost:8080/apache-status | grep -v "OPTIONS \* HTTP/1.0" &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+    echo "&lt;h3&gt;nginx&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    links -dump -retries 1 -receive-timeout 30 http://localhost/nginx-status &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+else
+    echo "&lt;h3&gt;apache&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    links -dump -eval 'set connection.retries = 1' -eval 'set connection.receive_timeout = 30' http://localhost:8080/apache-status &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+    echo "&lt;h3&gt;nginx&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    links -dump -eval 'set connection.retries = 1' -eval 'set connection.receive_timeout = 30' http://localhost/nginx-status &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+fi
+
+echo "&lt;h3&gt;connections report&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo &gt;&gt; /tmp/$STAMP.tmp
+netstat -plan | grep :80 | awk {'print $5'} | cut -d: -f 1 | sort | uniq -c | sort -n &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+echo &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+echo "&lt;h3&gt;syn tcp/udp session&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+echo &gt;&gt; /tmp/$STAMP.tmp
+netstat -n | egrep '(tcp|udp)' | grep SYN | wc -l &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+echo &gt;&gt; /tmp/$STAMP.tmp
+echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+if [ -f "/root/.mysql" ]; then
+    echo "&lt;h3&gt;mysql status&lt;/h3&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;p&gt;&lt;pre&gt;" &gt;&gt; /tmp/$STAMP.tmp
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    mysql -u root -p`cat /root/.mysql` -e "SHOW STATUS where value !=0" &gt;&gt; /tmp/$STAMP.tmp 2&gt;&amp;1
+    echo &gt;&gt; /tmp/$STAMP.tmp
+    echo "&lt;/pre&gt;&lt;/p&gt;" &gt;&gt; /tmp/$STAMP.tmp
+fi
+
+SUBJECT="`hostname` HighLoad report"
+
+echo "&lt;/body&gt;&lt;/html&gt;" &gt;&gt; /tmp/$STAMP.tmp
+
+if [ -n "$REPORT" ]; then
+cat - /tmp/$STAMP.tmp &lt;&lt;EOF | sendmail -oi -t
+To: root
+Subject: $SUBJECT
+Content-Type: text/html; charset=utf8
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+EOF
+
+fi
+
+rm /tmp/$STAMP.tmp
+
+if [ "$1" = "apache-start" ]; then
+    sems=$(ipcs -s | grep apache | awk --source '/0x0*.*[0-9]* .*/ {print $2}')
+    for sem in $sems
+    do
+      ipcrm sem $sem
+    done
+    /etc/init.d/httpd start
+fi
+
+if [ "$1" = "apache-stop" ]; then
+    killall -9 httpd
+fi
+
+if [ "$1" = "force-restart" ]; then
+    killall -9 httpd
+    sleep 2
+    sems=$(ipcs -s | grep apache | awk --source '/0x0*.*[0-9]* .*/ {print $2}')
+    for sem in $sems
+    do
+      ipcrm sem $sem
+    done
+    /etc/init.d/httpd start
+fi
+
+exit 1
+
+В результате выполнения генерируется письмо, которое содержит:
+ — Текущие запросы к БД. 
+ — Список процессов отсортированных по потребленной памяти
+ — Список процессов отсортированный по потребленному CPU
+ — Список запросов к apache
+ — Информацию о состояние nginx
+ — Количество новых tcp/udp сессий
+ — Статус mysql 
+Собственно, делается это все штатными утилитами. ps, mysql netstat и т.д.
+В итоге отправляется письмо на специальный адрес, почта на котором парсится скриптом, и создается задача в нашей системе redmine.
+
+      
+      
+    

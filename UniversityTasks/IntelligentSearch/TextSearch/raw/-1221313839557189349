@@ -1,0 +1,202 @@
+﻿#TITLE:Создаём REST-сервис на PostgreSQL и Rust. Часть 1: прототип
+
+      Всем привет.
+Какое-то время назад я видел в небезызвестном блоге пост о том, как реализовать на Go простую программу, работающую с БД, а затем сделать на её базе целый REST-сервис. Я решил проверить, насколько сложно сделать аналогичную программу на Rust и поделиться результатами.
+Мы начнём с работы с БД и создадим обычное консольное приложение, а затем добавим, так сказать, REST-фронтенд.
+Несколько вступительных замечаний.
+Для нетерпеливых — вот законченный проект на GitHub. Он включает в себя и реализацию REST-сервиса. Всех остальных же приглашаю читать дальше.
+В целом, я постараюсь подробно проиллюстрировать процесс разработки со всеми ошибками, касающимися Rust, их причинами и способами устранения. Я думаю, знание типичных проблем и способов их решения сильно помогает новичкам в языке. Не бойтесь компилятора, он — ваш друг.
+Вам понадобится установленный Rust (как установить). Должна работать любая версия после 1.0 — как stable, так и nightly. Я пробовал несколько в интервале 1.1-1.3.
+Сам код здесь прототипного качества — я сейчас не пытаюсь сделать очень надёжную или читабельную программу. Разобравшись в нём, можно будет задуматься о правильности и стиле позже. Однако, и написана эта версия была весьма быстро.
+Теперь к делу.
+Как и любой проект на Rust, не требующий особых хитростей со сборкой, наша программа будет использовать Cargo. Создадим новый проект:
+$ cargo new --bin rust-phonebook
+$ cd rust-phonebook
+
+Cargo заботливо создаёт в директории репозиторий Git.Как это выглядит
+$ git status
+
+On branch master
+
+Initial commit
+
+Untracked files:
+  (use "git add &lt;file&gt;..." to include in what will be committed)
+
+	.gitignore
+	Cargo.toml
+	src/
+
+nothing added to commit but untracked files present (use "git add" to track)
+
+И мы можем сразу собрать и запустить нашу программу-заглушку:
+$ cargo run
+
+   Compiling rust-phonebook v0.1.0 (file:///home/mkpankov/rust-phonebook)
+     Running `target/debug/rust-phonebook`
+Hello, world!
+
+После чего закоммитим наши изменения в репозиторий и перейдём к сути нашей программы.
+Начнём с простейшего прототипа, который подключается к базе, создаёт одну таблицу, добавляет туда одну запись и считывает её обратно.
+Сначала я приведу весь код целиком, а затем объясню каждую его часть. Ниже — содержимое src/main.rs.Кодextern crate postgres;
+
+use postgres::{Connection, SslMode};
+
+struct Person {
+    id: i32,
+    name: String,
+    data: Option&lt;Vec&lt;u8&gt;&gt;
+}
+
+fn main() {
+    let conn =
+        Connection::connect(
+            "postgres://postgres:postgres@localhost",
+            &amp;SslMode::None)
+        .unwrap();
+
+    conn.execute(
+        "CREATE TABLE person (
+           id              SERIAL PRIMARY KEY,
+           name            VARCHAR NOT NULL,
+           data            BYTEA
+         )",
+        &amp;[])
+        .unwrap();
+
+    let me = Person {
+        id: 0,
+        name: "Михаил".to_string(),
+        data: None
+    };
+
+    conn.execute(
+        "INSERT INTO person (name, data) VALUES ($1, $2)",
+        &amp;[&amp;me.name, &amp;me.data])
+        .unwrap();
+
+    let stmt = conn.prepare("SELECT id, name, data FROM person").unwrap();
+
+    for row in stmt.query(&amp;[]).unwrap() {
+        let person = Person {
+            id: row.get(0),
+            name: row.get(1),
+            data: row.get(2)
+        };
+        println!("Нашли человека: {}", person.name);
+    }
+}
+
+Давайте разберём все по порядку.fn main() {
+    let conn =
+        Connection::connect(
+            "postgres://postgres:postgres@localhost",
+            &amp;SslMode::None)
+        .unwrap();
+
+Первая строка в нашем новом main — подключение к БД. Тут стоит сразу рассказать подробнее.
+Мы предполагаем, что локально запущен сервер PostgreSQL на порту по умолчанию, а имя пользователя и пароль — «postgres». Для этого нам, конечно, нужно установить PostgreSQL. Можно посмотреть, например, это руководство. Укажите ваше имя пользователя, имеющего доступ к базе, и его пароль вместо «postgres:postgres».
+Помимо этого, не забудьте инициализировать базу данных.
+Сам вышеупомянутый Connection — тип из контейнера postgres (документация). Поэтому мы запрашиваем его связывание вверху файлаextern crate postgres;
+
+и вводим в область видимости Connection и SslModeuse postgres::{Connection, SslMode};
+
+Если попробовать собрать программу прямо сейчас, вы получите другую ошибку:
+$ cargo build
+   Compiling rust-phonebook v0.1.0 (file:///home/mkpankov/rust-phonebook.finished)
+src/main.rs:1:1: 1:23 error: can't find crate for `postgres`
+src/main.rs:1 extern crate postgres;
+              ^~~~~~~~~~~~~~~~~~~~~~
+error: aborting due to previous error
+Could not compile `rust-phonebook`.
+
+To learn more, run the command again with --verbose.
+
+Это означает, что компилятор не нашёл подходящий контейнер. Это потому, что мы не указали его в зависимостях нашего проекта. Давайте сделаем это в Cargo.toml (подробнее):
+[dependencies]
+
+postgres = "0.9"
+
+Теперь всё должно собираться. Но если вы не запустили сервер, то получите такую ошибку: 
+$ cargo run
+     Running `target/debug/rust-phonebook`
+thread '&lt;main&gt;' panicked at 'called `Result::unwrap()` on an `Err` value: IoError(Error { repr: Os { code: 111, message: "Connection refused" } })', ../src/libcore/result.rs:732
+
+Это непосредственный результат нашего .unwrap() — он вызывает панику текущего потока, если Result был не Ok(_) — т.е. произошла ошибка соединения.
+Кстати, backtrace для неё можно увидеть, если запустить программу с выставленным RUST_BACKTRACE=1 в окружении (работает только в отладочной версии программы!).Backtrace
+$ RUST_BACKTRACE=1 cargo run
+
+     Running `target/debug/rust-phonebook`
+thread '&lt;main&gt;' panicked at 'called `Result::unwrap()` on an `Err` value: IoError(Error { repr: Os { code: 111, message: "Connection refused" } })', ../src/libcore/result.rs:732
+stack backtrace:
+   1:     0x56007b30a95e - sys::backtrace::write::haf6e4e635ac76143Ivs
+   2:     0x56007b30df06 - panicking::on_panic::ha085a58a08f78856lzx
+   3:     0x56007b3049ae - rt::unwind::begin_unwind_inner::hc90ee27246f12475C0w
+   4:     0x56007b304ee6 - rt::unwind::begin_unwind_fmt::ha4be06289e0df3dbIZw
+   5:     0x56007b30d8d6 - rust_begin_unwind
+   6:     0x56007b3390c4 - panicking::panic_fmt::he7875691f9cbe589SgC
+   7:     0x56007b25e58d - result::Result&lt;T, E&gt;::unwrap::h10659124002062427088
+                        at ../src/libcore/macros.rs:28
+   8:     0x56007b25dcfd - main::h2f2e9aa4b99bad67saa
+                        at src/main.rs:13
+   9:     0x56007b30d82d - __rust_try
+  10:     0x56007b30fbca - rt::lang_start::hefba4015e797c325hux
+  11:     0x56007b27d1ab - main
+  12:     0x7fb3f21076ff - __libc_start_main
+  13:     0x56007b25db48 - _start
+  14:                0x0 - &lt;unknown&gt;
+
+Фух, всего одна строчка, а столько способов накосячить! Надеюсь, вы не сильно напуганы и готовы продолжать.
+Положительным моментом здесь является то, что мы явно говорим, что хотим уронить программу при ошибке соединения. Когда мы захотим сделать из нашей игрушки нормальный продукт, простой текстовый поиск по .unwrap() покажет, с чего стоит начать. Дальше я не буду останавливаться на этом моменте.
+Создаём таблицу:    conn.execute(
+        "CREATE TABLE person (
+           id              SERIAL PRIMARY KEY,
+           name            VARCHAR NOT NULL,
+           data            BYTEA
+         )",
+        &amp;[])
+        .unwrap();
+
+Странное &amp;[] в конце — это пустой срез. У данного запроса нет параметров, поэтому мы не передаём их.
+Почему срез, а не массив? Хороший стиль в Rust — не принимать владение, если объекты нужны только для чтения. Иначе нам пришлось бы клонировать значение для передачи в функцию, т.е. она «поглотила» бы его. Подробнее о владении читайте тут.
+Далее мы создаём структуру, представляющую собой нашу запись, которую мы будем добавлять в таблицу:    let me = Person {
+        id: 0,
+        name: "Михаил".to_string(),
+        data: None
+    };
+
+Принципиально, сейчас смысла складывать эти данные в структуру нет, но дальше это нам поможет. Кстати, вот её объявление:struct Person {
+    id: i32,
+    name: String,
+    data: Option&lt;Vec&lt;u8&gt;&gt;
+}
+
+Теперь выполним собственно вставку:    conn.execute(
+        "INSERT INTO person (name, data) VALUES ($1, $2)",
+        &amp;[&amp;me.name, &amp;me.data])
+        .unwrap();
+
+Здесь уже у нашего запроса есть параметры. Они подставляются с помощью строковой интерполяции в нумерованные поля $1, $2 и т.д. И теперь наш срез параметров не пуст — он содержит ссылки на соответствующие поля структуры.
+Далее мы подготавливаем запрос к базе, чтобы прочитать то, что записали:    let stmt = conn.prepare("SELECT id, name, data FROM person").unwrap();
+
+Думаю, ничего интересного. Это просто создание объекта-запроса. Повторяющиеся запросы имеет смысл не пересоздавать, а хранить, для увеличения производительности. Мы также могли бы сразу выполнить запрос без создания «приготовленного объекта».
+В конце мы выполняем сам запрос. Пройдёмся по каждой строчке:    for row in stmt.query(&amp;[]).unwrap() {
+ 
+Здесь мы обходим массив результатов запроса. Как всегда, запрос мог бы завершиться ошибкой. Список параметров снова пуст — &amp;[].
+Теперь снова собираем структуру из результатов запроса.        let person = Person {
+            id: row.get(0),
+            name: row.get(1),
+            data: row.get(2)
+        };
+
+Здесь мы просто берём поля по номерам, но вообще библиотека позволяет использовать и имена полей таблицы.
+Наконец, печатаем сообщение с результатом:        println!("Нашли человека: {}", person.name);
+    }
+}
+
+Пост получился длинным, поскольку мы знакомились с инфраструктурой, терминологией и настраивали окружение, но, надеюсь, будет полезен в качестве иллюстрации рабочего процесса.
+В следующей части мы добавим конфигурацию сервера в INI-файле. Оставайтесь с нами!
+
+      
+      
+    

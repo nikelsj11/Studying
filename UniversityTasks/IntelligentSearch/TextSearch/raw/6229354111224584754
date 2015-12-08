@@ -1,0 +1,41 @@
+﻿#TITLE:Добавление модулей ядра в дистрибутивах Fedora
+
+      В этой короткой заметке рассмотрена процедура установки модулей ядра в дистрибутивах Fedora. Данная процедура может быть использована для добавления модулей ядра, не включенных в состав стокового ядра Fedora, а также для сборки модулей в дереве ядра в процессе разработки для этого дистрибутива.
+Процедура установки описана на примере модулей шины CAN и дистрибутива Fedora 22. 
+Перед началом установки рекомендуется обновить систему:sudo dnf update
+reboot
+
+Для сборки ядра используются RPM Development Tools. Дерево сборки RPM пакетов (~/rpmbuild/) создается командой:rpmdev-setuptree
+
+Далее скачиваются исходники ядра:dnf download --source kernel
+
+Устанавливаются зависимости для сборки пакета ядра:sudo dnf builddep kernel-4.1.6-200.fc22.src.rpm
+
+Пакет ядра устанавливается в дерево RPM:rpm -Uvh kernel-4.1.6-200.fc20.src.rpm
+
+Cоздается актуальное ядро (накатываются патчи и т.п.):cd ~/rpmbuild/SPECS
+rpmbuild -bp --target=$(uname -m) kernel.spec
+
+В актуальном ядре необходимо задать EXTRAVERSION по uname -r текущего ядра:cd ~/rpmbuild/BUILD/kernel-4.1.fc22/linux-4.1.6-200.fc22.i686
+gedit Makefile
+
+..
+EXTRAVERSION = -200.fc22.i686
+..
+
+Теперь можно скопировать конфиг текущего ядра и включить требуемые модули:cp /boot/config-4.1.6-200.fc22.i686 .config
+make menuconfig
+
+Сборка модулей шины CAN:make modules_prepare
+make M=net/can modules
+make M=drivers/net/can modules
+
+Установка:sudo make M=net/can modules_install
+sudo make M=drivers/net/can modules_install
+sudo depmod -a
+sudo modprobe can
+
+
+      
+      
+    

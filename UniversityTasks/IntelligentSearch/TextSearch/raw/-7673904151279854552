@@ -1,0 +1,47 @@
+﻿#TITLE:Я не верблюд или чересчур бдительный Google
+
+      Однажды, скучая дома на выходных, пришла в голову идея написать приложение для игрового сообщества, в котором я состою. Когда код был написан, протестирован, все устраивало в работе — пришло время публиковать в Play Store. Для меня всегда было проблемой нарисовать графику. Поэтому я все взял с нашего форума. Нажал кнопочку «паблиш», и через 10 минут моё приложение было в бане!
+История под катом.Акт I: гугл играет белыми
+После того как спал шок, я начал разбираться. Это было мое 2е(в истории публикации на Play Store) приложение, и не успев даже запаблишиться, оно попало под автобан. Конкретной причины указано не было. Что-то про авторские права и про то, что оно пытается выдать себя за то, чем не является (извините, оригинальный текст не сохранил).
+У меня на иконке и в «Feature Graphic» был наш логотип, с названием проекта (игры). На него-то я и грешил. Подумал: забанили за копирайт, за то, что мое приложение, по их мнению, пытается косить под игру.
+Итак, пишу тикет, объясняю чем есть мое приложение, пытаюсь сделать акцент на том, что оно не прибыльное, для узкого круга, и никак не связано с игрой кроме того, что мы (сообщество) в неё играем.Автоматический ответ гуглаDear Google Play Developer,
+Thanks for getting in contact with Google Play. Your appeal has been submitted successfully and will be reviewed by a specialist. The ticket number for your appeal is referenced in the subject of this message, and you should receive a response from us within 72 hours.
+Please refrain from sending duplicate appeals as this will not reduce response time.
+Thanks,
+The Google Play Team
+Пятница, вечер, 72 часа. Ответ получил в понедельник, после обеда.Акт II: неожиданный поворотОтвет саппортаHi Ivan,
+Thanks for your reply. We appreciate the opportunity to review your appeal pertaining to the removal of your app from Google Play. 
+We were not able to validate your account's relationship to the original content or brand owner. (http://blooddesert.com/) In order for us to process your appeal, please reply with verifiable documentation that your application is authorized. Please be advised we will not be able to respond or reinstate your application without the above documentation.
+We appreciate your assistance and look forward to your reply.
+Regards,
+Jesse
+The Google Play Team
+«Что?» — на тот момент, это первое культурное слово в моей голове. Целиком логотип, и название игры ни при чем? Как так, я же знаю кто рисовал графику для форума, и знаю, что её именно рисовали, с чистого листа. Знаю но проверяю, меня уверили в том, что логотип целиком наш.Как доказать гугл, что это наш логотип?
+Хвала интернету, он нас подвёл, он нас и спас! Небольшой анализ сайта, присланного в письме, показал следующее:
+ — Судя по шапке страницы, они пираты.
+ — Судя по whois домен был зарегистрирован в 2015 году
+ — Их сайт мёртв, первый и последний пост — 7 Мая 2015
+ — Наш сайт был любезно сохранён в веб архиве, и в 2014 предметный логотип уже красовался на его главной странице.Мое письмо в гуглHi,
+My community site is murr-bd.ru, and this logo was created by our member. (http://blooddesert.com/) just use it. We don't register any rights for this logo. Why you think that (http://blooddesert.com/) is original owner?
+At last Black Desert is Pearl Abyss game, Korean publisher is Daum, Russian publisher is GameNet. blooddesert.com have «Black Desert Private Server» in site head, so they are pirates. And this site is dead puu.sh/jUQN9/f3765085b4.png last post in 7 May 2015… My app is non profit tool for my community in this game (Black Desert), and do not trying impersonate for what it is not.
+I have this web.archive.org/web/20140729043817/http://murr-bd.ru/ it is a pruf that we have this logo in 2014, and according to whois blooddesert.com domain Creation Date: 11-feb-2015. Акт III: победа
+К счастью, на этот раз ждать 72 часа не пришлось. Ответ был дан на следующий день.Ответ гуглHi Ivan,
+Thanks for contacting the Google Play Team. 
+We’ve accepted your appeal and your app has been reinstated. For the app to appear in the Play Store, you’ll need to sign into your Developer Console and submit your app again. 
+At this time we will not be enforcing on the use of the logos within your app, but please note that we will take action if we receive formal complaints from the copyright holders.
+Please let us know if you have any other questions or concerns. 
+Thanks for supporting Google Play!
+К моему счастью, но не в пользу данной заметки, с меня не потребовали доказательств моей причастности к сообществу и сайту сообщества.
+Хотя такой вариант прорабатывался, планировали отправить письмо с домена, добавить мои контактные данные на страницу сайта для того чтобы можно было связать его с аккаунтом PlayStore.Акт IV: заключительный
+«Лучше перебдеть чем недобдеть?» © Народ
+Итак, вся эта история мне кажется бредом. Гугл, с одной стороны, делает правильно, защищая авторов приложений от людей пытающихся нажиться на их имени. Но с другой стороны, по каким то причинам, гугл считает хозяевами контента тек кто таковыми не является. Я не знаю алгоритмы их работы, но создается впечатление о том, что сканируя контент на сайтах, они считают хозяевами тех, у кого этот контент был проиндексирован в первую очередь. Не зарегистрирован каким либо образом, а просто появился раньше (по мнению гугл)! В любой точке интернета! 
+И даже если вы выложили свой логотип на своем сайте, и ваш сайт гугл считает хозяином (есть ли открытый реестр?) вы не застрахованы от того, что гугл не сможет связать ваш аккаунт разработчика на Play Store с сайтом «хозяином» и ваше приложение не улетит в автобан. И от вас будут требовать документ, подтверждающий что вы не верблюд ваше право использовать контент, ваш же контент.
+В любом случае, если вы уверены в своей правоте нужно бороться!Размышления на тему «как избежать:»
+ — рисовать новые логотипы/банера/графику для своих приложений?
+ — как то сообщать гугл о связи вашего сайта с вашим аккаунтом на плей стор?
+ — заливать свои работы в хранилища, имеющие метку даты? — не разрабатывать андроид приложения?
+UPTD:Причины такого поведения гугла отлично расписал khim в своем ответе
+Можно проверить свою графику перед публикацией используя сервис гугл имедж
+Вот пример проверки логотипа, из данной статьи. Выдача разная для разных регионов (.com, .com.ru, com.ua). Переиндексация 1-2 дня (в прошлый день результаты были другие, в выдаче преобладал «вражеский сайт»)
+      
+    

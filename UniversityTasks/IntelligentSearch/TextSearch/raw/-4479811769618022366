@@ -1,0 +1,134 @@
+﻿#TITLE:Безопасное динамическое обновление записей на MS DNS из Linux
+
+      Введение
+В процессе настройки клиентов службы AD под управлением ОС Ubuntu Linux, я столкнулся с несвоевременным обновлением записей на DNS сервере средствами Samba, а также с некорректной работой команды «net ads dns register». Что вызывает сопуствующие проблемы при работе с доменными компьютерами.
+Например, наличие двух DNS серверов в dhclient.conf приводит к появлению ошибки «ERROR_DNS_GSS_ERROR» после выполнения «net ads dns register -P».
+В поисках решения этой проблемы я перечитал много статей и баг-репортов, и наткнулся на статью  Warlock_ua «Безопасное динамическое обновление DNS записей в Windows домене из Linux (GSS-TSIG)». Идея показалась мне интересной. Но мне не понравилось решение с созданием отдельной учетной записи пользователя домена, которая имеет права на изменение всех записей DNS-зоны. Во-первых, это потенциально небезопасно. Во-вторых, в Windows уже существуют готовое решение: каждая учетная запись компьютера имеет право изменять свою запись на DNS. Почему бы этим не воспользоваться?
+За основу я взял скрипт learn-address.sh от  Warlock_ua, и доработал его с учетом своих нужд. И вот что получилось.Об инфраструктуре
+Имеем службу AD под управлением Windows Server 2008 R2 Standard, а также MS DNS сервер. Ими заведуют администраторы Windows. DHCP-сервер реализован на базе Cisco. Этим заведуют администраторы сети. Что так, для меня все это где-то в облаке, и немного похоже на черный ящик. Также у нас есть клиенты под управлением ОС Ubuntu 14.04 (Trusty), с установленным ПО Samba 4.1.6, isc-dhcp-client. Это по моей части.Скрипт для обновления записей на DNS
+Всю процедуру ввода в домен AD компьютеров под управлением Ubuntu я в описывать не буду, т. к. это выходит за рамки статьи. Опишу только ключевые моменты.
+Компьютер, который будет обновлять свою запись на DNS, должен быть введен в домен. Т.е. у него должна быть учетная запись в домене. Для начала нужно будет получить пароль для учетной записи компьютера из Trivial DataBase. Сделать это можно с помощью утилиты tdbdump:sudo tdbdump -k SECRETS/MACHINE_PASSWORD/DOMAIN /var/lib/samba/private/secrets.tdb | sed 's/\\\00$//'
+
+После этого нужно создать keytab-файл с учетными данными машины с помощью утилиты ktutil:ktutil &lt;&lt;EOF
+addent -password -p $cn@DOMAIN.LOCAL -k 1 -e rc4-hmac
+$MPAS
+write_kt $keytab_file
+quit
+EOF
+
+Далее нужно получить билет kerberos:kinit -k -t $keytab_file $user
+
+И можно обновлять запись на DNS для конкретной учетной записи компьютера.Обзор nsupdate-gsstsignsupdate-gsstsig update &lt;ip&gt; &lt;hostname&gt;Листинг nsupdate-gsstsig#!/bin/bash
+###
+### Объявляем переменные и читаем параметры скрипта
+###
+dnsserver=dc1
+fwdzone=domain.local
+# Зоны обратного просмотра у нас не используются.
+# Кому надо, может самостоятельно раскомментировать соотвествующие строки.
+#revzone=115.70.10.in-addr.arpa
+
+ttl=300
+op=$1
+addr=$2
+#revaddr=`echo $addr | sed -re 's:([0-9]+).([0-9]+).([0-9]+).([0-9]+):4.3.2.1.in-addr.arpa:'`
+cn=$3
+fqdn=$cn.$fwdzone
+addfile=add_$addr
+delfile=del_$addr
+# Подразумевается, что имя учетной записи компьютера в AD,
+# CNAME и имя компьютера совпадают
+user=$cn
+keytab_file=./machine_krb5.keytab
+
+###
+### Получаем пароль учетной записи компьютера
+###
+MPAS=`sudo tdbdump -k SECRETS/MACHINE_PASSWORD/DOMAIN /var/lib/samba/private/secrets.tdb | sed 's/\\\00$//'`
+
+###
+### Экспортируем keytab-файл
+###
+ktutil &lt;&lt;EOF
+addent -password -p $cn@DOMAIN.LOCAL -k 1 -e rc4-hmac
+$MPAS
+write_kt $keytab_file
+quit
+EOF
+###
+### Изменяем запись на DNS
+###
+
+addRecord() {
+        kinit -k -t $keytab_file $user
+        cat &lt;&lt;EOF &gt; $addfile
+gsstsig
+server $dnsserver
+zone $fwdzone
+update delete $fqdn a
+update add $fqdn $ttl a $addr
+send
+EOF
+#zone $revzone
+#update delete $revaddr ptr
+#update add $revaddr $ttl ptr $fqdn
+#send
+#EOF
+
+        cat &lt;&lt;EOF &gt; $delfile
+gsstsig
+server $dnsserver
+zone $fwdzone
+update delete $fqdn a
+send
+EOF
+#zone $revzone
+#update delete $revaddr ptr
+#send
+#EOF
+
+        nsupdate -v $addfile
+        rm -f $addfile
+        rm -f $delfile
+}
+
+delRecord() {
+        kinit -k -t $keytab_file $user
+        nsupdate -v $delfile
+        rm -f $delfile
+}
+
+case $op in
+        add|update)
+                addRecord
+                ;;
+        delete)
+                delRecord
+                ;;
+        *)
+                echo "Unable to handle operation $op.  Exiting" exit 1
+esac
+
+rm $keytab_fileЗапуск скрипта
+Для удобства запуска я разместил скрипт в /bin/nsupdate-gsstsig.
+Чтоб информация в DNS обновлялась автоматически, я создал скрипт regdns и поместил его в /etc/network/if-up.d/.Листинг regdns#!/bin/sh
+# Помещаем имя компьютера в переменную
+SHOST=`cat /etc/hostname`
+
+# Помещаем IP-адрес не lo интерфейса в перменную
+IP=$(ifconfig | grep 'inet addr:'| grep -v '127.0.0.1' | cut -d: -f2 | awk '{ print $1}')
+
+# Обновляем запись на DNS-сервере
+nsupdate-gsstsig update $IP $SHOSTИсточники информацииhabrahabr.ru/post/221843
+help.ubuntu.ru/wiki/ввод_в_домен_windows
+forum.ubuntu.ru/index.php?topic=17941.0
+help.ubuntu.com/community/ActiveDirectoryWinbindHowto
+manpages.ubuntu.com/manpages/trusty/en/man8/net.8.html
+manpages.ubuntu.com/manpages/trusty/man5/dhclient.conf.5.html
+manpages.ubuntu.com/manpages/trusty/en/man8/tdbdump.8.html
+manpages.ubuntu.com/manpages/trusty/en/man1/ktutil.1.html
+web.mit.edu/Kerberos/krb5-1.12/doc/formats/keytab_file_format.html
+web.mit.edu/Kerberos/www/krb5-devel/doc/user/tkt_mgmt.html
+
+      
+    

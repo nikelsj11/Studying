@@ -1,0 +1,52 @@
+﻿#TITLE:Приватный режим и список введённых адресов в новой сборке Vivaldi 1.0.264.3
+
+      Всем привет!
+В сегодняшней сборке мы представляем одну из самых востребованных функций, о которой пользователи спрашивали с завидным постоянством — приватный режим просмотра. Кроме того, мы поработали над улучшением веб-панелей, а также добавили несколько менее заметных, но полезных функций. Всё это — помимо множества исправлений, список которых по традиции будет в конце статьи. А теперь чуть подробнее обо всём.Приватный режим просмотра
+Это первая реализация данной функции. Пока — только в виде приватного окна (доступно через меню Файл -&gt; Новое приватное окно). Приватные вкладки реализовать немного сложнее, поэтому мы пока добавили только возможность работы в отдельном окне. При таком режиме никакие данные о вашей активности в сети с помощью приватного окна не будут сохраняться в браузере. Для наглядности мы добавили специальный фон к адресной строке и соответствующую иконку, чтобы вы могли всегда понять, работаете вы в приватном режиме или в обычном:
+В связи с тем, что это только начальная стадия реализации функции, в ней неизбежно должны быть баги и недочёты. Пожалуйста, потестируйте приватный режим и обязательно сообщите нам о найденных ошибках, особенно в плане приватности.Улучшение веб-панелей
+Мы переписали код функции для этой сборки. Заодно исправили баг с открытием ссылок из веб-панели в основном окне браузера. Также мы уменьшили размер заголовка веб-панели и даже предусмотрели возможность его отключения. Кнопки Назад и Обновить теперь объединены в одну кнопку Домой, которая при нажатии возвращает вас на начальную страницу и одновременно перезагружает её. При этом контекстное меню предоставляет вам возможность выполнять и другие действия, связанные с веб-панелью. Возможно, это не очень удобно — напишите, что вы думаете о таком изменении.
+Также мы немного изменили кнопку + для создания веб-панели: теперь при нажатии на эту кнопку в поле адреса будет автоматически помещён адрес текущей страницы.
+К сожалению, в своей Linux-версии я заметил, что содержимое веб-панели исчезает после рестарта браузера. Будем искать причину и исправлять.Список введённых адресов
+Если честно — я не знаю, когда эта функция появилась в браузере. Возможно — во время моего отпуска. Но, как бы то ни было, функцию эту просили давно и теперь она есть. Если установить курсор в адресную строку и нажать на клавиатуре компьютера клавишу со стрелкой вниз — откроется список всех введённых ранее в адресную строку адресов. Пока функция, естественно, далека от совершенства и не позволяет, например, редактировать список, но для начала вполне неплохо получилось.Известные проблемыПриватное окно в Mac-версии выглядит, как обычное
+Сброс веб-панелей: если вы создавали веб-панели в прошлой сборке, для новой сборки их нужно пересоздать вновь
+
+На этом пока всё на сегодня. Загрузить новую сборку можно по ссылкам ниже:Windows 32-bit
+Windows 64-bit (экспериментальная)
+Mac
+Linux RPM 32-bit
+Linux RPM 64-bit
+Linux DEB 32-bit
+Linux DEB 64-bit
+Полный список изменений:VB-8586 Windows and Linux need separate sets of default shortcuts
+VB-5754 History search API doesn't return some results on some searches
+VB-8895 Webpanel favicon fetcher raises exception if missing
+VB-7599 [Mac] Crash after opening new window and closing original one: partially fixed—still crashes on closing the last window
+VB-8871 Opening links from web panel does not work
+VB-8864 Replace back and reload with a combined home/reload button: also removed extra bar and added possibility to hide titlebar
+VB-8777 Improve styling for main buttons and form elements: Cleaning up and attending small details
+VB-7902 Tab content rescaled from small webview area upon first display — flickering
+VB-2508 Search in dowloads panel is broken
+VB-8127 History links are loaded in wrong frame
+VB-8148 [regression] Middle button on SD tile opens new foreground tab
+VB-8515 [regression] New tab gesture opens blank tab
+VB-8745 [regression] Cannot use Ctrl+Tab to switch to a tab opened in the background
+VB-235 Add support for private windows
+VB-8475 Add web panel context menu
+VB-8690 Bookmarks manager needs a bit of TLC: Using variables for gradients, Optimized PNGs, Better contrast for labels
+VB-8685 Tab selection not visible: Correct border clipping for first selected tab
+VB-8631 Add smooth scrolling option
+VB-8571 [regression] “Add to search engines” broken
+VB-8657 Search bar does not work with second search
+VB-8777 Improve styling for main buttons and form elements: Bringing in the remaining form elements, checkboxes and radio buttons
+VB-8700 [regression] RMB+ Wheel Up/Down doesn't work anymore
+VB-8631 Add smooth scrolling option
+VB-8777 Improve styling for main buttons and form elements
+VB-8775 Mouse wheel page zoom should prevent scrolling
+Add Kurdish language support (KU)
+Upgraded Chromium to 45.0.2454.86
+
+Напоминаем вам, что еженедельные сборки являются тестовыми, поэтому не забывайте делать резервные копии важных данных. Сообщать о найденных ошибках можно по прежнему адресу.
+
+      
+      
+    

@@ -1,0 +1,311 @@
+﻿#TITLE:Практика IronScheme
+
+      Уверен, что вы перестанете играть в «мясо», ибо то, что я вам сейчас расскажу, покажется вам очень интересным, хотя бы потому, что многих специальных терминов вы не поймёте.
+Ярослав ГашекЧасть 1 Введение в SchemeЧасть 2 Углубление в SchemeЧасть 3 Практика IronSchemeПрактика
+Теперь создадим несколько приложений, которые уже ближе к реальной жизни, чем примеры из предыдущей статьи. Философские вопросы и основы разработки мы рассмотрели в предыдущих статьях, поэтому эта будет состоять преимущественно из кода. Надеюсь, что код будет легко читаться, поэтому не буду его снабжать обильными комментариями.
+Для начала разберемся, как из IronScheme можно получить доступ к классам .net
+Программа на IronScheme начинается с импорта библиотек:(import 
+  (rnrs)
+  (ironscheme)
+)
+
+Чтобы использовать функции для взаимодействия с CLR нужно импортировать библиотеку (ironscheme clr):(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+
+Теперь нам доступны следующие функции:(clr-namespaces)
+Возвращает все импортированные пространства имен.(clr-reference reference)
+Подключает сборку к приложению, например (clr-reference System.Web).(clr-using namespace)
+Импортирует пространство имен: (clr-using System.IO).(clr-call type method instance arg ...)
+Вызывает метод объекта.(clr-cast type expr)
+Приводит объект к заданному типу.(clr-is type expr)
+Проверяет, имеет ли объект указанный тип.(clr-new type arg ...)
+Создает экземпляр класса и передает аргументы в конструктор.(clr-new-array type size)
+Создает массив с указанным типом и размером.(clr-event-add! type event instance handler)
+Добавляет обработчик события.(clr-event-remove! type event instance handler)
+Удаляет обработчик события.(clr-field-get type field instance)
+Получить значение поля.(clr-field-set! type field instance expr)
+Назначить полю значение.(clr-prop-get type property instance)
+Возвращает значение свойства.(clr-prop-set! type property instance expr)
+Задает значение свойства.(clr-static-call type method arg ...)
+Вызов статического метода.(clr-static-event-add! type event handler)
+Добавляет обработчик для статического события.(clr-static-event-remove! type event handler)
+Удаляет обработчик.(clr-static-field-get type field)
+Возвращает значение статического поля.(clr-static-field-set! type field expr)
+Задает значение статическому полю.(clr-static-prop-get type property)
+Возвращает значение статического свойства.(clr-static-prop-set! type property expr)
+Задает значение статического свойства.Hello, world 2.0
+Попробуем? Создайте файл hello-world-clr.ss с содержимым:(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+
+(clr-static-call Console WriteLine "Hello, world")
+
+Этот пример демонстрирует вызов статического WriteLine метода класса System.Console.Просто таймер
+Теперь пример интереснее, запускаем таймер.
+Как обычно вначале импортируем библиотеки:(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+
+Импортируем пространство имен:(clr-using System.Threading)
+
+Для удобства использования напишем две функции обертки clr- вызовов. Первая функция создает объект класса Timer, вторая меняет основные параметры таймера:(define (timer-new handler)
+  (clr-new Timer handler)
+)
+
+(define (timer-change timer due-time period)
+  (clr-call Timer Change timer (clr-cast System.Int32 due-time) (clr-cast System.Int32 period))
+)
+
+Кастинг при clr вызовах нужен чтобы привести из внутреннего IronScheme представления к .Net типам. 
+Еще полезной будет функция блокирующая основной поток приложения, чтобы программа не завершилась:(define (console-block) 
+  (clr-static-call Console WriteLine "Press &lt;Enter&gt; to terminate")
+  (clr-static-call Console ReadLine)
+)
+
+Чтобы использовать таймер нужно вначале объявить функцию обработчик:(define (time-handler obj) 
+  ;; some code
+)
+
+Затем создаем объект таймера:(define timer (timer-new time-handler))
+
+И запускаем таймер указав период и задержку:(timer-change timer delay period)
+
+Теперь все вместе, пример печатает в консоль количество срабатываний. Полный исходник примера использования таймера(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+ 
+(clr-using System.Threading)
+
+;; ***************************************
+
+(define (timer-new handler)
+  (clr-new Timer handler)
+)
+
+(define (timer-change timer due-time period)
+  (clr-call Timer Change timer (clr-cast System.Int32 due-time) (clr-cast System.Int32 period))
+)
+
+(define (console-block) 
+  (clr-static-call Console WriteLine "Press &lt;Enter&gt; to terminate")
+  (clr-static-call Console ReadLine)
+)
+
+;; ***************************************
+
+(define counter 0)
+(define period 1000) ;;ms
+
+(define (time-handler obj) 
+  (set! counter (+ counter 1)) 
+  (displayln counter)
+)
+
+(define timer (timer-new time-handler))
+
+(timer-change timer 0 period)
+
+(console-block)
+Работаем с Oracle DB
+Привожу пример подключения и запроса к СУБД Orcale. Полагаю, что читатель уже сам сможет разобраться, поэтому не буду расписывать, что и как здесь происходит. Вначале программы объявлены функции для работы с Oracle, далее для уже знакомого Timer. Затем создается подключение к базе и по таймеру делается запрос, результат запроса выводится в консоль.
+Пример взят из реального приложения, используемого для мониторинга. Естественно конфиденциальные фрагменты кода заменены на «*****», но они и не критичны для понимания или использования примера для разработки собственных программ.Исходник примера работы с базой данных Oracle(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+ 
+;; **************** Oracle **************;;
+(clr-reference System.Data)
+(clr-reference System.Data.OracleClient)
+(clr-using System.Data.OracleClient)
+
+(define (ora-connection-new connection-string) 
+  (clr-new OracleConnection (clr-cast System.String connection-string))
+)
+
+(define (ora-connection-open connection) 
+  (clr-call OracleConnection Open (clr-cast OracleConnection connection))
+)
+
+(define (ora-connection-create connection-string) 
+  (define connection (ora-connection-new connection-string))
+  (ora-connection-open connection) 
+  connection ;; return
+)
+
+(define (ora-command-new connection sql-string) 
+  (clr-new OracleCommand (clr-cast System.String sql-string) (clr-cast OracleConnection connection))
+)
+
+(define (ora-command-parameter-add command key value) 
+  (clr-call OracleParameterCollection Add
+    (clr-prop-get OracleCommand Parameters command)
+    (clr-cast System.String key)
+    (clr-cast System.Object value)
+  )
+)
+
+(define (ora-execute-reader command) 
+  (clr-call OracleCommand ExecuteReader (clr-cast OracleCommand command))
+)
+
+(define (ora-read reader) 
+  (clr-call OracleDataReader Read (clr-cast OracleDataReader reader))
+)
+
+(define (ora-get-value reader key)
+  (clr-call OracleDataReader GetValue reader
+    (clr-call OracleDataReader GetOrdinal reader key)
+  )
+)
+
+(define (ora-get-string reader key)
+  (clr-call Object ToString (ora-get-datetime reader key))
+)
+
+(define (ora-get-int32 reader key)
+  (clr-call OracleDataReader GetInt32 reader
+    (clr-call OracleDataReader GetOrdinal reader key)
+  )
+)
+
+(define (ora-get-datetime reader key)
+  (clr-call OracleDataReader GetDateTime reader
+    (clr-call OracleDataReader GetOrdinal reader key)
+  )
+)
+
+;;***************************************;;
+
+;; **************** Timer ***************;;
+
+(clr-using System.Threading)
+
+(define (timer-new handler)
+  (clr-new Timer handler)
+)
+
+(define (timer-change timer due-time period)
+  (clr-call Timer Change timer (clr-cast System.Int32 due-time) (clr-cast System.Int32 period))
+)
+
+(define (console-block) 
+  (clr-static-call System.Console WriteLine "Press &lt;Enter&gt; to terminate")
+  (clr-static-call System.Console ReadLine)
+)
+
+;;***************************************;;
+
+;;######## GLOBAL #########;;
+
+(define connection-string "Data Source=*****;User ID=*****;Password=*****;")
+
+;;#########################;;
+
+(define (complect-print reader)
+  (import (srfi :13))
+
+  (let loop ((index 1))
+    (if (ora-read reader)
+      (begin
+        (display "  (")
+        (display (string-pad-right (number-&gt;string index) 5))
+        (display (string-pad-right (ora-get-value reader "*****") 15))
+        (display " ")
+        (display (string-pad-right (ora-get-value reader "*****") 20))
+        (display " ")
+        (display (ora-get-int32 reader "*****"))
+        (display " ")
+        (display (string-pad-right (ora-get-value reader "*****") 25))
+        (display " ")
+        (display (ora-get-string reader "*****"))
+        (displayln ")")
+        (loop (+ index 1))
+      )
+    )
+  )  
+)
+
+(define (complect-display connection status)
+  (define sqlStr "select * from ***** where ***** =  :complect_status")
+
+  (define cmd (ora-command-new connection sqlStr))
+
+  (define reader '())
+
+  (ora-command-parameter-add cmd "complect_status" status)
+
+  (set! reader (ora-execute-reader cmd))
+
+  (display "(complect-status ")
+  (displayln status)
+  (complect-print reader)
+  (displayln ")")
+
+  (clr-call OracleDataReader Close reader)
+)
+ 
+(define (time-handler obj) 
+  (define connection (ora-connection-create connection-string))
+
+  (clr-static-call System.Console Clear)
+
+  (displayln "\n;; ************************************************************************* ;;\n")
+
+  (complect-display connection 1)
+  (newline)
+
+  (complect-display connection 2)
+  (newline)
+
+  (complect-display connection 3)
+  (newline)
+
+  (complect-display connection 4)
+
+  (displayln "\n;; ************************************************************************* ;;\n")
+
+  (clr-call OracleConnection Close connection)
+)
+
+(define timer (timer-new time-handler))
+(timer-change timer 0 3000)
+
+(console-block)
+WindowsForms
+И в завершение приведу простой пример оконного приложения. В этом примере я не стал заморачиваться с обертками .NET вызовов, т.к. мне была важна демонстрация принципа, того обстоятельства что и это возможно. Конечно, если обернуть вызовы, то размер кода сократится, за счет повторного использования.(import
+  (rnrs)
+  (ironscheme)
+  (ironscheme clr)
+)
+ 
+(clr-reference System.Windows.Forms)
+(clr-using System.Windows.Forms)
+
+(define main-form (clr-new Form))
+(clr-prop-set! Form Text main-form "--== Hello, world ==--")
+(clr-prop-set! Form Size  main-form (clr-new System.Drawing.Size 640 480))
+
+(define lbl-message (clr-new Label))
+(clr-prop-set! Label Text lbl-message "Message: \"Hello, Windows Forms(IronScheme) World!\"")
+(clr-prop-set! Label Size  lbl-message (clr-new System.Drawing.Size 320 20))
+(clr-prop-set! Label Location  lbl-message (clr-new System.Drawing.Point 150 200))
+
+(clr-call Form+ControlCollection Add (clr-prop-get Form Controls main-form) lbl-message)
+
+(clr-static-call Application Run (clr-cast Form main-form))
+В качестве заключения
+В этой статье я пытался продемонстрировать, что для Scheme нет ничего невозможного, по крайней мере, исполняемого поверх .NET. Это вовсе не означает, что следует бросить привычный C# и начать кодить на Scheme. Конечно, программирования на Scheme имеют определенные преимущества, это становится понятно по мере более глубокого проникновения сознания в идеологию Lisp. Но все же поддержка C# студией со всякими там ReSharper, оставляют далеко позади Scheme в качестве основного языка для разработки под .NET. Безусловно, можно реализовать первоклассную поддержку и для Lisp поверх .NET, но очевидно не многим это нужно иначе давно сделали бы. Однако, Lisp и в частности Scheme может быть крайне полезен в качестве встраиваемого языка. В такой роли он имеет определенные преимущества перед другими встраиваемыми языками. Посредством Lisp можно реализовать читаемые и гибкие конфигурационные файлы, консольный интерфейс управления приложением, передачу данных по сети и многое другое. Но об этом несколько позже и в следующих статьях.
+
+      
+      
+    

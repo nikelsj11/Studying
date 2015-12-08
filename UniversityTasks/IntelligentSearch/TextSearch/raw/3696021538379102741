@@ -1,0 +1,338 @@
+﻿#TITLE:Статический анализ кода Mozilla Thunderbird c помощью PVS-Studio
+
+      В этой статье хочу рассказать о проверке проекта Mozilla Thunderbird статическим анализатором PVS-Studio. Пользуясь Thunderbird, я иногда сталкивался с зависаниями и странным поведением программы. Возможно, нам удастся найти хотя бы некоторые причины этого в исходном коде. Приглашаю посмотреть, какие ошибки могут прятаться в таком популярном проекте.Почтовый клиент Mozilla Thunderbird
+Mozilla Thunderbird — бесплатная кроссплатформенная свободно распространяемая программа для работы с электронной почтой и группами новостей, разработанная компанией Mozilla Foundation. Основными преимуществами использования Thunderbird считаются простота и гибкость программы. Пользователь сам может настроить интерфейс, меняя, добавляя или удаляя кнопки. В добавок к этому поддерживается установка расширений и новых тем оформлений. Программа может использовать цифровые подписи, шифрование сообщений и проверку сертификатов.Об анализаторе PVS-Studio
+PVS-Studio — статический анализатор кода для С и С++ программ. PVS-Studio предоставляется как плагин к системе разработки Visual Studio, но может быть использован и через утилиту Standalone. Эта утилита имеет функцию мониторинга, которая отслеживает вызовы компилятора и передает нужные файлы анализатору. Таким образом PVS-Studio не зависит от сборочной системы проекта.
+Инструмент прост в использовании, поэтому вместо многих слов, лучше скачать и попробовать демонстрационную версию на своем собственном коде. Сборка и проверка Thunderbird
+Mozilla имеет свою собственную сборочную систему. Инструкцию, описывающую основные шаги для сборки проекта можно найти здесь. Сама сборка сделана максимально удобно для пользователя. Mozilla предоставляет бинарный инсталлятор всех необходимых для установки под windows утилит, например, 7zip, msys, mercurial и т.п. 
+Проверка была осуществлена с помощью упомянутой выше системы мониторинга вызовов компилятора, которой обладает утилита Standalone, входящая в комплект PVS-Studio.Предупреждения анализатора
+Thunderbird является крупным проектом и использует множество сторонних библиотек. Большинство предупреждений пришлось именно на их код. Для статьи я постарался отсеять эти предупреждения и оставить только те, которые выдавались на исходный код почтовой программы.
+Кроме того, для описания багов в проектах Mozilla есть страница с описанием ключевых слов. Среди них можно найти такие как coverity, klocwork, valgrind и clang-anazyler. Похоже, что эти средства анализа кода уже используются в Mozilla. Так что будет интересно посмотреть на то, что не заметили эти анализаторы.Подозрительные условия
+Предупреждение PVS-Studio: V501 There are identical sub-expressions 'aStatus == NS_ERROR_OFFLINE' to the left and to the right of the '||' operator. nsdocshell.cpp 7606nsresult
+nsDocShell::EndPageLoad(nsresult aStatus, ....)
+{
+  if(....)
+  {
+    ....
+  }
+  else if (aStatus == NS_ERROR_NET_TIMEOUT ||
+           ....
+           aStatus == NS_ERROR_OFFLINE ||
+           aStatus == NS_ERROR_MALWARE_URI ||
+           aStatus == NS_ERROR_PHISHING_URI ||
+           aStatus == NS_ERROR_UNWANTED_URI ||
+           aStatus == NS_ERROR_UNSAFE_CONTENT_TYPE ||
+           aStatus == NS_ERROR_REMOTE_XUL ||
+           aStatus == NS_ERROR_OFFLINE ||
+           ....)
+}
+Этот код содержит лишнюю проверку «NS_ERROR_OFFLINE». Список значений, на которые нужно проверить переменную 'aStatus' большой, поэтому легко можно ошибиться и случайно продублировать проверку. Вторым вариантом может быть то, что программист после копирования вставлял одну и ту же строчку, чтобы не переписывать одинаковую часть, и забыл поменять название константы «NS_ERROR_OFFLINE». В таком случае в коде не хватает одной нужной проверки.
+Предупреждение PVS-Studio: V590 Consider inspecting the 'type != (1) &amp;&amp; type == (2)' expression. The expression is excessive or contains a misprint. nswindowsregkey.cpp 313#define REG_SZ        ( 1 ) 
+#define REG_EXPAND_SZ ( 2 )
+#define REG_MULTI_SZ  ( 7 ) 
+
+NS_IMETHODIMP
+nsWindowsRegKey::ReadStringValue(const nsAString&amp; aName, 
+                                       nsAString&amp; aResult)
+{
+  ....
+  if (type != REG_SZ &amp;&amp; 
+      type == REG_EXPAND_SZ &amp;&amp; 
+      type == REG_MULTI_SZ) 
+  {
+    return NS_ERROR_FAILURE;
+  }
+  ....
+}
+Условие «type == REG_EXPAND_SZ &amp;&amp; type == REG_MULTI_SZ» всегда ложно, так как одна переменная не может иметь два значения одновременно. Как результат, функция никогда не вернет статус ошибки NS_ERROR_FAILURE.
+Предупреждение PVS-Studio: V616 The 'eBorderStyle_none' named constant with the value of 0 is used in the bitwise operation. nswindow.cpp 2318enum nsBorderStyle 
+{
+  eBorderStyle_none = 0,
+  ....
+}  
+
+NS_IMETHODIMP nsWindow::SetNonClientMargins(....)
+{
+  if (!mIsTopWidgetWindow ||
+      mBorderStyle &amp; eBorderStyle_none)
+    return NS_ERROR_INVALID_ARG;
+  ....
+}
+При проверке условия используется константа со значением 0, которая участвует в побитовой операции «И» с переменной. Результатом операции, разумеется, тоже будет ноль. Таким образом условие не зависит от переменной «mBorderStyle».
+Подобное предупреждение:V616 The 'nsIDocShell::BUSY_FLAGS_NONE' named constant with the value of 0 is used in the bitwise operation. presentationcallbacks.cpp 105
+
+Предупреждение PVS-Studio: V646 Consider inspecting the application's logic. It's possible that 'else' keyword is missing. nsnativethemewin.cpp 924:nsresult 
+nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame, 
+                                       uint8_t aWidgetType, 
+                                       int32_t&amp; aPart, 
+                                       int32_t&amp; aState)
+{
+  ....
+{
+  ....
+  if (!aFrame) {
+    aState = TS_NORMAL;
+  } else {
+    if (GetCheckedOrSelected(aFrame, !isCheckbox)) {
+      inputState = CHECKED;
+  } if (isCheckbox &amp;&amp; GetIndeterminate(aFrame)) {
+      inputState = INDETERMINATE;
+  }
+  ....
+}   ....
+}
+Возможно, что перед последним «if» пропущено слово else. Код к текущем виде подразумевает, что могут выполниться оба условия if, и тогда значение «CHECKED» в переменной «inputState» будет изменено на «INDETERMINATE». Если бы в этом коде выполнялось либо одно условие, либо другое, то логичней было бы использовать «if — else», как во внешней конструкции.
+Еще одна похожая конструкция располагается здесь:V646 Consider inspecting the application's logic. It's possible that 'else' keyword is missing. debugger.cpp 4794
+
+Предупреждение PVS-Studio: V713 The pointer mHTMLEditor was utilized in the logical expression before it was verified against nullptr in the same logical expression. nshtmleditrules.cpp 6593:nsHTMLEditor* mHTMLEditor;
+
+nsresult
+nsHTMLEditRules::SplitParagraph(...)
+{
+  if (mHTMLEditor-&gt;IsTextNode(child) || 
+      !mHTMLEditor ||
+      mHTMLEditor-&gt;IsContainer(child))
+  ....
+}
+Функция «SplitParagraph» в своей проверке содержит ошибочный порядок аргументов. Если в данном коде указатель mHTMLEditor будет нулевым, то перед обнаружением этого он уже будет разыменован, что приведет к неопределенному поведению. Чтобы исправить код, нужно поменять местами "!mHTMLEditor" и «mHTMLEditor-&gt;IsTextNode(child)».
+Две аналогичных ошибки располагаются здесь:V713 The pointer mHTMLEditor was utilized in the logical expression before it was verified against nullptr in the same logical expression. nshtmleditrules.cpp 7392
+V713 The pointer mHTMLEditor was utilized in the logical expression before it was verified against nullptr in the same logical expression. nshtmleditrules.cpp 7413
+
+Предупреждение PVS-Studio: V522 Dereferencing of the null pointer 'aStyleValues' might take place. sdnaccessible.cpp 252:STDMETHODIMP sdnAccessible::get_computedStyle(
+                   BSTR __RPC_FAR* aStyleProperties,
+                   BSTR __RPC_FAR* aStyleValues,
+                   unsigned short __RPC_FAR* aNumStyleProperties)
+{
+  if (!aStyleProperties || aStyleValues || !aNumStyleProperties)
+    return E_INVALIDARG;
+  ....
+  aStyleValues[realIndex] = ::SysAllocString(value.get());
+  ....
+}
+Как говорится, заметь проказника.
+Анализатор обнаружил разыменование нулевого указателя. При проверке программист забыл поставить "!" перед «aStyleValues». Дальнейший код получает управление только тогда, когда этот указатель будет равен нулю, и приводит к его разыменованию.
+Предупреждение PVS-Studio: V547 Expression is always false. Probably the '||' operator should be used here. nsmsgdbview.cpp 3014:class NS_NO_VTABLE nsMsgViewCommandType 
+{
+  enum 
+  {
+    ....
+    junk = 27,
+    unjunk = 28,
+    ....
+  };
+};
+
+nsresult nsMsgDBView::
+ApplyCommandToIndices(nsMsgViewCommandTypeValue command, ....)
+{
+  ....
+  if ((command == nsMsgViewCommandType::junk) &amp;&amp;
+      (command == nsMsgViewCommandType::unjunk))
+  ....
+}
+Код, соответствующий блоку if никогда не будет выполняться, поскольку переменная command не может одновременно иметь два значения. Более логичным здесь кажется использование оператора «ИЛИ» — "||".Проблемы с указателями
+Предупреждение PVS-Studio: V579 The HashBytes function receives the pointer and its size as arguments. It is possibly a mistake. Inspect the second argument. nsdisplaylist.h 929:struct AnimatedGeometryRootLookup
+{
+  ....
+  PLDHashNumber Hash() const 
+  {
+    return mozilla::HashBytes(this, sizeof(this));
+  }
+  ....
+}
+Анализатор счел подозрительным, что в функцию «HashBytes» первым аргументом передается указатель, а вторым — размер указателя. Если поискать в исходных файлах по названию функции, то в файле «hashfunctions.h» можно найти следующий комментарий:/* Utilities for hashing. */
+
+/*
+ * This file exports functions for hashing data down 
+ * to a 32-bit value, including:
+   ....
+ * - HashBytes     Hash a byte array of known length.
+   ....
+ */
+Комментарий подсказывает, что вторым аргументом должен быть размер объекта, располагающегося по указателю. Скорее всего правильный код должен выглядеть так:return mozilla::HashBytes(this, sizeof(*this));
+
+Перейдем к следующему предупреждению.
+Предупреждение PVS-Studio: V611 The memory was allocated using 'new' operator but was released using the 'free' function. Consider inspecting operation logics behind the 'instanceData' variable. nptest.cpp 971:NPError NPP_New(....)
+{
+  ....
+  InstanceData* instanceData = new InstanceData;
+  ....
+  free(instanceData);
+  ....
+}
+Ошибка заключается в том, что память выделяется с помощью оператора «new», а освобождается с помощью «free». Функция «free» не вызывает деструктор объекта, располагающегося по этому указателю. Это значит, что если объект содержал в себе еще указатели с выделенной памятью, то она не будет освобождена и произойдет утечка.
+Да и вообще так делать нельзя. Подобный код приводит к неопределенному поведению программы.
+Предупреждение PVS-Studio: V614 Potentially uninitialized pointer 'hOldFont' used. progressui_win.cpp 168:static void InitDialog(....) 
+{
+  ....
+  HFONT hInfoFont, hOldFont;
+  hInfoFont = (HFONT)SendMessage(hWndInfo, WM_GETFONT, 0, 0);
+
+  if (hInfoFont)
+    hOldFont = (HFONT)SelectObject(hDCInfo, hInfoFont);
+  ....
+  if (hOldFont)
+    SelectObject(hDCInfo, hOldFont);
+  ....
+}
+Если функция «SendMessage» вернет ноль, то результат следующей проверки будет false, а значит переменная hOldFont не будет инициализирована. Переменная будет иметь случайное значение, которое может быть не равно нулю. Если оно не равно 0, то это случайное значение будет передано в функцию SelectObject.
+Еще одна подобная ситуация может возникнуть здесь:V614 Potentially uninitialized pointer 'queryD3DKMTStatistics' used. gfxwindowsplatform.cpp 206
+Ошибки copy-paste 
+Предупреждение PVS-Studio: V517 The use of 'if (A) {...} else if (A) {...}' pattern was detected. There is a probability of logical error presence. Check lines: 1060, 1062. nsstylestruct.cpp 1060:nsStyleClipPath::nsStyleClipPath(const nsStyleClipPath&amp; aSource)
+{
+  if (aSource.mType == NS_STYLE_CLIP_PATH_URL) {
+    SetURL(aSource.mURL);
+  } else if (aSource.mType == NS_STYLE_CLIP_PATH_SHAPE) {
+    SetBasicShape(aSource.mBasicShape, aSource.mSizingBox);
+  } else if (aSource.mType == NS_STYLE_CLIP_PATH_SHAPE) {
+    SetSizingBox(aSource.mSizingBox);
+  }
+}
+Блок «if — else if» содержит повторяющуюся проверку на равенство, вызванную copy-paste методом. Это означает, что последняя часть кода, соответствующая второй проверке на «NS_STYLE_CLIP_PATH_SHAPE», никогда не будет выполнена.
+Предупреждение PVS-Studio: V523 The 'then' statement is equivalent to the 'else' statement. 
+mozspelli18nmanager.cpp 34:NS_IMETHODIMP 
+mozSpellI18NManager::GetUtil(mozISpellI18NUtil **_retval, ....)
+{
+  ....
+  nsAutoString lang;
+  ....
+  if(lang.EqualsLiteral("en"))
+  {
+    *_retval = new mozEnglishWordUtils;
+  }
+  else
+  {
+    *_retval = new mozEnglishWordUtils;   
+  }
+  NS_IF_ADDREF(*_retval);
+  return NS_OK;
+}
+Анализатор обратил внимание на то, что блокам if и else соответствуют одинаковые действия. Это может быть ошибкой при копировании, лишним условием или просто недописанным кодом. Так или иначе в данном виде условие не имеет смысла. 
+Еще несколько подобных ошибок:V523 The 'then' statement is equivalent to the 'else' statement. jemalloc.c 6504
+V523 The 'then' statement is equivalent to the 'else' statement. nsnativethemewin.cpp 1007
+V523 The 'then' statement is equivalent to the 'else' statement. msgmapihook.cpp 677
+Неопределенное поведение
+Предупреждение PVS-Studio: V595 The 'aParent' pointer was utilized before it was verified against nullptr. Check lines: 511, 518. nsgenericdomdatanode.cpp 511:#define NS_ADDREF(_ptr) \
+  (_ptr)-&gt;AddRef()
+
+nsresult
+nsGenericDOMDataNode::BindToTree(nsIContent* aParent, ....)
+{
+  ....
+  ShadowRoot* 
+  parentContainingShadow = aParent-&gt;GetContainingShadow();
+  ....
+  if (aParent) 
+  {
+    if (!GetParent()) 
+    {
+      NS_ADDREF(aParent);
+    }
+    mParent = aParent;
+  }
+  ....
+}
+Проверка указателя «aParent» подсказывает, что он может быть нулевым. Это значит, что при первом его разыменовании, которое происходит до проверки, мы рискуем получить неопределенное поведение.
+Предупреждение V595 является одним из самых распространенных среди проверяемых проектов, и Thunderbird — не исключение. Всего анализатор выдал 95 предупреждений, касающихся непосредственно кода Thunderbird.
+Предупреждение PVS-Studio: V610 Undefined behavior. Check the shift operator '&lt;&lt;'. The left operand '~0L' is negative. nsprotocolproxyservice.cpp 336:static void
+proxy_MaskIPv6Addr(PRIPv6Addr &amp;addr, uint16_t mask_len)
+{
+  ....
+  addr.pr_s6_addr32[3] = PR_htonl(
+    PR_ntohl(addr.pr_s6_addr32[3]) &amp; (~0L &lt;&lt; (128 - mask_len)));
+  ....
+}
+Когда один из параметров смещения влево является отрицательным числом, поведение не определено. Вот что сказано об этом в стандарте:The shift operators &lt;&lt; and &gt;&gt; group left-to-right. shift-expression &lt;&lt; additive-expression, shift-expression &gt;&gt; additive-expression. The operands shall be of integral or unscoped enumeration type and integral promotions are performed. 1. The type of the result is that of the promoted left operand. The behavior is undefined if the right operand is negative, or greater than or equal to the length in bits of the promoted left operand. 2.… If E1 has an unsigned type, the value of the result is E1 * 2^E2, reduced modulo one more than the maximum value representable in the result type. Otherwise, if E1 has a signed type and non-negative value, and E1*2^E2 is representable in the result type, then that is the resulting value; otherwise, the behavior is undefined. ...
+Еще 3 случая неопределенного поведения:V610 Undefined behavior. Check the shift operator '&lt;&lt;'. The left operand '~0L' is negative. nsprotocolproxyservice.cpp 341
+V610 Undefined behavior. Check the shift operator '&lt;&lt;'. The left operand '~0L' is negative. nsprotocolproxyservice.cpp 347
+V610 Undefined behavior. Check the shift operator '&lt;&lt;'. The left operand '~0L' is negative. nsprotocolproxyservice.cpp 354
+Предупреждения с функциями
+Предупреждение PVS-Studio: V597 The compiler could delete the 'memset' function call, which is used to flush 'ctx' object. The RtlSecureZeroMemory() function should be used to erase the private data. gmploader.cpp 166:bool GMPLoaderImpl::Load(....)
+{
+  SHA256Context ctx;
+  ....
+  // Overwrite all data involved in calculation as it could 
+  //potentially identify the user, so there's no chance a GMP
+  //can read it and use it for identity tracking.
+  memset(&amp;ctx, 0, sizeof(ctx));
+  ....
+}
+Здесь анализатор обратил внимание, что вызов функции 'memset' может быть удалён. Так как переменная 'ctx' в дальнейшем не используется, компилятор имеет полное право при оптимизации убрать вызов «memset». В Windows можно воспользоваться функцией «RtlSecureZeroMemory».
+Предупреждение PVS-Studio: V530 The return value of function 'getenv' is required to be utilized. 
+nswindowswmain.cpp 134int wmain(int argc, WCHAR **argv)
+{
+  ....
+  // Force creation of the multibyte _environ variable.
+  getenv("PATH");
+  int result = main(argc, argvConverted, _environ);
+  ....
+}
+Здесь мы имеем дело с вызовом функции «getenv», результат которой не используется и даже не записывается в переменную. Вот как описана эта функция на сайте cplusplus.com.Retrieves a C-string containing the value of the environment variable whose name is specified as argument. If the requested variable is not part of the environment list, the function returns a null pointer.Использование «getenv» в таком виде бессмысленно и только смущает при чтении кода.UPD: habrahabr.ru/company/pvs-studio/blog/267663/#comment_8589575Прочие предупреждения
+Предупреждение PVS-Studio: V609 Divide by zero. Denominator range [0..8]. ionbuilder.cpp 10922:static inline size_t UnboxedTypeSize(JSValueType type)
+{
+  switch (type) {
+    ....
+  default: return 0;
+  }
+}
+
+MInstruction*IonBuilder::loadUnboxedProperty(size_t offset, 
+                              JSValueType unboxedType, ....)
+{
+  size_t index = offset / UnboxedTypeSize(unboxedType);
+  ....
+}
+Так как функция «UnboxedTypeSize» может вернуть ноль, то потенциально мы имеем дело с делением на ноль. Если в функцию «UnboxedTypeSize» будет передан новый тип, то она вернёт дефолтное нулевое значение, что приведёт к возникновению исключительной ситуации. Лучше перестраховаться и добавить проверку перед делением.
+Еще одно потенциальное деление на ноль:V609 Divide by zero. Denominator range [0..8]. ionbuilder.cpp 11844
+
+Предупреждение PVS-Studio: V621 Consider inspecting the 'for' operator. It's possible that the loop will be executed incorrectly or won't be executed at all. nsmsgdbfolder.cpp 4501:NS_IMETHODIMP 
+nsMsgDBFolder::GetDisplayRecipients(bool *displayRecipients)
+{
+  ....     
+  // There's one FCC folder for sent mail, and one for sent news
+  nsIMsgFolder *fccFolders[2];
+  int numFccFolders = 0;
+  for (int i = 0; i &lt; numFccFolders; i++)
+  {
+    ....
+  }
+  ....
+}
+Анализатором было найдено подозрительное место, в котором цикл не проходит ни одной итерации. Причиной этого является переменная «numFccFolders», значение которой равно нулю. Возможно, это присваивание сделано с какой-то целью, но также возможно, что это опечатка. Комментарий и объявление указателя выше подсказывают, что переменная должна иметь значение 2.
+Предупреждение PVS-Studio: V678 An object is used as an argument to its own method. Consider checking the first actual argument of the 'Assign' function. nsgenerichtmlelement.h 411:class nsGenericHTMLElement : public nsGenericHTMLElementBase,
+                             public nsIDOMHTMLElement
+{
+  ....
+  NS_IMETHOD GetItemId(nsAString&amp; aId) final override {
+    nsString id;
+    GetItemId(id);
+    aId.Assign(aId);
+    return NS_OK;
+  }
+  ....
+}
+Само по себе использование объекта «aId» как аргумента в своем же методе не является ошибкой. Но этот код подозрителен тем, что в функции используется переменная с похожим названием «id». Это наводит на мысль, что здесь содержится опечатка и аргументом функции «aId.Assign» должна быть переменная «id».
+Предупреждение PVS-Studio: V670 The uninitialized class member 'mWorkerConnection' is used to initialize the 'mWorkerStatements' member. Remember that members are initialized in the order of their declarations inside a class. domstoragedbthread.cpp 50DOMStorageDBThread::DOMStorageDBThread()
+: mWorkerStatements(mWorkerConnection)
+, ....
+{}
+
+class DOMStorageDBThread final : public DOMStorageDBBridge
+{
+private:
+  ....
+  StatementCache mWorkerStatements; //&lt;=line 304
+  ....
+  nsCOMPtr&lt;mozIStorageConnection&gt; mWorkerConnection; //&lt;=line 309
+  ....
+}
+При использовании списка инициализации следует помнить об одном нюансе: переменные инициализируется в том порядке, в каком они объявлены в классе, а порядок в списке инициализации значения не имеет. В этом коде переменная «mWorkerStatements» инициализируется объектом «mWorkerConnection» другого класса. Но на момент инициализации для этого объекта еще не был вызван конструктор, так как в классе он объявлен позже, чем переменная «mWorkerStatements». Чтобы исправить это, достаточно поменять местами объявление этих двух объектов в классе.
+В этом классе прячется еще одна такая же ошибка:V670 The uninitialized class member 'mReaderConnection' is used to initialize the 'mReaderStatements' member. Remember that members are initialized in the order of their declarations inside a class. domstoragedbthread.cpp 51
+Заключение
+Подводя итог хочу заметить, что PVS-Studio нашел много подозрительных мест в проекте Mozilla Thunderbird. Большинство из них относятся к сторонним библиотекам. Тем не менее и в самом Thunderbird нашлись интересные ошибки. 
+Написать большой проект без ошибок не под силу даже самым опытным и внимательным программистам. Для таких целей и существуют статические анализаторы кода. Их использование поможет вам сэкономить время на поиск старых ошибок и не допустить новых. Предлагаю попробовать PVS-Studio на вашем проекте: http://www.viva64.com/ru/pvs-studio-download/.
+Если хотите поделиться этой статьей с англоязычной аудиторией, то прошу использовать ссылку на перевод: Igor Shtukarev. Static Analysis of Mozilla Thunderbird's Code by PVS-Studio.Прочитали статью и есть вопрос?Часто к нашим статьям задают одни и те же вопросы. Ответы на них мы собрали здесь: Ответы на вопросы читателей статей про PVS-Studio, версия 2015. Пожалуйста, ознакомьтесь со списком.
+
+      
+      
+    

@@ -1,0 +1,276 @@
+﻿#TITLE:Симулятор призрака. От идеи стать программистом к готовой игре на IOS
+
+      Прошло около 10 месяцев с тех пор, как я решил учить программирование, поскольку текущая работа инженером тех-поддержки попросту нагоняла апатию и ни к чему не вела. А чтобы сделать процесс обучения максимально интересным, я решил написать игру для мобильных устройств. Далее речь пойдёт о том, что конкретно я пытался создать, и с какими трудностями приходиться сталкиваться новичкам.
+Здесь есть один важный момент для начинающих разработчиков, которые горят желанием связать свою жизнь с миром ИТ-индустрии. Вы должны определить для себя максимально комфортную стратегию самообразования. Одному нужно регулярно решать практические задания, другой не сдвинется с места, пока не разберётся в тонких нюансах теории. Ведь подавляющее большинство, не смотря на чистоту своих намерений, имеют основную работу, семью, друзей, хобби… И так или иначе, весь этот рутинный водоворот влияет на время и качество вашего обучения. И может привести к тому, что вы забросите свои ежедневные занятия в долгий ящик и больше никогда к ним не вернётесь.
+Лично для себя я определил, что максимально комфортный способ разработки, это когда я могу видеть целостную наглядную картину своего результата в виде игры, или приложения. В качестве платформы я выбрал IOS и сопутствующий язык Apple — objective-C. Для игрового фреймворка отлично подошел cocos2d-iphone. Он простой, бесплатный, а так же имеет огромное количество примеров и туториалов в интернете.
+Пришло время рассказать о самой игре, как она выглядела в моих фантазиях, и что нужно было сделать для её реализации.Идея проекта
+Игра называется «Симулятор призрака» и представляет собой смесь квеста-головоломки и симулятора-антистресса. Ваш герой погибает в загадочных обстоятельствах и становится призраком. Однако жизнь на этом не заканчивается, даже наоборот — становится намного увлекательней. Ведь теперь вы можете отомстить всем своим обидчикам при жизни, пугая их и доводя до истерики.
+Геймплей сводится к тому, что вы находитесь в комнате плохого парня. Сдвигая различные предметы, вы питаетесь страхом вашей жертвы, от этого становитесь сильнее, и можете выполнять более сложные трюки. Вот как выглядел мой самый первый эскиз:
+Идея созрела. Но для того, чтобы её реализовать, необходимо сначала научиться программировать. Способ изучения языка и источники информации каждый так же должен выбрать для себя индивидуально. Я лишь могу предложить свой план по изучению objective-C. Я предлагаю учиться не по конкретной книге, а по темам, пояснение которым ищешь в интернете. Это даст вам возможность среди большего количества информ. ресурсов, выбрать наиболее понятные и читабельные, к тому же уменьшит вероятность неправильной трактовки новых понятий. Мне больше всего подошли книги: Стивен Кочан «Программирование на Objective-C 2.0», Bert Altenberg и Alex Clarke «Become an Xcoder», а так же видео-уроки www.youtube.com/user/MacroTeamChannel, веб-ресурсы macscripter.ru, imaladec.com.
+В общем, я купил себе старенький MacBook за 100 баксов, залил Xcode версии 4.3 (новее версия на него не ставится) и приступил к изучению следующих тем: — Объектно-ориентированное программирование. 
+ — Интерфейс и элементы Xcode.
+ — Примитивные типы данных.
+ — Объекты и классы. NSDate, #define, NSString. Область видимости переменных.
+ — Методы. Селектор.
+ — Массивы. NSArray, NSMutableArray, NSSet, NSDictionary, NSNumber. 
+ — Создание собств. класса (#import,  interface,  @implementation,  private, public, protected,  readonly, readwrite, сеттер, геттер). 
+ — Свойства. 
+ — Парадигмы ООП: наследование, полиморфизм, инкапсуляция.
+ — Категории.
+ — Паттерны. MVC: Notification, delegate, outlet, target, sender.
+ — Жизненный цикл View Controller.
+ — Делегирование. Протоколы (optinal, required).
+ — Блоки.
+ — Views, Gesture Recognizer.
+ — Многопоточность (GCD), вещатель KVO, UIAlertView, UIActionSheet.
+ — Синглтон.
+ — Работа с памятью (retain, release, autorelease). ARC.
+ — Работа с сетью. Загрузка данных. NSCashe.
+ — JSON.
+После изучения данной теории с решениями мелких заданий, я получил общее представление, что такое программа, и как устроен процесс программирования чего-либо. Пришло время вернуться к игре и осознать, насколько реально воплотить мои планы в жизнь. Механика игры
+Как оказалось, благодаря движку cocos игра должна быть очень проста в реализации. Сoздаём начальную сцену, добавляем на неё основной слой, который выполняет роль фона, добавляем картинки в виде спрайтов, добавляем пункты меню. Создаем переход на другую сцену, а в методе dealloc обнуляем все используемые объёкты, поскольку cocos2d не поддерживает ARC, и так далее…// Import the interfaces
+#import "HelloWorldLayerr.h"
+#import "CCTouchDispatcher.h" 
+#import "CCAnimation.h"
+#import "SimpleAudioEngine.h"
+#import "LanguageOfGame.h"
+#import "LanguageOfGameUA.h"
+#import "LanguageOfGameRu.h"
+
+CCScene* scene;
+CCMenu* startMenu;
+// HelloWorldLayer implementation
+@implementation HelloWorldLayerr
++(CCScene *) scene
+{
+	// 'scene' is an autorelease object.
+	scene = [CCScene node];
+	// 'layer' is an autorelease object.
+	HelloWorldLayerr *layer = [HelloWorldLayerr node];
+	// add layer as a child to scene
+	[scene addChild: layer];
+	// return the scene
+	return scene;
+}
+
+// on "init" you need to initialize your instance
+-(id) init
+{
+	if( (self=[super init])) {
+        CGSize size = [[CCDirector sharedDirector] winSize];
+		//установить фоновую картинку в 16-ти битный формат
+        [CCTexture2D setDefaultAlphaPixelFormat:kCCTexture2DPixelFormat_RGB565];
+        CCSprite* startPicture = [CCSprite spriteWithFile:@"startMenu.png"];
+		startPicture.scale = 0.5;
+        startPicture.position = ccp(size.width/2, size.height/2);
+        [self addChild: startPicture z:1];
+        
+        CCLabelTTF *languageLabel = [CCLabelTTF labelWithString:@"Choose your language" fontName:@"AppleGothic" fontSize:30];
+        languageLabel.anchorPoint = CGPointMake(0, 0.5f);
+        languageLabel.color = ccYELLOW;
+        languageLabel.position = ccp(size.width*0.05, size.height*9/10);
+        [self addChild:languageLabel z:2];
+        
+        CCMenuItemFont* button1 = [CCMenuItemFont itemFromString:@"ENG"
+                                                          target:self
+                                                        selector:@selector(selector1:)];
+        button1.color = ccYELLOW;
+        CCMenuItemFont* button2 = [CCMenuItemFont itemFromString:@"UA"
+                                                          target:self
+                                                        selector:@selector(selector2:)];
+        button2.color = ccYELLOW;
+        CCMenuItemFont* button3 = [CCMenuItemFont itemFromString:@"RU"
+                                                          target:self
+                                                        selector:@selector(selector3:)];
+        button3.color = ccYELLOW;
+        startMenu = [CCMenu menuWithItems:button1, button2,button3, nil];
+
+        button1.position = ccp(size.width/4, size.height*8/10);
+        button2.position = ccp(size.width/4, size.height*6.5/10);
+        button3.position = ccp(size.width/4, size.height*5/10);
+        startMenu.position = CGPointZero;
+        [self addChild:startMenu z:10];
+
+	}
+	return self;
+}
+
+-(void)selector1:(id)sender{
+    CCTransitionRadialCCW *transition = [CCTransitionZoomFlipX transitionWithDuration:1.1 scene:[LanguageOfGame scene]];
+    [[CCDirector sharedDirector] replaceScene:transition];
+}
+
+-(void)selector2:(id)sender{
+    CCTransitionRadialCCW *transition = [CCTransitionZoomFlipX transitionWithDuration:0.8 scene:[LanguageOfGameUA scene]];
+    [[CCDirector sharedDirector] replaceScene:transition];
+}
+
+-(void)selector3:(id)sender{
+    CCTransitionRadialCCW *transition = [CCTransitionZoomFlipX transitionWithDuration:0.8 scene:[LanguageOfGameRu scene]];
+    [[CCDirector sharedDirector] replaceScene:transition];
+}
+
+//on "dealloc" you need to release all your retained objects
+- (void) dealloc
+{
+    [scene release];
+    [startMenu release];
+	[super dealloc];
+}
+@end
+
+Я не буду засорять статью о том, как я поэтапно добавлял новые фрагменты в игру, поскольку в интернете уже тонна уроков на эту тему. Рассмотрю только самые забавные моменты. К примеру, мне хотелось, чтобы во время касания пальцем экрана, за ним тянулся белый шлейф, будто в этот самый момент мой призрак парит невидимый по комнате. Благо, в кокосе даже на этот случай есть метод. Вот его реализация:CCMotionStreak* streak;
+//метод обработки движения касания
+-(void) ccTouchMoved:(UITouch *)touch withEvent:(UIEvent *)event{
+    NSLog(@"TouchesMoved");
+    CGPoint touchLocation = [self convertTouchToNodeSpace:touch];
+    CGPoint oldTouchLocation = [touch previousLocationInView:touch.view];
+    oldTouchLocation = [[CCDirector sharedDirector] convertToGL:oldTouchLocation];
+    oldTouchLocation = [self convertToNodeSpace:oldTouchLocation];
+    CGPoint changedPosition = ccpSub(touchLocation, oldTouchLocation);
+//запускать метод при любом движении указателя
+    [self moveMotionStreakToTouch:touch];
+}
+
+-(void)moveMotionStreakToTouch:(UITouch*)touch{
+    CCMotionStreak* streak = [self getMotionStreak];
+    streak.position = [self locationFromTouch:touch];
+}
+
+-(CGPoint)locationFromTouch:(UITouch*)touch{
+    CGPoint touchLocation = [touch locationInView:[touch view]];
+    return [[CCDirector sharedDirector] convertToGL:touchLocation];
+}
+
+//добавить эффект парящей летны
+-(CCMotionStreak*)getMotionStreak{
+    streak = [CCMotionStreak streakWithFade:0.99f
+                                                        minSeg:8
+                                                        image:@"ghost01.png"
+                                                          width:22 
+                                                         length:48
+                                                         color:ccc4(255, 255, 255, 180)];
+    [self addChild:streak z:5 tag:1];
+    CCNode* node = [self getChildByTag:1];
+    NSAssert([node isKindOfClass:[CCMotionStreak class]], @"not a CCMotionStreak");
+    return (CCMotionStreak*)node;
+}
+/*чтобы избежать утечки памяти, нужно не забывать очищать все объекты класса CCMotionStreak после окончания касания
+ */
+-(void) ccTouchEnded:(NSSet *)touch withEvent:(UIEvent *)event{
+	NSLog(@"TouchesEnded");
+    selectedSprite = nil;
+    streak = nil;
+}
+
+Логика игры сводится к тому, что есть простой «интовый» счетчик, который увеличивается, каждый раз, когда мы пугаем нашего героя в нужной последовательности. Чтобы определить нужную последовательность, вы должны мыслить как призрак. Можно, конечно, воспользоваться подсказкой. Если значения счетчика ниже требуемого значения, то с объектом нельзя выполнить действий. В таком случае при нажатии на этот предмет, он слегка меняет цвет, и это означает, что действие над ним может быть доступно позже.
+При касании нужного предмета в комнате запускается цепочка анимации. Все объекты рисовал сам, поэтому хоть получилось страшненько, но о кропотливой работе художников хотелось бы упомянуть отдельно.Анимация
+Анимация в cocos2d бывает 2 типов: спрайтовая и покадровая. Спрайтовая анимация – это самый простой способ заставить двигаться картинку на экране. Мы лишь задаём траекторию действия. Дальше система все делает за нас, прогоняя каждый кадр анимации по заданному циклу:// Метод движения обьекта
+-(void) nextFrame:(ccTime)dt{
+	bottle.positionInPixels = ccp(bottle.positionInPixels.x - 1, + bottle.positionInPixels.y);
+	if (bottle.positionInPixels.x &lt;= 49)
+	{
+        bottle.positionInPixels = ccp(bottle.positionInPixels.x + 1, + bottle.positionInPixels.y);
+    }
+}
+-(void)moveTouchedObject:(CGPoint)changedPosition {
+    if (selectedSprite == bottle)
+    {
+        [self nextFrame:5];
+    }
+}
+
+Покадровую анимацию я тоже использовал://Добавить анимацию разбитой бутылки
+    CCSprite *crashBottle2 = [CCSprite spriteWithFile:@"crashBottle01.png"];
+    crashBottle2.scale = 0.5;
+    [crashBottle2 setPosition:ccp(xOfBottle, yOfBottle)];
+    [self addChild:crashBottle2];
+    CCAnimation *cbot = [CCAnimation animation];
+    [cbot addFrameWithFilename:@"crashBottle00.png"];
+    [cbot addFrameWithFilename:@"crashBottle01.png"];
+    [cbot addFrameWithFilename:@"crashBottle02.png"];
+    [cbot addFrameWithFilename:@"crashBottle03.png"];
+    [cbot addFrameWithFilename:@"crashBottle04.png"];
+    [cbot addFrameWithFilename:@"crashBottle05.png"];
+    [cbot addFrameWithFilename:@"crashBottle06.png"];
+    [cbot addFrameWithFilename:@"crashBottle07.png"];
+    [cbot addFrameWithFilename:@"crashBottle08.png"];
+    [cbot addFrameWithFilename:@"crashBottle09.png"];
+    [cbot addFrameWithFilename:@"crashBottle10.png"];
+    [cbot addFrameWithFilename:@"crashBottle11.png"];
+
+    id animationAction = [CCAnimate actionWithDuration:0.2f animation:cbot restoreOriginalFrame:NO];
+    [crashBottle2 runAction:animationAction];
+
+Однако при таком подходе графический адаптер обрабатывает каждую картинку отдельно, что моментально сказывается на производительности. Для анимации человечка нужно было выучить новый способ — атлас текстур.
+Сперва нужно было нарисовать персонажа в фотошопе целиком. После этого поделить изображение на части тела, и сохранить как отдельные картинки. Следующим этапом скачиваем и устанавливаем программу Sprite Helper PRO. С её помощью создаём скелетную анимацию длинною в 10 секунд, запускаем раскадровку, и на выходе получаем 360 картинок анимации. Дальше с помощью программы Texture Packer все изображения загоняем в одно огромное полотно, из которой OpenGL будет вырезать нужные ему кусочки. Так же Texture Packer создаёт нам .plist документ, благодаря которому можно быстро достучаться до характеристик каждого отдельного фрагмента. Импортируем картинку и plist файл в папку Supported files в Xcode, пишем код для запуска анимации:CCSprite *manFrame1;
+CCAnimate *manCodding;
+CCRepeatForever* repeat;
+//Анимация человека
+-(void)manAnimation{
+    //Создаем батч-нод - контейнер обветку для спрайтов
+    CCSpriteBatchNode *manBatchNode;
+    [[CCSpriteFrameCache sharedSpriteFrameCache] addSpriteFramesWithFile:@"man300N.plist"];
+    manBatchNode = [CCSpriteBatchNode batchNodeWithFile:@"man300N.png"];
+    [self addChild:manBatchNode];
+    
+    CCSpriteBatchNode *manBatchNode2;
+    [[CCSpriteFrameCache sharedSpriteFrameCache] addSpriteFramesWithFile:@"man359N.plist"];
+    manBatchNode2 = [CCSpriteBatchNode batchNodeWithFile:@"man359N.png"];
+    [self addChild:manBatchNode2];
+    
+    manFrame1 = [CCSprite spriteWithSpriteFrameName:@"UntitledAnimation_0.png"];
+    manFrame1.position = ccp(size.width*0.4187,size.height*0.4281);
+    [self addChild:manFrame1 z:30];
+    //находим наш плист по имени и пути с корня
+    NSString* fullFileName = @"man1Anim.plist";
+    NSString* rootPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+    NSString* plistPath = [rootPath stringByAppendingPathComponent:fullFileName];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:plistPath]) {
+        plistPath = [[NSBundle mainBundle] pathForResource:@"man1Anim" ofType:@"plist"];
+    }
+    
+    NSDictionary* animSettings = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (animSettings == nil){
+        NSLog(@"error reading plist");
+    }
+    
+    NSDictionary* animSettings2 = [animSettings objectForKey:@"man1Anim"];
+    float animationDelay = [[animSettings2 objectForKey:@"delay"] floatValue];
+
+   CCAnimation * animToReturn = [CCAnimation animation];
+    [animToReturn setDelay:animationDelay];
+    NSString* animationFramePrefix = [animSettings2 objectForKey:@"namePrefix"];
+    NSString* animationFrames = [animSettings2 objectForKey:@"animationFrames"];
+    NSArray* animFrameNumbers = [animationFrames componentsSeparatedByString:@","];
+    for (NSString* frameNumber in animFrameNumbers) {
+        NSString* frameName = [NSString stringWithFormat:@"%@%@.png", animationFramePrefix, frameNumber];
+        [animToReturn addFrame:[[CCSpriteFrameCache sharedSpriteFrameCache] spriteFrameByName:frameName]];
+    }
+   manCodding = [CCAnimate actionWithAnimation:animToReturn];
+   repeat = [CCRepeatForever actionWithAction:manCodding];
+   [manFrame1 runAction:repeat];
+}
+
+И в результате получаем правильную анимацию из 360 последовательных кадров. До чего же приятно после всего наблюдать, как персонаж мило дёргает ножкой!
+После написания игры, и устранения всех «варнингов» еще примерно месяц ушел на исправления всевозможных багов. Так же пришлось побегать за людьми с более новыми Маками и айфонами, чтобы перенести свою программу с 4-ого Xcode на 6-ой, и запустить её «вживую» на iphone девайсе.
+Чтобы приложение отображалось на 4-ом и 6-ом iphone одинаково без жутких черных прямоугольников, необходимо так же правильно настроить фоновые рисунки. В интернете есть множество решений данной проблемы (например статья http://www.raywenderlich.com/33525/how-to-build-a-monkey-jump-game-using-cocos2d-2-x-physicseditor-texturepacker-part-1), но все они неоправданно сложные. Достаточно всего лишь создать еще одну фоновую картинку размером 1136х640 и в начале основного метода init прописать условие:-(id) init
+{
+	if( (self=[super init])) {
+        size = [[CCDirector sharedDirector] winSize];
+        if (size.width &gt; 500) {
+            CCSprite* walls = [CCSprite spriteWithFile:@"walls.png"];
+            walls.position = ccp(size.width/2, size.height/2);
+            walls.scale = 0.5;
+            [self addChild:walls z:-10];
+            size.width = [CCDirector sharedDirector].winSize.width - 87;
+        }
+…
+}
+Заключение
+Код основной игровой сцены уместился на 1300 строк. Приложение оформлено как demo-версия с одним уровнем, поскольку для полноценного продукта нужен художник: практически вся игра завязана на визуальных эффектах.
+Но, не смотря на недостатки оформления в приложении, я реализовал все функции, которые задумал в самом начале. Игра не виснет и не крэшится. А я действительно смог получить удовольствие от изучения новой для себя области науки. В качестве первого языка программирования Objective-C показался мне достаточно комфортным, и интуитивно-обоснованным.
+Надеюсь, данная статья натолкнёт на новые мысли и решения, как начинающих программистов, так и опытных гуру, которые могли бы развить мою идею в разы круче.
+На текущий момент, приложение ожидает публикации в Apple Store. Когда оно пройдёт проверку, я сброшу ссылку в комментариях. А пока можно посмотреть видео того, что получилось.
+      
+    

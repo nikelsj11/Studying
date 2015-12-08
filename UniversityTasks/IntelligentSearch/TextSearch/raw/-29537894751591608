@@ -1,0 +1,497 @@
+﻿#TITLE:Рецепты под Android: Как вкусно приготовить LayoutManager
+
+      Привет хабр! 
+Мы любим разрабатывать мобильные приложения, отличающиеся от своих собратьев как по функциям, так и по пользовательскому интерфейсу. В прошлый раз мы рассказали о клиент-серверном взаимодействии в одном из наших приложений, а в этот раз поделимся реализацией его UI фичи с помощью написанного с нуля LayoutManager. Думаем, что статья будет полезна не только начинающим андроид-разработчикам, но и более продвинутым специалистам.Начнём-с
+Если вы — android-разработчик, то вы наверняка уже использовали RecyclerView, мощную и невероятно кастомизируемую замену ListView и GridView. Одна из степеней кастомизации RecyclerView заключается в том, что он ничего не знает о расположении элементов внутри себя. Эта работа делегирована его LayoutManager’у. Google предоставил нам 3 стандартных менеджера: LinearLayoutManager для списков как в ListView, GridLayoutManager для плиток, сеток или таблиц и StaggeredGridLayoutManager для лэйаута как в Google+. Для нашего приложения нужно было реализовать лэйаут, который не вписывался в рамки доступных лэйаут менеджеров, поэтому мы решили попробовать написать свой. Оказалось, создавать свой LayoutManager подобно наркотику. Однажды попробовав, уже сложно остановиться — настолько он оказался полезным при решении нестандартных задач верстки.
+Итак, задача. В нашем учебном приложении будут статьи очень простого формата: картинка, заголовок и текст. Мы хотим иметь вертикальный список статей, каждая карточка в котором будет занимать 75% от высоты экрана. Помимо вертикального, будет и горизонтальный список, в котором каждая статья будет открыта на весь экран. Переход из вертикального режима в горизонтальный будет происходить анимировано по клику на какую-либо карточку и кнопкой back — обратно в вертикальный. А еще, для красоты, в вертикальном режиме нижняя карточка при прокрутке будет выезжать с эффектом масштабирования. Кстати, наш учебный проект вы можете посмотреть здесь: https://github.com/forceLain/AwesomeRecyclerView, в нём уже есть фэйковый DataProvider, возращающий 5 ненастоящих статей, все лэйауты и, собственно, сам LayoutManager :)
+Представим, что Activity с RecyclerView в ней, а также RecyclerView.Adapter, создающий и заполняющий статьи-карточки мы уже написали (или скопировали из учебного проекта) и пришло время создавать свой LayoutManager.Пишем основу
+Первое, что придется сделать — это реализовать метод generateDefaultLayoutParams(), который будет возвращать нужные LayoutParams для views, чьи LayoutParams нам не подходятpublic class AwesomeLayoutManager extends RecyclerView.LayoutManager {
+    @Override
+    public RecyclerView.LayoutParams generateDefaultLayoutParams() {
+        return new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.MATCH_PARENT);
+    }
+}
+
+Основная магия происходит в методе onLayoutChildren(...), который является точкой старта для добавления и расположения наших вьюшек. Для начала научимся располагать хотя бы одну статью. @Override
+public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+    View view = recycler.getViewForPosition(0);
+    addView(view);
+    measureChildWithMargins(view, 0, 0);
+    layoutDecorated(view, 0, 0, getWidth(), getHeight());
+}
+
+В первой строчке мы просим recycler дать нам view для первой позиции. Затем, Recycler сам определяет, вернуть ли её из внутреннего кэша или создать новую. На второй строчке задержимся подольше.
+Если вам уже доводилось создавать собственные view, вы наверняка знаете как добавить внутри своей view еще одну дочернюю. Для этого нужно дочернюю view добавить в свой layout (как во второй строчке), затем измерить, вызвав у неё метод measure(...) и, в конце концов, расположить в нужном месте, вызвав у неё метод layout(...) с нужными размерами. Если же вы еще ни разу не делали ничего подобного, то теперь вы примерно представляете, как это происходит :) Что касается RecyclerView, здесь дело принимает другой оборот. Почти для всех стандартных методов View-класса, связанных с размерами и лэйаутом у RecyclerView есть альтернативные, которые и нужно использовать. Прежде всего они нужны потому, что в RecyclerView есть класс ItemDecoration, с помощью которого можно менять размеры вьюшек, а эти альтернативные методы берут в расчет все установленные декораторы.
+Вот некоторые примеры альтернативных методов:view.layout(left, top, right, bottom) -&gt; layoutDecorated(view, left, top, right, bottom)
+view.getLeft() -&gt; getDecoratedLeft(view)
+view.getWidth() -&gt; getDecoratedWidth(view)
+
+и т.д.
+Итак, в третей строчке мы позволяем вьюшке посчитать свои размеры, а в четвертой располагаем её в лэйауте от верхнего левого угла (0, 0) до нижнего правого (getWidth(), getHeight()).
+Для измерения размеров вьюшки мы воспользовались готовым методом measureChildWithMargins(...). На самом деле он не совсем нам подходит, поскольку выполняет измерения, принимая в расчет ширину и высоту, указанную в LayoutParams у дочерней вьюшки. А там может быть что угодно: wrap_content, match_parent или даже задан в dp. Но мы то условились, что все карточки у нас будут фиксированного размера! Так что придется нам написать свой measure, не забыв при этом про существование декораторов:private void measureChildWithDecorationsAndMargin(View child, int widthSpec, int heightSpec) {
+    Rect decorRect = new Rect();
+    calculateItemDecorationsForChild(child, decorRect);
+    RecyclerView.LayoutParams lp = (RecyclerView.LayoutParams) child.getLayoutParams();
+    widthSpec = updateSpecWithExtra(widthSpec, lp.leftMargin + decorRect.left,
+            lp.rightMargin + decorRect.right);
+    heightSpec = updateSpecWithExtra(heightSpec, lp.topMargin + decorRect.top,
+                lp.bottomMargin + decorRect.bottom);
+    child.measure(widthSpec, heightSpec);
+}
+
+private int updateSpecWithExtra(int spec, int startInset, int endInset) {
+    if (startInset == 0 &amp;&amp; endInset == 0) {
+        return spec;
+    }
+    final int mode = View.MeasureSpec.getMode(spec);
+    if (mode == View.MeasureSpec.AT_MOST || mode == View.MeasureSpec.EXACTLY) {
+        return View.MeasureSpec.makeMeasureSpec(
+                View.MeasureSpec.getSize(spec) - startInset - endInset, mode);
+    }
+    return spec;
+}
+
+Теперь наш onLayoutChildren() выглядит так:@Override
+public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+    View view = recycler.getViewForPosition(0);
+    addView(view);
+    final int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+    final int heightSpec = View.MeasureSpec.makeMeasureSpec(getHeight(), View.MeasureSpec.EXACTLY);
+    measureChildWithDecorationsAndMargin(view, widthSpec, heightSpec);
+    layoutDecorated(view, 0, 0, getWidth(), getHeight());
+}
+
+С помощью MeasureSpec мы сообщаем нашей view, что её высота и ширина должна и будет равна высоте и ширине RecyclerView. Разумеется, чтобы нарисовать статью высотой в 75% высоты экрана, нужно в layoutDecorated() передать эту самую высоту:private static final float VIEW_HEIGHT_PERCENT = 0.75f;
+
+@Override
+public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+    View view = recycler.getViewForPosition(0);
+    addView(view);
+    int viewHeight = (int) (getHeight() * VIEW_HEIGHT_PERCENT);
+    final int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+    final int heightSpec = View.MeasureSpec.makeMeasureSpec(getHeight(), View.MeasureSpec.EXACTLY);
+    measureChildWithDecorationsAndMargin(view, widthSpec, heightSpec);
+    layoutDecorated(view, 0, 0, getWidth(), viewHeight);
+}
+
+Теперь, если мы установим наш LayoutManager в RecyclerView и запустим проект мы увидим одну статью на три четверти экрана
+Теперь попробуем рисовать вюшки-статьи, начиная с первой (нулевой) и располагая их друг под другом, до тех пор, пока не кончится экран по вертикали или не кончатся элементы в адаптере.@Override
+public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+    fillDown(recycler);
+}
+
+private void fillDown(RecyclerView.Recycler recycler) {
+    int pos = 0;
+    boolean fillDown = true;
+    int height = getHeight();
+    int viewTop = 0;
+    int itemCount = getItemCount();
+    int viewHeight = (int) (getHeight() * VIEW_HEIGHT_PERCENT);
+    final int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+    final int heightSpec = View.MeasureSpec.makeMeasureSpec(getHeight(), View.MeasureSpec.EXACTLY);
+
+    while (fillDown &amp;&amp; pos &lt; itemCount){
+        View view = recycler.getViewForPosition(pos);
+        addView(view);
+        measureChildWithDecorationsAndMargin(view, widthSpec, heightSpec);
+        int decoratedMeasuredWidth = getDecoratedMeasuredWidth(view);
+        layoutDecorated(view, 0, viewTop, decoratedMeasuredWidth, viewTop + viewHeight);
+        viewTop = getDecoratedBottom(view);
+        fillDown = viewTop &lt;= height;
+        pos++;
+    }
+}
+
+Выглядит готовым, однако до сих пор мы не сделали одну очень важную вещь. Ранее мы говорили, что recycler сам определяет, брать ли ему вьюшки из кэша либо создавать новые, но на самом то деле кэш у него до сих пор пуст, так как мы в него еще ничего не положили. Добавим вызов detachAndScrapAttachedViews(recycler) в onLayoutChildren() на первое место перед fillDown().@Override
+public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+    detachAndScrapAttachedViews(recycler);
+   fillDown(recycler);
+}
+
+Этот метод убирает все view из нашего лэйаута и помещает их в свой специальный scrap-кэш. При необходимости можно вернуть view, используя метод recycler.getViewForPosition(pos).They See Me Rollin'
+Теперь хорошо бы научить наш LayoutManager скроллиться.
+Во-первых, скажем нашему LayoutManager’у, что мы хотим прокручиваться по вертикали:@Override
+public boolean canScrollVertically() {
+    return true;
+}
+
+Затем реализуем сам вертикальный скролл@Override
+public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+    offsetChildrenVertical(-dy);
+    return dy;
+}
+
+На вход этого метода мы получаем dy — расстояние, на которое нужно проскроллить. Вернуть мы должны то расстояние, на которое мы действительно прокрутили наши вьюшки. Это нужно для того, что бы не дать контенту уехать за границы экрана. Давайте сразу напишем алгоритм, определяющий можем ли мы еще скроллить и на какое расстояние:Scrolling@Override
+public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+    int delta = scrollVerticallyInternal(dy);
+    offsetChildrenVertical(-delta);
+    return delta;
+}
+
+private int scrollVerticallyInternal(int dy) {
+    int childCount = getChildCount();
+    int itemCount = getItemCount();
+    if (childCount == 0){
+        return 0;
+    }
+
+    final View topView = getChildAt(0);
+    final View bottomView = getChildAt(childCount - 1);
+
+    //Случай, когда все вьюшки поместились на экране
+    int viewSpan = getDecoratedBottom(bottomView) - getDecoratedTop(topView);
+    if (viewSpan &lt;= getHeight()) {
+        return 0;
+    }
+
+    int delta = 0;
+    //если контент уезжает вниз
+    if (dy &lt; 0){
+        View firstView = getChildAt(0);
+        int firstViewAdapterPos = getPosition(firstView);
+        if (firstViewAdapterPos &gt; 0){ //если верхняя вюшка не самая первая в адаптере
+            delta = dy;
+        } else { //если верхняя вьюшка самая первая в адаптере и выше вьюшек больше быть не может
+            int viewTop = getDecoratedTop(firstView);
+            delta = Math.max(viewTop, dy);
+        }
+    } else if (dy &gt; 0){ //если контент уезжает вверх
+        View lastView = getChildAt(childCount - 1);
+        int lastViewAdapterPos = getPosition(lastView);
+        if (lastViewAdapterPos &lt; itemCount - 1){ //если нижняя вюшка не самая последняя в адаптере
+            delta = dy;
+        } else { //если нижняя вьюшка самая последняя в адаптере и ниже вьюшек больше быть не может
+            int viewBottom = getDecoratedBottom(lastView);
+            int parentBottom = getHeight();
+            delta = Math.min(viewBottom - parentBottom, dy);
+        }
+    }
+    return delta;
+}
+
+Теперь мы можем проскроллить наши 2 добавленные статьи, но при прокручивании новые статьи на экран не добавляются. Алгоритм добавления новых вьюшек во время скролла может показаться заковыристым, но это только на первый взгляд. Попытаемся сначала описать его словами:Сначала сдвигаем все имеющиеся вьюшки на dy с помощью offsetChildrenVertical(-dy)
+Выбираем одну из имеющихся в лэйауте вьюшек как “якорную” и запоминаем её и её позицию. В нашем случае мы будем выбирать в качестве якорной вьюшки ту, которая полностью видна на экране. Если такой нет, то выбираем ту, видимая площадь которой максимальна. Такой способ определения якорной вьюшки поможет нам и в будущем, при реализации смены ориентации нашего лэйаут-менеджера
+Убираем все имеющиеся в лэйауте вьюшки, помещая их в собственный кэш и запоминая на каких позициях они были
+Добавляем в лэйаут вьюшки выше той позиции, которую взяли за якорную. Потом добавляем якорную и всё, что должно быть ниже неё. Вьюшки в первую очередь берем из своего кэша и, если не находим, просим у recycler
+ПРИМЕЧАНИЕ: реализация скролла и добавление view в лэйаут — дело индивидуальное. С тем же успехом можно было бы взять за якорную вьюшку самую верхнюю и заполнять экран вниз от неё. А если бы вы хотели сделать такой LayoutManager, который ведет себя как ViewPager, вам бы вообще не пришлось добавлять вьюшки во время прокрутки, а только в перерывах между свайпами.Scrolling + Recycling    private SparseArray&lt;View&gt; viewCache = new SparseArray&lt;&gt;(); 
+
+    @Override
+    public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+        detachAndScrapAttachedViews(recycler);
+        fill(recycler);
+    }
+
+    private void fill(RecyclerView.Recycler recycler) {
+
+        View anchorView = getAnchorView();
+        viewCache.clear();
+        
+        //Помещаем вьюшки в кэш и...
+        for (int i = 0, cnt = getChildCount(); i &lt; cnt; i++) {
+            View view = getChildAt(i);
+            int pos = getPosition(view);
+            viewCache.put(pos, view);
+        }
+
+        //... и удалям из лэйаута
+        for (int i = 0; i &lt; viewCache.size(); i++) {
+            detachView(viewCache.valueAt(i));
+        }
+
+        fillUp(anchorView, recycler);
+        fillDown(anchorView, recycler);
+
+        //отправляем в корзину всё, что не потребовалось в этом цикле лэйаута
+        //эти вьюшки или ушли за экран или не понадобились, потому что соответствующие элементы 
+        //удалились из адаптера
+        for (int i=0; i &lt; viewCache.size(); i++) {
+            recycler.recycleView(viewCache.valueAt(i));
+        }
+
+    }
+
+    private void fillUp(@Nullable View anchorView, RecyclerView.Recycler recycler) {
+        int anchorPos = 0;
+        int anchorTop = 0;
+        if (anchorView != null){
+            anchorPos = getPosition(anchorView);
+            anchorTop = getDecoratedTop(anchorView);
+        }
+
+        boolean fillUp = true;
+        int pos = anchorPos - 1;
+        int viewBottom = anchorTop; //нижняя граница следующей вьюшки будет начитаться от верхней границы предыдущей
+        int viewHeight = (int) (getHeight() * VIEW_HEIGHT_PERCENT);
+        final int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+        final int heightSpec = View.MeasureSpec.makeMeasureSpec(viewHeight, View.MeasureSpec.EXACTLY);
+        while (fillUp &amp;&amp; pos &gt;= 0){
+            View view = viewCache.get(pos); //проверяем кэш
+            if (view == null){ 
+                //если вьюшки нет в кэше - просим у recycler новую, измеряем и лэйаутим её
+                view = recycler.getViewForPosition(pos);
+                addView(view, 0);
+                measureChildWithDecorationsAndMargin(view, widthSpec, heightSpec);
+                int decoratedMeasuredWidth = getDecoratedMeasuredWidth(view);
+                layoutDecorated(view, 0, viewBottom - viewHeight, decoratedMeasuredWidth, viewBottom);
+            } else {
+                //если вьюшка есть в кэше - просто аттачим её обратно
+                //нет необходимости проводить measure/layout цикл.
+                attachView(view);
+                viewCache.remove(pos);
+            }
+            viewBottom = getDecoratedTop(view);
+            fillUp = (viewBottom &gt; 0);
+            pos--;
+        }
+    }
+
+    private void fillDown(@Nullable View anchorView, RecyclerView.Recycler recycler) {
+        int anchorPos = 0;
+        int anchorTop = 0;
+        if (anchorView != null){
+            anchorPos = getPosition(anchorView);
+            anchorTop = getDecoratedTop(anchorView);
+        }
+
+        int pos = anchorPos;
+        boolean fillDown = true;
+        int height = getHeight();
+        int viewTop = anchorTop;
+        int itemCount = getItemCount();
+        int viewHeight = (int) (getHeight() * VIEW_HEIGHT_PERCENT);
+        final int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+        final int heightSpec = View.MeasureSpec.makeMeasureSpec(viewHeight, View.MeasureSpec.EXACTLY);
+
+        while (fillDown &amp;&amp; pos &lt; itemCount){
+            View view = viewCache.get(pos);
+            if (view == null){
+                view = recycler.getViewForPosition(pos);
+                addView(view);
+                measureChildWithDecorationsAndMargin(view, widthSpec, heightSpec);
+                int decoratedMeasuredWidth = getDecoratedMeasuredWidth(view);
+                layoutDecorated(view, 0, viewTop, decoratedMeasuredWidth, viewTop + viewHeight);
+            } else {
+                attachView(view);
+                viewCache.remove(pos);
+            }
+            viewTop = getDecoratedBottom(view);
+            fillDown = viewTop &lt;= height;
+            pos++;
+        }
+    }
+
+    //метод вернет вьюшку с максимальной видимой площадью
+    private View getAnchorView() {
+        int childCount = getChildCount();
+        HashMap&lt;Integer, View&gt; viewsOnScreen = new HashMap&lt;&gt;();
+        Rect mainRect = new Rect(0, 0, getWidth(), getHeight());
+        for (int i = 0; i &lt; childCount; i++) {
+            View view = getChildAt(i);
+            int top = getDecoratedTop(view);
+            int bottom = getDecoratedBottom(view);
+            int left = getDecoratedLeft(view);
+            int right = getDecoratedRight(view);
+            Rect viewRect = new Rect(left, top, right, bottom);
+            boolean intersect = viewRect.intersect(mainRect);
+            if (intersect){
+                int square = viewRect.width() * viewRect.height();
+                viewsOnScreen.put(square, view);
+            }
+        }
+        if (viewsOnScreen.isEmpty()){
+            return null;
+        }
+        Integer maxSquare = null;
+        for (Integer square : viewsOnScreen.keySet()) {
+            if (maxSquare == null){
+                maxSquare = square;
+            } else {
+                maxSquare = Math.max(maxSquare, square);
+            }
+        }
+        return viewsOnScreen.get(maxSquare);
+    }
+
+    @Override
+    public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+        int delta = scrollVerticallyInternal(dy);
+        offsetChildrenVertical(-delta);
+        fill(recycler);
+        return delta;
+    }
+
+Обратите внимание, что внутри fillUp() вьюшки добавляются методом addView(view, 0), а не addView(view), как раньше. Сделано это было для того, чтобы сохранить порядок элементов внутри лэйаута — чем выше view, тем меньше должен быть её порядковый номер.Wow-эффект
+К этому моменту у нас получился вполне рабочий LayoutManager, который ведет себя как ListView. Теперь добавим в него эффект масштабирования нижней карточки. Для этого достаточно всего одного метода!    private void updateViewScale() {
+        int childCount = getChildCount();
+        int height = getHeight();
+        int thresholdPx = (int) (height * SCALE_THRESHOLD_PERCENT); // SCALE_THRESHOLD_PERCENT = 0.66f or 2/3
+        for (int i = 0; i &lt; childCount; i++) {
+            float scale = 1f;
+            View view = getChildAt(i);
+            int viewTop = getDecoratedTop(view);
+            if (viewTop &gt;= thresholdPx){
+                int delta = viewTop - thresholdPx;
+                scale = (height - delta) / (float)height;
+                scale = Math.max(scale, 0);
+            }
+            view.setPivotX(view.getHeight()/2);
+            view.setPivotY(view.getHeight() / -2);
+            view.setScaleX(scale);
+            view.setScaleY(scale);
+        }
+    }
+
+Разместите этот метод внутри fill() в последнюю очередь. Он устанавливает scale &lt; 1 для тех view, верхняя граница которых ниже 2/3 экрана. При этом, scale тем меньше, чем ниже эта граница. Дополнительно мы смещаем фокус масштабирования (setPivotX и setPivotY) таким образом, что он становится выше самой view. Это позволяет создать такой эффект, будто нижняя карточка выплывает из под верхней.
+Если мы сейчас запустим наш проект, то увидим, что всё работает не совсем так, как ожидалось: нижняя карточка рисуется поверх верхней, хотя нужно было наоборот.
+Это происходит оттого, что порядок рисования вьюшек в Android определяется порядком их добавления. К счастью, инвертировать порядок рисования в RecyclerView совсем не сложно:     recyclerView.setChildDrawingOrderCallback(new RecyclerView.ChildDrawingOrderCallback() {
+            @Override
+            public int onGetChildDrawingOrder(int childCount, int i) {
+                return childCount - i - 1;
+            }
+        });
+
+Ну вот, теперь всё в порядке.Горизонт не завален!
+Сейчас, когда мы знаем как сделать вертикальный LayoutManager, нам не составит труда по его подобию сделать и горизонтальный режим. Нам потребуется поле класса, где будет храниться текущий режим (ориентация), getter- и setter- для него. А так же, нужно будет реализовать аналогичные методы fillLeft(), fillRight(), canScrollHorizontally(), scrollHorizontallyBy() и т.п.    public enum Orientation {VERTICAL, HORIZONTAL}
+    private Orientation orientation = Orientation.VERTICAL;
+    private int mAnchorPos;
+
+    public void setOrientation(Orientation orientation) {
+        View anchorView = getAnchorView();
+        mAnchorPos = anchorView != null ? getPosition(anchorView) : 0;
+        if (orientation != null){
+            this.orientation = orientation;
+        }
+        requestLayout();
+    }
+
+    private void fill(RecyclerView.Recycler recycler) {
+
+        View anchorView = getAnchorView();
+        viewCache.clear();
+        for (int i = 0, cnt = getChildCount(); i &lt; cnt; i++) {
+            View view = getChildAt(i);
+            int pos = getPosition(view);
+            viewCache.put(pos, view);
+        }
+
+        for (int i = 0; i &lt; viewCache.size(); i++) {
+            detachView(viewCache.valueAt(i));
+        }
+
+        switch (orientation) {
+
+            case VERTICAL:
+                fillUp(anchorView, recycler);
+                fillDown(anchorView, recycler);
+                break;
+            case HORIZONTAL:
+                fillLeft(anchorView, recycler);
+                fillRight(anchorView, recycler);
+                break;
+        }
+
+        //отправляем в корзину всё, что не потребовалось в этом цикле лэйаута
+        //эти вьюшки или ушли за экран или не понадобились, потому что соответствующие элементы 
+        //удалились из адаптера
+        for (int i=0; i &lt; viewCache.size(); i++) {
+            recycler.recycleView(viewCache.valueAt(i));
+        }
+        
+        updateViewScale();
+    }
+
+    @Override
+    public boolean canScrollVertically() {
+        return orientation == Orientation.VERTICAL;
+    }
+
+    @Override
+    public boolean canScrollHorizontally() {
+        return orientation == Orientation.HORIZONTAL;
+    }
+
+Реализации методов fillLeft(), fillRight() и определение границ скролла мы приводить не будем, потому что они очень похожи на свои “вертикальные” аналоги. Просто меняйте top на left и bottom на right и делайте layout во весь экран :). Вы можете подглядеть код в нашем учебном проекте на github, о котором мы упоминали в начале статьи. Также, обратим ваше внимание на то, что внутри setOrientation() определяется и сохраняется позиция mAnchorPos, которая потом используется внутри fill*()-методов для восстановления текущей статьи при смене ориентации.
+Напоследок, нужно разобраться с анимацией перехода из вертикального режима в горизонтальный. Мы будем реагировать на клики по карточке и открывать ту, по которой мы кликнули. Так как левая и правая границы у вьюшки в вертикальном и горизонтальном режимах всегда совпадают, то анимировать нам придется только её верх и низ. И верхи и низы всех её соседей :)
+Напишем публичный метод openView(int pos), вызов которого и будет начинать анимацию    public void openItem(int pos) {
+        if (orientation == Orientation.VERTICAL){
+            View viewToOpen = null;
+            int childCount = getChildCount();
+            for (int i = 0; i &lt; childCount; i++) {
+                View view = getChildAt(i);
+                int position = getPosition(view);
+                if (position == pos){
+                    viewToOpen = view;
+                }
+            }
+            if (viewToOpen != null){
+                openView(viewToOpen);
+            }
+        }
+    }
+
+И саму анимацию внутри приватного openView(View view):Animation    private void openView(final View viewToAnimate) {
+        final ArrayList&lt;ViewAnimationInfo&gt; animationInfos = new ArrayList&lt;&gt;();
+        int childCount = getChildCount();
+        int animatedPos = getPosition(viewToAnimate);
+        for (int i = 0; i &lt; childCount; i++) {
+            View view = getChildAt(i);
+            int pos = getPosition(view);
+            int posDelta = pos - animatedPos;
+            final ViewAnimationInfo viewAnimationInfo = new ViewAnimationInfo();
+            viewAnimationInfo.startTop = getDecoratedTop(view);
+            viewAnimationInfo.startBottom = getDecoratedBottom(view);
+            viewAnimationInfo.finishTop = getHeight() * posDelta;
+            viewAnimationInfo.finishBottom = getHeight() * posDelta + getHeight();
+            viewAnimationInfo.view = view;
+            animationInfos.add(viewAnimationInfo);
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0, 1);
+        animator.setDuration(TRANSITION_DURATION_MS);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float animationProgress = (float) animation.getAnimatedValue();
+                for (ViewAnimationInfo animationInfo : animationInfos) {
+                    int top = (int) (animationInfo.startTop + animationProgress * (animationInfo.finishTop - animationInfo.startTop));
+                    int bottom = (int) (animationInfo.startBottom + animationProgress * (animationInfo.finishBottom - animationInfo.startBottom));
+                    layoutDecorated(animationInfo.view, 0, top, getWidth(), bottom);
+                }
+                updateViewScale();
+            }
+        });
+        animator.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {}
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                setOrientation(Orientation.HORIZONTAL);
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {}
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {}
+        });
+        animator.start();
+    }
+
+ViewAnimationInfo это просто класс-структура для удобного хранения разных значений:     private static class ViewAnimationInfo {
+        int startTop;
+        int startBottom;
+        int finishTop;
+        int finishBottom;
+        View view;
+    }
+
+Вот, что происходит внутри openView: для каждой вьюшки на экране мы запоминаем её верх и низ, а так же рассчитываем её верх и низ, на которые эта вьюшка должна “уехать”. Затем создаем и запускаем ValueAnimator, который отдает нам прогресс от 0 до 1, на основе которого мы считаем верх и низ для каждой вьюшки во время анимации и выполняем layoutDecorated(...) с нужными значениями в каждом цикле анимации. В тот момент, когда анимация закончится, вызываем setOrientation(Orientation.HORIZONTAL) для окончательного перехода в горизонтальный режим. Плавно и незаметно.Снимаем пробу
+Жаль, что не удастся разместить все полезные сведения о LayoutManager’е в рамках всего одной статьи. При надобности, что-то вы сможете подглядеть в нашем учебном проекте (например, реализацию smoothScrollToPosition()), а что-то придется поискать самостоятельно.
+В заключении хочется сказать, что LayoutManager это чрезвычайно мощный и гибкий инструмент. RecyclerView + CustomLayoutManager уже не раз приходил нам на помощь при решении очень нестандартных дизайнерских задач. Он открывает просторы для анимации как самих вьюшек, так и контента в них. К тому же, он значительно расширяет возможности оптимизации. К примеру, если пользователь хочет выполнить smoothScroll() от 1-го элемента до 100-го, совершенно необязательно по-честному прокручивать все 99 элементов. Можно схитрить и перед началом скролла добавить 100-ый элемент в лэйаут, а затем проскроллить до него, экономя кучу ресурсов! 
+Однако, LayoutManager совсем не так прост для освоения с нуля. Для эффективного его использования нужно хорошо представлять, как создаются кастомные view, как работают measure/layout циклы, как пользоваться MeasureSpec и прочее в таком же духе.Ссылки по теме:
+Учебный проект с примером LayoutManager: https://github.com/forceLain/AwesomeRecyclerView
+Статья в 3-х частях про создание своего LayoutManager, похожего на GridLayoutManager на английском: http://wiresareobsolete.com/2014/09/building-a-recyclerview-layoutmanager-part-1/
+
+      
+      
+    

@@ -1,0 +1,52 @@
+﻿#TITLE:Настройки во вкладке и другие мелочи в еженедельной сборке Vivaldi 1.0.270.16
+
+      Всем привет!
+Сегодня мы представляем очередную тестовую сборку, в которой вы найдёте возможность просмотра настроек браузера в отдельной вкладке, улучшение дизайна индикатора загрузки страниц в случае выбора тёмной темы, а также некоторые улучшения в скорости переключения вкладок. А теперь об этом и о других изменениях чуть подробнее.Настройки в отдельной вкладке
+По многочисленным просьбам мы добавили возможность работы с настройками браузера в отдельной вкладке. Точнее, такая возможность была и ранее, но её знали только самые любознательные — достаточно было ввести в адресной строке адрес vivaldi://settings. Теперь мы поправили некоторые неприятные ошибки в таком формате отображения настроек и добавили возможность включения подобного вида настроек по умолчанию. Вы можете сделать это через меню Инструменты -&gt; Настройки -&gt; Внешний вид -&gt; Открывать настройки во вкладке.Индикатор загрузки
+Изменения здесь, конечно, косметические, но каждые мелочи приятны, если они позволяют повысить комфорт работы с приложением. Мы слегка изменили дизайн индикатора для тёмной темы браузера. Надеемся, это изменение вам понравится.
+На этом пока всё на сегодня. Загрузить новую сборку можно по ссылкам ниже:Windows 32-bit
+Windows 64-bit (экспериментальная)
+Mac
+Linux RPM 32-bit
+Linux RPM 64-bit
+Linux DEB 32-bit
+Linux DEB 64-bit
+Полный список изменений:VB-8910 Panels are not hidden in Chromeless mode
+VB-9055 Dragging bookmark item from bookmark tree to bookmark bar does not work
+VB-8928 [regression] Make pinned tabs closable with a user controlled option
+VB-8980 Renderer crash when opening links in private mode via QC or external apps
+VB-7433 Dark blue address bar: Redesigned address bar progress indicator
+VB-8551 “Disable search in address field” is not working
+Improve tab switching speed
+VB-9038 Web panels do not respond to javascript popups: Respond by automatic cancelling as first step
+VB-9024 Bookmarks panel and manager not in sync: bookmarks manager cleanup
+VB-8516 When copying text from UI (for example from notes) it will copy the name/url of the last bookmark folder/link last highlighted
+VB-4330 [Mac] Does not remember maximized stage
+VB-4706 Can't focus settings in a tab with mouse click to scroll by keyboard up/down arrows — required tabbing through all categories to get the focus
+VB-7614 Add '*' as shortcut to reset zoom
+VB-8725 Bookmark tree not updated after toggling bookmark edit in Bookmark panel
+VB-8454 Adding a web panel with a URL containing a port number fails
+VB-7294 Filtering preferences displays unrelated UI fragments
+VB-7289 Mouse scroll wheel tab switching is inverted: fixed inverted switching on Win, Linux; default scrolling direction on Mac OS X only, pending VB-2973; cancel page scrolling when switching tabs; adhere to Tab Cycling direction setting when ALT/RMB switching
+VB-9017 A web panel has a context menu with a “add to web panel” entry
+VB-9018 Speed Dial items reflow in new tab
+VB-8592 Regression: Pop-up window blocked icon not showing
+VB-8909 18 issues from translators
+Upgraded Chromium to 45.0.2454.87
+VB-8381 Vivaldi crashes when trashing onetab extension after it has saved some tabs
+VB-8377 Wrong colors on extension buttons
+VB-8953 Web panel content zooms automatically
+VB-5301 Crash — Link clicked in window opened from another window.
+VB-8911 Need the possibility to assign a keyboard shortcut to New Private Window
+VB-3546 Add support for “theme-color” meta
+VB-8913 Web panel icon is broken when icon data is provided by a data URI
+VB-8668 In history manager, the “open as background tab” option doesn't work.
+VB-2411 Create a setting to open Settings as a tab
+VB-8701 Change layout of the Visual Tab switcher: more work needed
+VB-8690 Bookmarks manager needs a bit of TLC: further tweaks
+
+Напоминаем вам, что еженедельные сборки являются тестовыми, поэтому не забывайте делать резервные копии важных данных. Сообщать о найденных ошибках можно по прежнему адресу.
+
+      
+      
+    

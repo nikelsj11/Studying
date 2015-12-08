@@ -1,0 +1,62 @@
+﻿#TITLE:Читаем XLSX на Android 5 (ART) c Apache POI XSSF
+
+       Некоторое время назад я писал, как при помощи языческих танцев и прочих паранормальных активностей я добился работы Apache POI XSSF на Android 4. Всё становится гораздо проще с Android Build Tools (21+) и Android 5 (ART).
+Теперь достаточно собрать проект с поддержкой multi-dex и всё будет работать* на устройствах c ART. Я полагаю, что это происходит благодаря Ahead-of-time (AOT) compilation на устройстве и multi-dex, теперь, как таковой, нужен только как промежуточный этап.
+* К сожалению не всё так гладко. В зависимостях проекта есть xmlbeans-2.6.0.jar, который запакован с ошибкой и содержит дубликаты классов. Это приводит к провалу сборки на задаче packageAllDebugClassesForMultiDex, со следующей ошибкой:Error:Execution failed for task ':app:packageAllDebugClassesForMultiDex'.
+&gt; java.util.zip.ZipException: duplicate entry: org/apache/xmlbeans/xml/stream/Location.class
+
+XMLBeans придётся перепаковать.
+Этот дефект уже сто лет в обед как зарегистрирован issues.apache.org/jira/browse/XMLBEANS-499, однако воз и ныне там.
+Для полноценной работы нам понадобятся следующие JAR файлы:
+poi-3.12-20150511.jar
+poi-ooxml-3.12-20150511.jar
+poi-ooxml-schemas-3.12-20150511.jar
+stax-1.2.0.jar
+stax-api-1.0.1.jarxmlbeans-2.6.0.jar — из-за этого файла не получится беззаботно добавить POI в зависимости проекта
+Все вышеуказанные файлы доступны в загрузках POI archive.apache.org/dist/poi/release/bin
+Чтобы всё заработало нужно:добавить com.android.support:multidex в зависимости проекта.
+Включить multiDex в defaultConfig
+для задачи com.android.build.gradle.tasks.Dex добавить параметр --core-library, чтобы избежать ошибок из за классов с namespace javax. 
+
+Если использовать gradle, то получим конфиг примерно следующего содержания:apply plugin: 'com.android.application'
+android {
+    compileSdkVersion 22
+    buildToolsVersion "22.0.1"
+    defaultConfig {
+        // ... другие стандартные настройки ...
+        minSdkVersion 21
+        targetSdkVersion 21        
+        multiDexEnabled true
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    //исключим текстовые файлы:
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+    }
+    project.tasks.withType(com.android.build.gradle.tasks.Dex) {
+        additionalParameters=['--core-library'] //javax namespace fix
+    }
+}
+dependencies {
+    // ... остальные зависимости проекта ...
+    compile 'com.android.support:multidex:1.0.1'
+}
+
+Всё! Теперь мы имеем, предположительно, полностью функциональный POI на Android, который, опять таки, предположительно, может читать и все остальные openxml форматы, поскольку нам не пришлось обрезать содержимое jarов, как это было сделано в прошлый раз. Прошу любиить, экспериментировать и делиться результатами.
+При желании можно также озадачиться тем, чтобы сделать javax-&gt;aavax хак, но в этот раз я счёл это лишним.
+Если очень хочется, чтобы зависимости вытягивались сами, то можно написать рутину для multidex.JarMergingTask, которая бы перепаковывала jar xmlbeans, и я даже написал такую рутину. Однако, после этого билд стал валиться на preDex из-за javax в stax-api. Мне не удалось найти быстрого способа добавить --core-library в preDex и на этом у меня кончилось терпение. Наиболее разумным мне кажется просто добавить все необходимые jarы, вместе с перепакованным xmlbeans в libs проекта.
+В качестве заключения:
+Я сделал два jara содержащих всё необходимое и не содержащие дубликатов в xmlbeans, файлы можно скачать в этом репозитории:github.com/andruhon/android5xlsx пользуйте на здовровье, но на свой страх и риск.
+
+      
+      
+    

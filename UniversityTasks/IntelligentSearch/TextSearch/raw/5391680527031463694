@@ -1,0 +1,106 @@
+﻿#TITLE:Mikrotik: небольшие полезности. Часть 1
+
+      В данной статье я хочу поделиться небольшими находками и приспособлениями, которые мне удалось найти и реализовать в RouterOS. Все, что будет написано ниже, проверено и работает на Mikrotik RB 951 серии.
+Сегодня я поделюсь следующими штуками в среде RouterOS:
+1) Полуавтоматическое обновление прошивок устройств Mikrotik, уведомление по эл.почте и/или СМС
+2) Автоматическое копирование настроек между устройствами
+3) Блокировка трафика, заворот его в другой шлюз
+Интересно? Тогда прошу под кат.Пункт 1: Полуавтоматическое обновление прошивок устройств Mikrotik, уведомление по эл.почте и/или СМС
+Как многие знают, прошивку для Микротика выходят регулярно, в каждом обновлении куча исправлений. Обновлять устройства нужно, от этого не уйти. Но мало того, что нужно обновлять ROS, нужно обновлять еще и FW самого устройства.
+Честно скажу, мне лень следить за обновлениями. Я подписан на новости на сайте Микротик, но уже месяца 3 с этими новостями все очень плохо (писем просто нет). И все бы ничего, но у меня 3 устройства дома и 2 на предприятии.
+Сначала немного теории: мой случай — это 3 устройства 951 серии, соединенные каждый с каждым по VPN. Одна из точек — мастер, остальные берут нужные обновления с мастера по внутреннему каналу. Мастер проверяет обновления через Интернет, автоматически скачивает их и высылает уведомление по почте и СМС.
+Но есть один момент: по умолчанию файлы обновлений складываются в корень Files, только оттуда Микротик может обновиться при перезагрузке. Сразу после обновления файлы удаляются. Для моей схемы это критично, поэтому нужно сложить файлы в какую-то из папок, там они не удалятся и другие точки будут их видеть. Что понадобится:
+понадобится FTP-сервер на мастере.
+опционально — настроенные ветки Email и SMSКак сделать: Мастер
+Необходим только скрипт, нужные переменные находятся в верхней части.Скрипт обновления:local email "Ваш email"
+:local user "Ваш пользователь"
+:local pass "Ваш пароль"
+:local folder "Имя папки куда копировать"
+:local phone "Ваш номер мобильного с +"
+#####
+/system package update check-for-updates
+:delay 3
+:if ( [/system package update get installed-version] = [/system package update get latest-version] ) do={ 
+/tool e-mail send to=$email subject="Обновление Mikrotik"  body="Доступно обновление RouterOS! Новая версия - $[/system package update get latest-version]. Что нового - http://www.mikrotik.com/download"
+/tool sms send usb1 channel=2 "$phone" message="New RouterOS version is available!"
+/system package update download
+:delay 20
+:foreach i in=[/file find where package-version=[/system package update get latest-version]] do={ 
+/tool fetch address=127.0.0.1 src-path="$[/file get number="$i" name]" dst-path="$folder/$[/file get number="$i" name]" user=$user password=$pass mode=ftp 
+  }
+ }
+ВНИМАНИЕ! В версии 6.32.1 перевыкачивать обновления можно, а в версии 6.32.2 — нет! Также в новой версии появился статус обновления, так что можно использовать такую проверку в ваших скриптах.
+В зависимости от вашего интернет-канала нужно выставить соответствующий второй delay.
+В расписании задаем нужный интервал проверки. Мой выбор — каждые 12 часов.Примечание: начиная с версии 6.32.1 возникли проблемы с кодировкой e-mail сообщений.Как сделать: Слейв
+Необходимы настройка и 2 скрипта.Нацеливание на мастер-точку/system upgrade upgrade-package-source add address=xxx.xxx.xxx.xxx user=user
+
+И введите пароль удаленного пользователя.Скрипт обновления RouterOS/system upgrade refresh
+:delay 5
+/system upgrade download-all reboot-after-download=yes
+Скрипт обновления FW:if ( [/system routerboard get current-firmware] &lt; [/system routerboard get upgrade-firmware] ) do {
+/system routerboard upgrade
+/system reboot
+}
+
+В моем случае скрипты выполняются 1 раз в сутки, интервал между ними составляет 10 минуты.
+Второй скрипт в расписании можно установить на стартап системы. Если кто не знает, startup означает запуск через 3 секунды после старта устройства.
+«Почему бы не fetch'ить файлы прямиком на слейв-точки?» — спросите вы. Потому что на точках могут быть установлены разные пакеты. Лучше уж сами слейвы будут решать что им качать, а что нет.
+Если у вас одно устройство Mikrotik, то вы можете скомпоновать скрипты для полностью автоматизированного обновления ПО.Пункт 2: Автоматическое копирование настроек между устройствами
+Как я уже сказал, лень мое второе имя. А еще у меня на каждом из устройств есть открытый гостевой Wi-Fi только «для своих», по MAC'ам. Поэтому было принято волевое решение иметь на всех точках одинаковый список разрешенных устройств. База располагается на одной из точек (Мастер) и будет копироваться раз в сутки на нужные устройства. Понадобятся FTP-серверы на точках, куда нужно копировать настройки.
+Итак, есть 2 варианта: простой и правильный.Простой:
+Заключается в последовательной отправке 2х файлов.Скрипт:local ip "IP точки, на которую нужно скопировать МАС"
+:local user "Пользователь"
+:local password "Пароль"
+#####
+/interface wireless access-list export compact file=address
+:delay 1
+/tool fetch upload=yes address=$ip mode=ftp src-path=address_flush.rsc dst-path=address_flush.auto.rsc user=$user password=$password
+:delay 1
+/tool fetch upload=yes address=$ip mode=ftp src-path=address.rsc dst-path=address.auto.rsc user=$user password=$password
+Содержимое файла address_flush.rsc/interface  wireless access-list remove [/interface wireless access-list find]
+Правильный:
+Предыдущий вариант не учитывает возможный разрыв соединения между fetch'ами. Если такая ситуация произойдет, access-list будет пуст со всеми вытекающими. Следовательно, нужна проверка наличия на наличие файла с настройками, а уже после — очистка текущего содержимого листа. Последнее действие скрипта — удаление файла. А именно:Скрипт:local ip "IP точки, на которую нужно скопировать МАС"
+:local user "Пользователь"
+:local password "Пароль"
+#####
+/interface wireless access-list export compact file=wifi2_mac
+:delay 1
+/tool fetch upload=yes address=$ip mode=ftp src-path=wifi2_mac.rsc dst-path=wifi2_mac.rsc user=$user password=$password
+:delay 1
+/tool fetch upload=yes address=$ip mode=ftp src-path=address_proc.rsc dst-path=address_proc.auto.rsc user=$user password=$password
+:delay 10
+/file remove [/file find where name=wifi2_mac.rsc]
+Содержимое файла address_proc.rsc#2015.09.11 - AcidVenom - Copy MAC to extertnal Script
+:delay 5
+:if ( [/file find where name=wifi2_mac.rsc] != "" ) do={
+/interface  wireless access-list remove [/interface wireless access-list find]
+/import wifi2_mac.rsc
+:delay 1
+/file remove [/file find where name=wifi2_mac.rsc]
+}
+
+Строго говоря, файлы address_flush.rsc и address_proc.rsc могут иметь произвольные имена и расширения, но на выходе в dst-path их вид должен быть *.auto.rsc.
+По образу и подобию вы можете копировать нужные вам настройки практически «на лету».Пункт 3: Блокировка трафика, заворот его в другой шлюз
+На тему блокировки определенного трафика статьи гуглятся, поэтому буду краток — Layer7 Protocol.
+К примеру, блокировка телеметрии Microsoft:/ip firewall layer7-protocol add name=telemetry regexp=^.+(data.microsoft.com|telemetry.microsoft.com).*$
+/ip firewall filter add chain=forward protocol=tcp in-interface=bridge-local layer7-protocol=telemetry action=reject reject-with=tcp-reset
+/ip firewall filter add chain=forward protocol=tcp out-interface=bridge-local layer7-protocol=telemetry action=reject reject-with=tcp-reset
+
+Подробнее о L7 можно почитать на сайте проекта.
+Следующий момент — заворот трафика отдельных машин в другой шлюз, который не по умолчанию./ip firewall mangle add chain=prerouting src-address=192.168.0.0/24 dst-address=!192.168.0.0/16 action=mark-routing new-routing-mark=another_gateway passthrough=yes 
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.1.1 check-gateway=ping type=unicast distance=1 routing-mark=another_gateway
+
+Параметр Distance должен быть ниже, чем у шлюза по умолчанию. При необходимости вместо подсети источника можно указать единичный IP или адресный лист.
+Таким образом можно завернуть весь исходящий наружу трафик на шлюз 192.168.1.1. Очень советую указывать шлюз через IP, иначе при разрыве правило в Route List просто стирается.
+Ну и последняя фишка на сегодня — заворот только отдельных сайтов на шлюз не по умолчанию. Это очень полезно, если у вас есть прокси не на территории РФ, а вам хочется и/или нужно посетить заблокированный РКН сайт.
+Это немного сложнее, т.к. L7 работает тогда, когда соединение уже установлено. Поэтому будем использовать адресные листы.
+Для примера возьмем forum.mikrotik.com, для которого мой основной IP был в спам-диапазоне./ip firewall layer7-protocol add name=forum.mikrotik regexp=^.+(forum.mikrotik.com).*$
+/ip firewall mangle add chain=prerouting src-address=192.168.0.0/24 dst-address=!192.168.0.0/16 layer7-protocol=forum.mikrotik action=add-dst-to-address-list address-list=forum.mikrotik.ip address-list-timeout=24:00:00
+/ip firewall mangle add chain=prerouting src-address=192.168.0.0/24 dst-address=!192.168.0.0/16 dst-address-list=forum.mikrotik.ip action=mark-routing new-routing-mark=forum.mikrotik.rm passthrough=yes 
+/ip route add dst-address=0.0.0.0/0 gateway=192.168.1.1 check-gateway=ping type=unicast distance=1 routing-mark=forum.mikrotik.rm
+
+Минус данного решения — первое соединение закончится ошибкой, но последующие будут идти через нужный шлюз.Продолжение следует…
+
+      
+      
+    

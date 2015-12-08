@@ -1,0 +1,128 @@
+﻿#TITLE:Установка JBoss BPM Suite
+
+      Предисловие
+Инструкция описывает порядок установки и настройки jBPM Suite. Изначально определимся, что мы получим по окончанию всего процесса установки. В данном случае это сервер JBoss BPM Suite, работающий в автономном режиме (не в режиме домена, без кластеризации) на ОС RHEL (на CentOS все абсолютно идентично). Для того что бы было возможно установить JBoss BPM Suite требуется, что бы уже имелся развернутый JBoss EAP. Есть определенные зависимости между версиями jBPM и EAP, их можно с легкостью найти в документации RedHat. В данном материале описан только порядок действий при установке версии jBPM 6.1.2, для других версий она может отличаться. Предварительные требования1. JAVA 7
+Устанавливаем JDK 7 версии. Настраиваем переменные окружения: EAP_HOME, JAVA_HOME, JRE_HOME, JDK_HOME. Соответственно EAP_HOME=путь к нашему JBOSS EAP серверу, Java переменные — к соответствующим папкам (java_home — к jdk).2. Установка JBOSS EAP
+Мы используем jBPM (Jboss Business Process Management) Suite версии 6.1.2. Как говорилось выше, первоначально необходимо установить Jboss EAP (Enterprise Application Platform). Для нашей версии (6.1.2) соответствует выбор JBoss EAP 6.4 или выше. Скачиваем дистрибутив с сайта RedHat (zip вида). Распаковываем его на сервере.3. Настройка JBoss EAP
+Настраиваем JBoss EAP. В нашем случае это standalone режим (есть 2 режима работы: standalone и domain. Первое — для случаев, когда нет необходимости настраивать централизованное управление, как это реализовано в domain mode. Обычно используется, когда у нас имеется 1 или 2 сервера. Можно объединять в кластер. В domain mode один сервер — управляющий (master), другие — подчиняющиеся (slave). Один конфигурационный файл. Удобно, когда у нас целая группа серверов),  поэтому необходимо отредактировать файл standalone.xml (EAP_HOME/standalone/configuration/standalone.xml) – поправить все адреса 127.0.0.1 на IP адрес нашего сервера. Это касается всех строк, кроме:&lt;wsdl-host&gt;${jboss.bind.address:127.0.0.1}&lt;/wsdl-host&gt;
+
+Там всего 3 таких строки, которые задают доступ к серверу (127.0.0.1 — значит, что доступ есть только с машины, на котором установлен сервер), находятся они в блоке interfaces.
+Если вы будете использовать другой профиль, например standalone-full, то необходимо редактировать соответствующий xml файл. Здесь мы этого касаться не будем.4. Конфигурация пользователей
+Далее добавляем пользователей (EAP_HOME/bin/add-user.sh), одного админа Management, другого Application уровня (задав роль admin второму, это роль BPM. Если не добавили, то можно потом отредактировать роли в файле /opt/jboss-eap-6.4/standalone/configuration/application-roles.properties (пример: BPMadmin=admin).
+Поэтапно:A. Запускаем sh EAP_HOME/bin/add-user.shB. Выбираем вариант «a», жмем EnterC. Вводим имя пользователяD. 2 раза вводим парольE. На вопрос: «What groups...» просто жмем EnterF. Is this correct yes/no? Вводим: «yes», жмем EnterG. На следующий вопрос вводим: «no», жмем Enter
+Пользователь для управления создан.
+Далее:A. Запускаем sh EAP_HOME/bin/add-user.shB. Выбираем вариант «b», жмем EnterC. Вводим имя пользователяD. 2 раза вводим парольE. На вопрос: «What groups...» вводим: «admin» и жмем Enter (тут задается роль F. пользователя в приложениях)F. Is this correct yes/no? Вводим: «yes», жмем EnterG.На следующий вопрос вводим: «no», жмем Enter5. Настройка JBOSS EAP как службы
+Для того, что бы мы могли выполнять действия в CLI (терминальная консоль управления JBoss EAP), а также для настройки удобного управления (запуск/перезапуск/остановка) сервером и авто-запуска, нам необходимо настроить JBoss EAP как службу. Благодаря RedHat, этот процесс достаточно элементарен, установленный EAP включает в себя заготовленные для этого процесса файлы — jboss-as.conf + jboss-as-standalone.sh/jboss-as-domain.sh.
+Что нужно сделать:A. Копируем в /etc/jboss-as/ файл jboss-as.conf (находится в пути EAP_HOME/bin/init.d/)B. Редактируем этот файл. Задаем JBOSS_USER и JBOSS_HOME. 
+JBOSS_USER=root (пользователь от которого будет запускаться служба)
+JBOSS_HOME=путь в котором установлен EAP, должен быть равным EAP_HOME (например, JBOSS_HOME=/opt/jboss-eap-6.4)C. jboss-as-standalone.sh копируем в путь /etc/init.dD. Изменяем файл jboss-as-standalone.sh через редактор. Меняем используемый конфиг. Если у нас профиль standalone, то менять нет необходимости, если full или ha, то меняем standalone.xml на standalone-full.xmlE. Настраиваем chkconfig. Находясь в папке /etc/init.d прописываем команду: chkconfig --add jboss-as-standalone.shF. Запускаем службу: service jboss-as-standalone.sh startG.Настраиваем авто запуск службы: chkconfig jboss-as-standalone.sh onJBOSS BPM Suite1. Установка jBPM Suite
+Качаем с портала RedHat версию 6.1.0 для EAP (Deployments for EAP). Делаем резервную копию EAP. Затем копируем определенные файлы в EAP_HOME/. Подробнее про копирование файлов (Их нельзя сразу закидывать в папку с EAP, заменяя все файлы):A. распаковываем скачанный zip архив. Однако не перезаписывайте все файлы сразу. Необходимо вручную объединить следующие файлы в каталоге EAP_HOME:
+ — /domain/configuration/* — (Имейте ввиду, что jBPM Suite требует JMS, так что JMS по-умолчанию добавляется во все файлы профилей в domain.xml, предусмотренных jBPM Suite)
+ — /standalone/configuration/* — (Имейте ввиду, что jBPM Suite требует JMS, так что JMS по-умолчанию добавляется во все файлы профилей предусмотренных jBPM Suite, таких как standalone.xml или standalone-ha.xml)
+ — jboss-eap-6.4/modules/layers.conf
+ — jboss-eap-6.4/bin/product.confB. Убедитесь, что JBOSS EAP не включает в себя приложения с совпадающими именами. Скопируйте папку /standalone/deployments в EAP_HOME директорию.C. Убедитесь, что не имеется аналогичного layer в папке modules. Скопируйте папку /modules/system/layers/bpms в EAP_HOME.
+Так как мы устанавливали чистый JBOSS EAP, то в пункте B и C можно просто все смело копировать.2. Обновление jBPM Suite
+jBPM установлен, теперь необходимо обновить его до 6.1.2, качаем для этого Update 2. Перекидываем папку на сервер, чистим blacklist.txt, который находится в корневой папке (там перечислены документы, которые не будут изменены при обновлении, соответственно оставляем там только то, что редактировали). Находясь в папке скаченного обновления выполняем:$ ./apply-updates.sh ~/EAP_HOME/jboss-eap-6.4 eap6.x
+
+Обновление завершается успешно (или нет).3. Проверка запуска и версии
+Проверяем запуск EAP (sh EAP_HOME/bin/standalone.sh, либо: service jboss-as-standalone.sh start). Смотрим, заходит ли в консоль управления EAP (http://IP:9990) и в сам jBPM:http://IP:8080/business-central
+http://IP:8080/dashbuilder
+
+Проверяем версию приложения в about (должна быть 6.1.2). Смотрим в консоли управления EAP задеплоинные приложения (их 3, kie-server, dashbuilder, business-central).
+Если все на месте, то переходим к следующему пункту.MS SQL и настройка персистентности jBPM1. Создание БД и настройка прав
+Переходим в интерфейс MS SQL. Создаем там БД (в нашем случае BPMSuiteDB). Создаем пользователя и назначаем ему права «db_owner» для нашей БД.
+Соответственно такие подробности, как задание имени БД, пользователю, введение пароля на скрине пропущены.2. JDBC драйвер
+Для начала необходимо настроить EAP на работу с созданной БД. Для начала необходимо установить jdbc драйвер. Скачиваем его с сайта msdn в формате tar.gz. Распаковываем и закидываем в папку EAP_HOME/modules/com/sqlserver/main содержимое архива.
+Т.к. у нас JDK 7 версии, то будет использоваться sqljdbc4.jar. Создаем файл module.xml (т.к. его по умолчанию там нет, на скрине его можно увидеть).
+Его содержимое (копируем, ничего не правим. name=com.sqlserver – грубо говоря, это адрес в папке modules, где находится наш драйвер, а точнее папка main с его содержимым):&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+ &lt;module xmlns="urn:jboss:module:1.1" name="com.sqlserver"&gt;
+ &lt;resources&gt;
+ &lt;resource-root path="sqljdbc4.jar"/&gt;
+ &lt;/resources&gt;
+ &lt;dependencies&gt;
+ &lt;module name="javax.api"/&gt;
+ &lt;module name="javax.transaction.api"/&gt;
+ &lt;/dependencies&gt;
+ &lt;/module&gt;
+
+Сохраняем, закрываем.
+Далее, закинутый драйвер нужно установить в сам EAP:А. Запускаем сервер как службу: service jboss-as-standalone.sh startB. Запускаем CLI консоль: sh EAP_HOME/bin/jboss-cli.sh C. Выполняем: connect IP
+IP соответственно вбиваем тот, что у сетевого адаптера вашего сервера.D. Выполняем команду:/subsystem=datasources/jdbc-driver=DRIVER_NAME:add(drivername=DRIVER_NAME,driver-module-name=MODULE_NAME,driver-xadatasource-class-name=XA_DATASOURCE_CLASS_NAME)
+
+Подставляем значения на наши. Пример:/subsystem=datasources/jdbc-driver=sqlserver:add(drivername=sqlserver,driver-module-name=com.sqlserver,driver-xa-datasourceclass-name=com.microsoft.sqlserver.jdbc.SQLServerXADataSource)
+
+JDBC драйвер установлен.3. Создание подключения EAP
+Теперь необходимо создать подключение к БД с помощью нашего jdbc драйвера. Проще всего это сделать через management консоль. Идем по адресу: IP:9990, логинимся под созданной нами учеткой Managemenet. Переходим в раздел: Configuration &gt; Connector &gt; Datasources. Жмем «Add». 
+Вбиваем параметры:
+Name: MSSQLDS
+JNDI: java:/MSSQLDS
+Next &gt;&gt;
+Выбираем наш драйвер 
+Next &gt;&gt;
+Connection URL: jdbc:sqlserver://IP:1433;DatabaseName=DATABASE_NAME
+В нашем случае это: jdbc:sqlserver://192.168.101.201:1433;DatabaseName=BPMsuiteDB
+Username и Password – от пользователя, которого мы создавали для нашей БД в MSSQL.
+SecurityDomain оставляем пустым. Жмем Test connection. Должно заработать. Если нет, то проверяем настройки standalone.xml (или –full.xml etc).
+Настройки коннекта:&lt;datasource jta="true" jndi-name="java:/MSSQLDS" pool-name="MSSQLDS" enabled="true" use-ccm="true" statistics-enabled="true"&gt;
+ &lt;connection-url&gt;jdbc:sqlserver://192.168.101.201:1433;DatabaseName=BPMsuiteDB&lt;/connection-url&gt;
+ &lt;driver-class&gt;com.microsoft.sqlserver.jdbc.SQLServerDriver&lt;/driver-class&gt;
+ &lt;driver&gt;sqlserver&lt;/driver&gt;
+ &lt;security&gt;
+ &lt;user-name&gt;username&lt;/user-name&gt;
+ &lt;password&gt;password&lt;/password&gt;
+ &lt;/security&gt;
+ &lt;validation&gt;
+ &lt;validate-on-match&gt;false&lt;/validate-on-match&gt;
+ &lt;background-validation&gt;false&lt;/background-validation&gt;
+ &lt;/validation&gt;
+ &lt;timeout&gt;
+ &lt;set-tx-query-timeout&gt;false&lt;/set-tx-query-timeout&gt;
+ &lt;blocking-timeout-millis&gt;0&lt;/blocking-timeout-millis&gt;
+ &lt;idle-timeout-minutes&gt;0&lt;/idle-timeout-minutes&gt;
+ &lt;query-timeout&gt;0&lt;/query-timeout&gt;
+ &lt;use-try-lock&gt;0&lt;/use-try-lock&gt;
+ &lt;allocation-retry&gt;0&lt;/allocation-retry&gt;
+ &lt;allocation-retry-wait-millis&gt;0&lt;/allocation-retry-wait-millis&gt;
+ &lt;/timeout&gt;
+ &lt;statement&gt;
+ &lt;share-prepared-statements&gt;false&lt;/share-prepared-statements&gt;
+ &lt;/statement&gt;
+ &lt;/datasource&gt;
+
+Должны быть аналогичны этим. 
+Настройки драйвера:&lt;driver name="sqlserver" module="com.sqlserver"&gt;
+ &lt;xa-datasource-class&gt;com.microsoft.sqlserver.jdbc.SQLServerXADataSource&lt;/xa-datasource-class&gt;
+ &lt;/driver&gt;
+
+Должны быть аналогичны этим. Если нет – правим, перезапускаем сервер и проверяем коннект.4. Настройка jBPM
+Далее необходимо настроить jBPM на работу с БД. При первом подключении BPM автоматически создаст таблицы в нашей БД.
+Для начала открываем файл: EAP_HOME/standalone/deployments/dashbuilder.war/WEB-INF/jboss-web.xml. Редактируем его:&lt;jboss-web&gt;
+ &lt;context-root&gt;/dashbuilder&lt;/context-root&gt;
+ &lt;resource-ref&gt;
+ &lt;res-ref-name&gt;jdbc/dashbuilder&lt;/res-ref-name&gt;
+ &lt;res-type&gt;javax.sql.DataSource&lt;/res-type&gt;
+ &lt;jndi-name&gt;java:/MSSQLDS&lt;/jndi-name&gt;
+ &lt;/resource-ref&gt;
+Далее заходим в файл, находящийся в том же пути: jboss-deployment-structure.xml. Редактируем его:
+В разделе   добавляем строчку:&lt;module name="com.sqlserver" /&gt;
+
+Следующий шаг – настройка business-central.war. Открываем конфигурационный файл: EAP_HOME/standalone/deployments/business-central.war/WEB-INF/classes/META-INF/persistence.xml. Редактируем следующие блоки:А. &lt;jta-data-source&gt;java:/MSSQLDS&lt;/jta-data-source&gt;B. &lt;property name="hibernate.dialect" value="org.hibernate.dialect.SQLServerDialect" /&gt;
+Пытаемся запустить, если ошибки про то, что класс диалекта не найден, то добавляем:&lt;property name="hibernate.connection.driver_class" value="com.microsoft.sqlserver.jdbc.SQLServerDriver"/&gt;
+ &lt;property name="hibernate.connection.password" value="password"/&gt;
+ &lt;property name="hibernate.connection.url" value="jdbc:sqlserver://IP:1433/;DatabaseName=BPMsuiteDB"/&gt;
+ &lt;property name="hibernate.connection.username" value="username"/&gt;
+5. Персистентность jBPM
+Осталось настроить персистентность. Для этого в persistence.xml в соответствующие разделы добавляем строки.А. Блок task service:&lt;class&gt;org.drools.persistence.info.SessionInfo&lt;/class&gt;
+ &lt;class&gt;org.jbpm.persistence.processinstance.ProcessInstanceInfo&lt;/class&gt;
+ &lt;class&gt;org.drools.persistence.info.WorkItemInfo&lt;/class&gt;
+B. Блок properties:&lt;property name="hibernate.transaction.manager_lookup_class" value="org.hibernate.transaction.BTMTransactionManagerLookup"/&gt;
+C. Также изменяем:&lt;property name="hibernate.show_sql" value="false" /&gt;
+
+На:&lt;property name="hibernate.show_sql" value="true" /&gt;
+
+Можно добавлять различные параметры, описаны они все в документации RedHat (раздел Persistence). Сохраняем, закрываем. Перезапускаем сервер. Все, jBPM версии 6.1.2 установлена на Jboss EAP 6.4.0 и работает с СУБД MSSQL c настроенной персистентностью.
+Можно установить только JBOSS EAP 6.4 и jBPM Suite 6.1.2, в таком случае будет использоваться встроенная БД JBOSS EAP.Использованная документация:Настройка JBOSS EAP: access.redhat.com/documentation/en-US/JBoss_Enterprise_Application_Platform/6.4/pdf/Administration_and_Configuration_Guide/JBoss_Enterprise_Application_Platform-6.4-Administration_and_Configuration_Guide-en-US.pdf
+Установка JBOSS BPM Suite: access.redhat.com/documentation/en-US/Red_Hat_JBoss_BPM_Suite/6.1/pdf/Installation_Guide/Red_Hat_JBoss_BPM_Suite-6.1-Installation_Guide-en-US.pdf
+Настройка JBOSS BPM Suite: access.redhat.com/documentation/en-US/Red_Hat_JBoss_BPM_Suite/6.1/pdf/Administration_And_Configuration_Guide/Red_Hat_JBoss_BPM_Suite-6.1-Administration_And_Configuration_Guide-en-US.pdf
+
+    

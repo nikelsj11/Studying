@@ -1,0 +1,118 @@
+﻿#TITLE:Создаём REST-сервис на Rust. Часть 2: читаем INI; multirust
+
+      Всем привет.
+В первой части мы сделали простейший прототип, работающий с PostgreSQL.
+При этом мы прописали все параметры соединения с базой прямо в коде. Давайте теперь вынесем их в конфигурационный файл.
+В качестве формата конфигурации я выбрал INI — достаточно простой и известный формат.
+Первым делом нам нужно найти библиотеку для работы с INI-файлами.
+Тут нам поможет crates.io — централизованное хранилище контейнеров Rust. Идём туда, вбиваем в поиске «ini», и первая же ссылка ведёт на нужную нам библиотеку: rust-ini.
+Использовать её, судя по примеру на главной, достаточно просто. Попробуем:Кодextern crate ini;
+...
+use ini::Ini;
+
+fn params() -&gt; (ConnectParams, SslMode) {
+    let conf = Ini::load_from_file(".phonebookrc").unwrap();
+    let general = conf.general_section();
+
+    let host = general.get("host").unwrap();
+    let port = general.get("port").unwrap();
+    let sslmode = general.get("sslmode").unwrap();
+    let dbname = general.get("dbname").unwrap();
+    let user = general.get("user").unwrap();
+    let pass = general.get("pass").unwrap();
+
+    let sslmode_ = match sslmode.as_ref() {
+        "disable" =&gt; SslMode::None,
+        "enable" =&gt; unimplemented!(),
+        _ =&gt; panic!("Wrong sslmode"),
+    };
+
+    let params = ConnectParams {
+        target: ConnectTarget::Tcp(host.to_owned()),
+        port: Some(FromStr::from_str(port).unwrap()),
+        user: Some(UserInfo {
+            user: user.to_owned(),
+            password: Some(pass.to_owned()),
+        }),
+        database: Some(dbname.to_owned()),
+        options: vec![],
+    };
+    (params, sslmode_)
+}
+
+fn main() {
+    let (params, sslmode) = params();
+...
+
+Стоит пояснить несколько моментов.
+Мы делаем     let s = match sslmode.as_ref() {
+
+чтобы sslmode не было перемещено внутрь match. В противном случае, мы не смогли бы использовать его дальше.
+unimplemented!() — это макрос, который используют, чтобы показать, что определённая функциональность не реализована. Он вызывает панику при достижении данной строки.
+panic!() — макрос, непосредственно вызывающий панику текущего потока. Его можно вызвать с форматной строкой и аргументами, чтобы напечатать своё сообщение.
+В конце мы создаём структуру с параметрами соединения    let params = ConnectParams {
+
+Все поля инициализируются, как обычно, кроме двух:        port: Some(FromStr::from_str(port).unwrap()),
+
+Тут мы используем метод from_str типажа FromStr, чтобы разобрать целое число из строки. Эта операция возвращает Result.        options: vec![],
+
+Здесь же мы используем макрос инициализации вектора: он создаёт вектор, а затем делает несколько раз v.push(...).
+В конце функции мы просто пишем    (params, sslmode_)
+
+чтобы вернуть из неё кортеж из 2 элементов. Обратите внимание на отсутствие точки с запятой.
+Однако, если сейчас мы попробуем собрать программу, нас постигнет неудача:
+$ cargo build
+   Compiling bufstream v0.1.1
+   Compiling debug-builders v0.1.0
+   Compiling gcc v0.3.6
+   Compiling rustc-serialize v0.3.14
+   Compiling phf_shared v0.7.3
+   Compiling libc v0.1.8
+   Compiling byteorder v0.3.10
+   Compiling phf v0.7.3
+   Compiling log v0.3.1
+   Compiling rand v0.3.8
+   Compiling rust-ini v0.6.0 (https://github.com/zonyitoo/rust-ini/#0b3a3894)
+   Compiling time v0.1.26
+/home/mkpankov/.multirust/toolchains/stable/cargo/git/checkouts/rust-ini-4a9e7dbb298b5764/master/src/lib.rs:48:1: 48:16 error: #[feature] may not be used on the stable release channel
+/home/mkpankov/.multirust/toolchains/stable/cargo/git/checkouts/rust-ini-4a9e7dbb298b5764/master/src/lib.rs:48 #![feature(io)]
+                                                                                                               ^~~~~~~~~~~~~~~
+error: aborting due to previous error
+   Compiling rust-crypto v0.2.31
+Build failed, waiting for other jobs to finish...
+Could not compile `rust-ini`.
+
+Компилятор говорит о том, что возможность «io» не может быть использована в стабильном компиляторе. Хм.
+Как можно видеть, «feature(io)» используем не мы, а сам rust-ini. И в каком же компиляторе она тогда может быть использована? Ответ, конечно же — в нестабильном Rust.
+Стоит заметить, что в подобные моменты проще сходить в чат (хотя бы в наш русскоязычный) и спросить, что происходит и что делать. Документация по отключаемым возможностям есть, но она не совсем поспевает за реальным положением дел.
+Ладно, и что теперь? Нужно переустанавливать компилятор только ради этого? К сожалению, да, но, к счастью, делать это нужно сделать только один раз.
+Познакомьтесь с multirust.
+Этот инструмент управляет версиями компилятора и позволяет мгновенно переключаться между ними, а также упрощает обновление.
+Устанавливаем его (предварительно стоит удалить уже установленный Rust):
+$ curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh
+
+Теперь мы можем установить сами компиляторы и сказать, что нашему проекту нужен ночной компилятор:
+$ multirust update
+...
+$ cd rust-phonebook
+$ multirust override nightly
+multirust: using existing install for 'nightly'
+multirust: override toolchain for '/home/mkpankov/rust-phonebook.finished' set to 'nightly'
+
+Теперь попробуем пересобрать наш проект:
+$ cargo build
+...
+   Compiling rust-phonebook v0.1.0 (file:///home/mkpankov/rust-phonebook.finished)
+src/main.rs:10:5: 10:12 warning: struct field is never used: `id`, #[warn(dead_code)] on by default
+src/main.rs:10     id: i32,
+                   ^~~~~~~
+$
+
+Всё собралось!
+multirust делает работу гораздо удобнее. Новые проекты всё же лучше начинать на стабильном компиляторе, и переключаться только по необходимости — ситуация с нестабильными возможностями такова, что они нужны далеко не всем проектам. А обновление всех сборок делается с ним всего одной командой «multirust update».
+Ложка дёгтя здесь в том, что multirust на данный момент не работает на Windows. Но установить несколько компиляторов на Windows вам ничего не помешает — они по-умолчанию ставятся в разные места.
+На сегодня всё. Теперь вы знаете, где искать библиотеки, и что делать, если им требуются нестабильные возможности.
+
+      
+      
+    

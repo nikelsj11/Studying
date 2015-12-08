@@ -1,0 +1,180 @@
+﻿#TITLE:Масштабная миграция записей в БД: как это делает Stripe
+
+      Примечание переводчика: Мы в «Латере» занимаемся созданием биллинга для операторов связи. Мы будем писать об особенностях системы и деталях ее разработки в нашем блоге на Хабре, но почерпнуть что-то интересное можно и из опыта других компаний. Сегодня мы представляем вашему вниманию адаптированный перевод заметки инженера финансового стартапа Stripe о том, как его команда мигрировала огромное количество записей в базе данных.
+Stripe для приема оплаты пользуется огромное количество продавцов, и недавно команда проекта завершила проект под названием «Очень большая миграция крупных объёмов данных между несколькими БД без потерь, остановок работы и ошибок в работе системы, отвечающей за ежедневную передачу огромного объёма финансов». 
+Как описал проект инженер Stripe Роберт Хитон: «Концептуально здесь все просто, но дьявол (и возможность спать по ночам) кроется в деталях». 0. Принцип
+В системе Stripe существует таблица Продавцов (Merchant) и приложений учетной записи AccountApplication. У каждого мерчанта есть AccountApplicaion, и ранее в этих таблицах содержалась вся информация о продавце, включая такие тривиальные данные как email_font_color и self_estimated_yearly_turnover (годовой оборот по собственной оценке) и уже гораздо более важные (требуемые по закону так называемые know your customer, KYC) business_name и tax_id_number.
+Для запуска проекта Stripe Connect нужно было создать систему, которая говорит приложениям Connect Applications, какая важная информация требуется для каждого из подключенных продавцов. Требования могут отличаться в зависимости от страны, типа бизнеса и других факторов. Чтобы сделать новую систему простой и удобной, нужно было извлечь все KYC-данные, и поместить их в одну таблицу LegalEntity.
+Как говорит Хитон: «Если бы мы могли остановить нашу систему ненадолго, и если бы мы были роботами-программистами, которые никогда не допускают и намека на ошибку, то мы бы просто сказали продавцам какое-то время ничего не продавать, перенесли все данные, а затем запустили систему». Однако в реальности сделать так, конечно, было невозможно. 
+Во время миграции огромного количества данных системой будет продолжать пользоваться целая куча продавцов, которым нужно записывать и считывать новую информацию. В такой ситуации очень просто допустить ошибку, которая приведет к считыванию старой информации и сбою в записи новой. 
+Кроме того, подобная миграция — это масштабный проект, который нельзя выполнить одним махом и потом молиться, чтобы все заработало. Вместо этого было решено двигаться маленькими шагами и отслеживать все изменения в работе системы.
+Упрощенно, схема миграции выглядит как изменение схемы считывания данных с такой: 
+на такую: 
+А записи данных с такой:
+на такую:
+Все это происходило в четыре этапа. 1. Миграция данных
+Все началось с создания модели LegalEntity в ORM Stripe и связанной таблицы в базе данных. После создания в ней не содержалось никаких данных, над которыми не осуществлялось никаких действий.class LegalEntity
+end
+
+Затем нужно было задублировать записи соответствующих сущностей Merchant и AccountApplication в эквивалент LegalEntity. То есть, когда происходила запись в Merchant#owner_first_name, то одновременно данные записывались и в LegalEntity#first_name. К этому моменту старые данные в LegalEntity еще не были мигрированы, так что таблицы Merchant и AccountApplication оставались «источником правды».
+Вот какой код тут использовался:class Merchant
+  # Each Merchant has a LegalEntity
+  prop :legal_entity, foreign: LegalEntity
+
+  def self.legal_entity_proxy(merchant_prop_name, legal_entity_prop_name)
+    # Redefine the Merchant setter method to also write to the LegalEntity
+    merchant_prop_name_set = :"#{merchant_prop_name}="
+    original_merchant_prop_name_set = :"original_#{merchant_prop_name_set}"
+    alias_method original_merchant_prop_name_set, merchant_prop_name_set if method_defined?(merchant_prop_name_set)
+
+    define_method(merchant_prop_name_set) do |val|
+      self.public_send(original_merchant_prop_name_set, val)
+      self.legal_entity.public_send(:"#{legal_entity_prop_name}=", val)
+    end
+  end
+
+  legal_entity_proxy :owner_first_name, :first_name
+
+  before_save do
+    # Make sure that we actually save our LegalEntity double-write.
+    # This "multi-save" can cause confusion and unnecessary database calls,
+    # but is a necessary evil and will be unwound later
+    self.legal_entity.save
+  end
+end
+
+merchant.owner_first_name = 'Barry'
+merchant.save
+
+merchant.legal_entity.first_name
+# =&gt; Also 'Barry'
+
+Все это было запущено в продакшн на пару дней, чтобы увидеть возможные ошибки. В итоге потоки обновились следующим образом. Чтение:
+Запись:
+Затем был осуществлен проход по всем записям Merchant и AccountApplication с последующей миграцией нужных данных в LegalEntity. Дублирование записи позволяет добиться того, чтобы в процессе миграции переносились даже данные, которые добавляются в начальные таблицы уже после ее начала.2. Начало чтения из LegalEntity
+Таким образом была гарантирована синхронизация таблицы LegalEntity с таблицами Merchant и AccountApplication. Далее инженеры Stripe перенаправили все вызовы eg. merchant.owner_first_name для чтения данных из новой таблицы LegalEntity. Данные продолжали записываться в две изначальные таблицы. Проксирование реализовалис помощью специального флага, который устанавливался в интерфейсе системы. При обнаружении проблем можно было переключиться на чтение из таблицы Merchant, чтобы найти ошибку.class Merchant
+  prop :legal_entity, foreign: LegalEntity
+
+  def self.legal_entity_proxy(merchant_prop_name, legal_entity_prop_name)
+    #
+    # UPDATED: Now we also redefine the Merchant getter method to read from the LegalEntity
+    #
+    alias_method :"original_#{merchant_prop_name}", merchant_prop_name if method_defined?(merchant_prop_name)
+    define_method(merchant_prop_name) do
+      self.legal_entity.public_send(legal_entity_prop_name)
+    end
+
+    # We continue to write to both tables for safety
+    merchant_prop_name_set = :"#{merchant_prop_name}="
+    original_merchant_prop_name_set = :"original_#{merchant_prop_name_set}"
+    alias_method original_merchant_prop_name_set, merchant_prop_name_set if method_defined?(merchant_prop_name_set)
+
+    define_method(merchant_prop_name_set) do |val|
+      self.public_send(original_merchant_prop_name_set, val)
+      self.legal_entity.public_send(:"#{legal_entity_prop_name}=", val)
+    end
+  end
+
+  legal_entity_proxy :owner_first_name, :first_name
+
+  before_save do
+    self.legal_entity.save
+  end
+end
+
+merchant.owner_first_name
+# =&gt; calls legal_entity.first_name, which should be the same as Merchant#owner_first_name anyway
+
+Теперь потоки претерпели очередные изменения. Чтение:
+Запись:
+После того, как тестирование нового кода завершилось успешно, пришло время отключить запись данных и в старые таблицы, и в новую LegalEntity. Для этого в старых таблицах были удалены соответствующие поля и столбцы, что остановило запись в них. Теперь merchant.owner_first_name записывается и читается только в и из таблицы LegalEntity, а в таблице Merchant больше нет сущности owner_first_name.
+Теперь процесс чтения выглядит так:
+А записи — так:
+Миграция данных полностью завершена, но сохраняется необходимость оптимизации. При сохранении объектов все еще выполняются многочисленные запросы к базе, а весь процесс зависит от нескольких кусков кода и созданного на коленке прокси. Код определенно необходимо было подчистить.3. Чтение и запись напрямую в таблицу LegalEntity
+Для каждой сущности Merchant и AccountApplication, которая проксируется в LegalEntity, с помощью grep выбирается код для чтения и записи и заменяется на тот, который указывает на прямую работу с LegalEntity. К примеру, код:
+merchant.owner_first_name = 'Barry'
+
+будет выглядеть так:
+legal_entity.first_name = 'Barry'
+
+В итоге потоки данных в очередной раз меняются. Чтение:
+Запись:
+Также может быть и так, что кто-то добавит вызовы к полям, которые инженеры пытаются удалить. В этом нет ничего страшного, поскольку эти вызовы будут проксированы к соответствующим сущностям LegalEntity.
+Однако в итоге проксирование будет отключено, и к этому моменту нужно логировать все устаревшие поля и добавить код, которые делает так, что запросы к этим полям не срабатывают, но никаких ошибок не выдается: class Merchant
+  prop :legal_entity, foreign: LegalEntity
+
+  def self.legal_entity_proxy(merchant_prop_name, legal_entity_prop_name)
+    alias_method :"original_#{merchant_prop_name}", merchant_prop_name if method_defined?(merchant_prop_name)
+    define_method(merchant_prop_name) do
+      #
+      # UPDATED: We add in logging
+      #
+      log.info('Deprecated method called')
+      self.legal_entity.public_send(legal_entity_prop_name)
+    end
+
+    merchant_prop_name_set = :"#{merchant_prop_name}="
+    original_merchant_prop_name_set = :"original_#{merchant_prop_name_set}"
+    alias_method original_merchant_prop_name_set, merchant_prop_name_set if method_defined?(merchant_prop_name_set)
+
+    define_method(merchant_prop_name_set) do |val|
+      #
+      # UPDATED: We add in logging
+      #
+      log.info('Deprecated method called')
+      self.legal_entity.public_send(:"#{legal_entity_prop_name}=", val)
+    end
+  end
+end
+
+Когда в логах перестают появляться запросы к устаревшим полям в базе (на это по плану должно было уйти от 2-7 дней), проксирование окончательно удаляется, поскольку в нем больше нет необходимости.class Merchant
+  prop :legal_entity, foreign: LegalEntity
+
+  # REMOVED
+  #
+  # def self.legal_entity_proxy(merchant_prop_name, legal_entity_prop_name)
+  #   # etc
+  # end
+  #
+  # legal_entity_proxy :owner_first_name, :first_name
+
+  before_save do
+    self.legal_entity.save
+  end
+end
+4. Отключение мультисохранения
+Все данные теперь считываются и записываются напрямую в LegalEntity. Однако процесс сохранения все еще задублирован — Merchant все еще сохраняет данные LegalEntity. Видеть подобные строки приходится часто:legal_entity.first_name = 'Barry'
+merchant.save
+
+В принципе, это работает, но не так красиво, как могло бы быть. Чтобы удалить сбивающие с толку элементы, но при этом сохранить все необходимое, можно записать в логи все места, где merchant.save (или подобные вещи) каким-то образом влияет на изменение полей в legal_entity, и изменить секции before_save следующим образом:class Merchant
+      prop :legal_entity, foreign: LegalEntity
+
+      before_save do
+        # Our ORM's implementation of "dirty" fields
+        unless self.legal_entity.updated_fields.empty?
+          self.legal_entity.save
+          log.info('Multi-saved an updated model')
+        end
+      end
+    end
+
+Также было решено реализовать флаг для включения опции мультисохранения. В случае необходимости (если кто-то слишком занервничает) ее всегда можно легко активировать.
+В следующие несколько дней команда Stripe изучала логи на предмет наличия в них фразы 'Multi-saved an updated model', чтобы обнаружить все места, где сохранение Merchant и AccountApplicaion также влияет на сохранение новых данных в LegalEntity. Эта таблица сохраняется перед тем, как изменения сохраняются в другой модели, что приводит к установке пустого значения в поле legal_entity.updated_fields — в такой ситуции в логах ничего не отобразится. А вот такой код:legal_entity.first_name = 'Barry'
+merchant.business_url = 'http://foobar.com'
+merchant.save
+
+активизирует запись в лог-файл, поскольку merchant.save также сохранит и новое LegalEntity#owner_name. Его нужно изменить на:legal_entity.first_name = 'Barry'
+legal_entity.save
+
+merchant.business_url = 'http://foobar.com'
+merchant.save
+
+Тут уже legal_entity сохранит сама себя предварительно.
+После того, как в логи стали пустыми и все подобные некорректности были вычищены, мультисохранение было удалено. Теперь все данные находятся там, где им и положено, нет никаких костылей в виде проксирования запросов и не используется никакое мета-программирование.class Merchant
+  prop :legal_entity, foreign: LegalEntity
+end
+5. Заключение
+На протяжении всей миграции команда Stripe не вносила ни одного изменения без последующей эмпирической проверки того факта, что оно не вызвало ошибок в работе системы. Все обновления осуществлялись постепенно, шаг за шагом, что позволило свести риск серьезной поломки системы к минимуму. Подход с использованием дублирующейся записи в старый и новый источник, с последующим постепенным отключением первого — это безопасный способ осуществления таких переносов.
+Как говорит инженер Stripe Роберт Хитон:Если вы когда-нибудь захотите написать один огромный пулл-реквест для миграции огромного объёма чего бы то ни было, дважды подумайте о том, есть ли какая-нибудь возможность сделать весь процесс не столь ужасающе зависящим от удачи. Если ответ «нет», прежде чем запустить процесс, следует позаботиться о фальшивых документах и кредитной истории, которая поможет вам покинуть страну (а скорее всего вам уже скоро придется это сделать) и начать новую жизнь в Бразилии.
+      
+    

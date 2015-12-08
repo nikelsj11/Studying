@@ -1,0 +1,47 @@
+﻿#TITLE:Создание доменных зон в AzureDns [шпаргалка]
+
+      Привет, Хабр! 
+Хочу опубликовать небольшую шпаргалку по созданию новых доменных зон в AzureDns. К своему удивлению в новом интерфейсе, так и не нашёл какого-либо визуального редактора для этого, поэтому все действия будут производится из PowerShell. 
+Переворошив кучу статей из руководства по созданию DNS в Azure сделал небольшую выжимку нужных команд.Шаг первый
+Скачиваем и ставим PowerShell
+Переключаемся в режим Azure: Switch-AzureMode -Name AzureResourceManager
+
+Авторизуемся: Add-AzureAccount
+
+Переключаемся на подписку: Select-AzureSubscription -SubscriptionName "name"
+
+Если не знаете какое имя указать, то список подписок можно получить командой:Get-AzureSubscription
+
+ Нас интересует поле Name данные из него необходимо подставить в опцию -SubscriptionName.
+Подробнее о днс в Azure.Шаг второй
+Создаём новую корневую зону (или получаем имеющуюся):$zone = New-AzureDnsZone -Name domain.com -ResourceGroupName "Group-1"
+
+или$zone = Get-AzureDnsZone -Name domain.com -ResourceGroupName "Group-1"
+
+Информацию по созданной зоне можно посмотреть командой: Get-AzureDnsRecordSet –Name “@” –RecordType NS –Zone $zone
+Шаг третий
+Добавляем А запись:New-AzureDnsRecordSet -Name "@" -Zone $zone -RecordType "A" -Ttl 300 | Add-AzureDnsRecordConfig -Ipv4Address "1.2.3.4" | Set-AzureDnsRecordSet
+
+или по имени зоныNew-AzureDnsRecordSet -Name "@" –ZoneName domain.com -ResourceGroupName "Group-1" -RecordType "A" -Ttl 300 | Add-AzureDnsRecordConfig -Ipv4Address "1.2.3.4" | Set-AzureDnsRecordSet
+Подробнее о поддерживаемых записях.Шаг четрые
+Смотрим ns-серверы по зоне:Get-AzureDnsRecordSet -Zone $zone -Name "@" -RecordType NS
+
+И добавляем их у своего регистратора.
+Повторяем шаги нужное количество раз. Посмотреть список уже добавленных зон можно командой:Get-AzureDnsZone -ResourceGroupName Group-1
+Добавляем поддоменNew-AzureDnsZone -Name "test.domain.com" -ResourceGroupName "Group-1"
+New-AzureDnsRecordSet -Name "@" -ZoneName "test.domain.com" -ResourceGroupName "Group-1" -RecordType "A" -Ttl 300 | Add-AzureDnsRecordConfig -Ipv4Address "1.2.3.4" | Set-AzureDnsRecordSet
+
+$parent = Get-AzureDnsZone -Name "domain.com" -ResourceGroupName "Group-1"
+$child = Get-AzureDnsZone -Name "test.domain.com" -ResourceGroupName "Group-1"
+
+$child_ns_recordset = Get-AzureDnsRecordSet -Zone $child -Name "@" -RecordType NS
+$parent_ns_recordset = New-AzureDnsRecordSet -Zone $parent -Name "test" -RecordType NS -Ttl 3600
+$parent_ns_recordset.Records = $child_ns_recordset.Records
+Set-AzureDnsRecordSet -RecordSet $parent_ns_recordset 
+
+PS: а еще лучше воспользоваться утилитой хабраюзера  leschenko, за что ему огромная благодарность!
+Благодарю за внимание.
+
+      
+      
+    

@@ -1,0 +1,200 @@
+﻿#TITLE:Как создать слайдер изображений в почтовом сообщении
+
+      Примечание переводчика: В нашем блоге мы уже неоднократно рассказывали о создании интерактивных email-рассылок с помощью CSS и HTML. Сегодня мы представляем вашему вниманию адаптированный перевод материалов из блога Fresh Inbox о том, как создать слайдер изображений в email-сообщении, который будет отображаться на мобильных устройствах, а также в вебе и на десктопе.
+Данная статья описывает процесс создания слайдера из эскизов изображений для email-рассылок. Сначала мы сконцентрируемся на реализации слайдера под мобильное ПО, а в частности под родные email-клиенты iPhone и Android. Затем мы добавим поддержку стационарных платформ.
+Как вы можете видеть на скриншоте сверху, наша цель – слайдер с миниатюрами, расположенными выше основного изображения. В неподдерживаемых email-клиентах миниатюры отображаться не будут.
+Слайдер будет рассчитан только на одну ссылку, что хорошо подойдет в случае описания продукта с разных ракурсов (или, как в нашем случае, номера в отеле), но категорически не подходит при описании разных продуктов, где для каждого изображения требуется отдельная ссылка.
+В данной статье будет использоваться ряд техник, описанных в «Интерактивных изображениях для мобильной Email-рассылки», поэтому если у вас возникнут вопросы, вы всегда можете обратиться к вышеописанной статье за разъяснениями.  Подготовка ресурсов
+Для нашей реализации нам понадобится 4 миниатюры и 4 изображения обычного размера. Подберите размер миниатюр таким образом, чтобы они помещались на одной строке.Основное изображение и ссылка
+Для начала мы создадим div контейнер для нашего слайдера и присвоим ему класс «car-cont». Затем мы добавим основное изображение со ссылкой, а также создадим оберточный div вокруг них с классом «car-img». Ширину и высоту контейнера выставим согласно параметрам основного изображения.&lt;div class="car-cont" style="width:350px;height:263px;max-height:263px;
+  overflow:hidden;position:relative;"&gt;
+ &lt;div class="car-img"&gt;
+ &lt;a href="http://.../link "&gt;
+  &lt;img src="http://.../bed.jpg" width="350" height="263" 
+     border="0" alt="Hotel" style="display:block;"&gt;
+ &lt;/a&gt;&lt;/div&gt;
+&lt;/div&gt;  
+Добавление миниатюр и дополнительных изображений
+Теперь добавим миниатюры вместе с дополнительными изображениями. Так как миниатюры заняли бы дополнительное место по вертикали и, тем самым, вышли бы за рамки контейнера, нам необходимо скрыть их вместе с дополнительными изображениями, используя приемы из этой статьи.&lt;div class="car-cont" style="width:350px;height:263px;max-height:263px;
+  overflow:hidden;position:relative;"&gt;
+
+&lt;!--[if !mso]&gt;&lt;!-- --&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;
+  &lt;img src="http://.../images/thumb-bed.jpg"&gt;
+&lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px; height:0px; overflow: hidden;"&gt;
+  &lt;img src="http://.../images/thumb-table.jpg"&gt;
+&lt;/div&gt;
+  &lt;div class="car-img" style="max-height:0px;height:0px;overflow:hidden;"&gt;
+  &lt;img src="http://.../images/table.jpg" width="350" height="263" 
+    border="0" style="display:block;"&gt;
+  &lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;
+  &lt;img src="http://.../images/thumb-pool.jpg"&gt;
+&lt;/div&gt;
+  &lt;div class="car-img" style="max-height:0px; height:0px; overflow: hidden;"&gt;
+  &lt;img src="http://.../images/pool.jpg" width="350" height="263" 
+    border="0" style="display:block;"&gt;
+  &lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;
+  &lt;img src="http://.../images/thumb-balcony.jpg"&gt;
+&lt;/div&gt;
+  &lt;div class="car-img" style="max-height:0px;height:0px;overflow:hidden;"&gt;
+  &lt;img src="http://.../images/balcony.jpg" width="350" height="263" 
+  border="0" style="display:block;"&gt;
+  &lt;/div&gt;
+&lt;!--&lt;![endif]--&gt;
+
+ &lt;div class="car-img"&gt;
+ &lt;a href="http://.../link"&gt;
+  &lt;img src="http://.../images/bed.jpg" width="350" height="263" border="0" 
+  alt="Hotel" style="display:block;"&gt;&lt;/a&gt;
+ &lt;/div&gt;
+&lt;/div&gt;
+
+Обратите внимание, что мы чередуем все миниатюры (car-thumb), кроме первой, со связанными с ними полноразмерными изображениями (car-img). 
+Подобное чередование нам необходимо для того, чтобы при нажатии пользователем на миниатюру (происходит активация псевдо-класса :hover), мы бы могли использовать родственный селектор CSS («+») для вывода соответствующего полного изображения (см. объяснение в примере):.car-thumb:hover + .car-img {...}
+Вместо того, чтобы размещать основное изображение рядом с первой миниатюрой, мы оставляем его внизу. Подобный шаг дает нам возможность упростить процесс скрытия интерактивного контента, путем его отделения от основного изображения. Также это позволит размещать данное изображение сверху стека при использовании абсолютного позиционирования в дальнейшем.CSS-стили
+Так как первая версия слайдера будет работать только с мобильными платформами, обернем весь CSS блок в media запрос.&lt;style&gt;
+ @media screen and (max-device-width: 1024px) {
+    div[class].car-cont{
+      height:327px !important;
+      max-height:327px !important;
+    }
+    div[class].car-thumb, div[class].car-thumb img
+    {
+      display: inline-block;
+      max-height: none !important;  
+      width:87px;
+      height:65px !important;
+      cursor: pointer;
+    }
+    div[class].car-img{
+      height: auto !important;
+      max-height: none !important;
+      position: absolute;
+      left:0px;
+      top: 65px;    
+    }
+    div[class].car-thumb:hover + .car-img
+    {
+      z-index:2;
+    }
+}
+&lt;/style&gt;
+
+Рассмотрим код более подробно:
+Сначала мы увеличиваем высоту контейнера для того, чтобы туда вместились миниатюры.div[class].car-cont{
+  height:327px !important;
+  max-height:327px !important;
+}
+
+Затем мы устанавливаем высоту и ширину миниатюр (car-thumb), а также выставляем свойство display в «inline-block», тем самым расположив миниатюры в ряд слева направо.div[class].car-thumb, div[class].car-thumb img
+{
+  display: inline-block;
+  max-height: none !important;  
+  width:87px;
+  height:65px;
+}
+
+После этого мы устанавливаем абсолютное позиционирование для полноразмерных изображений и размещаем их ниже миниатюр. Теперь все 4 изображения, в виде стека, расположены в одной и том же месте на странице. При этом видимым будет только последнее изображение из стека.div[class].car-img{
+  height: auto !important;
+  max-height: none !important;
+  position: absolute;
+  left:0px;
+  top: 65px;    
+}
+
+И, наконец, мы используем родственный селектор для изменения свойства z-index у связанного с миниатюрой полноразмерного изображения. Это необходимо для того, чтобы разместить его поверх основного изображения, после нажатия пользователем на миниатюру.div[class].car-thumb:hover + .car-img
+{
+  z-index:2;
+}
+Итог
+Рассмотренный пример работает на родных email-клиентах iPhone и Android (2.3 и 4.0). Мобильные приложения и мобильные web-клиенты Yahoo! Mail, Outlook.com или Gmail отобразят только основное изображение без миниатюр.
+Как видите, создание слайдера изображений для мобильных почтовых клиентов является достаточно тривиальным процессом. Для того, чтобы заставить слайдер работать в web-клиентах и Outlook 2003, понадобится несколько больше усилий.Web и стационарные клиенты
+В первой части мы разобрались с созданием слайдера изображений с использованием миниатюр для мобильных email-клиентов. В этой статье мы пойдем дальше и добавим поддержку web и стационарных клиентов (таких, как Yahoo! Mail, Outlook.com и Outlook 2003).
+В данном случае нам придется приложить несколько больше усилий, чем в первой части, поэтому если вам просто нужен пример кода, то в конце статьи приведена его финальная версия. Отсутствие поддержки абсолютного позиционирования для web-клиентов и Outlook
+Основной сложностью при использовании сложной разметки в данных клиентах является отсутствие поддержки тех или иных CSS стилей. В данном случае мы не можем использовать ключевое свойство из решения для мобильных платформ (абсолютное позиционирование или position: absolute).
+Абсолютное позиционирование позволяет размещать элементы в произвольных местах документа. Данное свойство было использовано нами для размещения изображений в виде стека в одном и том же месте в примере с мобильными платформами. Чтобы разместить то или иное изображение поверх остальных, достаточно было поменять значение z-index. 
+В случае с web и стационарными клиентами нам придется искать альтернативы.Перемещение элементов за пределы контейнера
+В данном примере HTML-разметка наших элементов (миниатюр и полноразмерных изображений) останется неизменной, но вместо расположения изображений в виде стека мы будем перемещать их за пределы &lt;div&gt; контейнера при наведении курсора на миниатюру. Это достигается путем ограничения размеров &lt;div&gt; контейнера (чтобы он вмещал только миниатюры и одно изображение), а также установкой свойства «overflow» в hidden для данного контейнера. Последнее скроет все элементы, которые не впишутся в размеры блока div.
+В нашей разметке элементы располагаются в следующем порядке:[миниатюра 1]
+[миниатюра 2]
+[изображение 2 – по умолчанию скрыто]
+[миниатюра 3]
+[изображение 3 — по умолчанию скрыто]
+[миниатюра 4]
+[изображение 4 — по умолчанию скрыто]
+[изображение 1]
+
+Для наглядности ниже представлена анимация ( контейнер обведен синей рамкой):Случай 1 – Начальное состояние
+При начальном отображении элементов, все миниатюры расположены горизонтально, а из полноразмерных изображений отображено первое.Случай 2 – Наведение курсора на миниатюры 2, 3, 4
+При наведении курсора на вторую миниатюру, активируется родственный селектор (+), и второе изображение становится видимым. Элементы, находящиеся справа от видимого изображения вместе с миниатюрами 3 и 4 перемещаются за пределы контейнера.
+Аналогичная картинка наблюдается и при наведении курсора на миниатюры 3 и 4. Как вы можете заметить, первое изображение отображается всегда, но оно невидимо, т.к. находится за рамками контейнера.Использование миниатюр в качестве фона
+Если при наведении курсора на миниатюру 2, миниатюры 3 и 4 переносятся за пределы контейнера, то как оставить их на экране?
+Вместо того, чтобы оформлять миниатюры отдельными элементами, разместим их рядом друг с другом в виде одного фонового изображения. Создадим 4 «мнимые миниатюры» и наложим их сверху на настоящие миниатюры. Мнимые миниатюры представляют собой &lt;DIV&gt; элементы, содержащие в себе прозрачные изображения. Таким образом, при переносе миниатюр за пределы контейнера, визуально миниатюры останутся на экране.
+В этом и заключается основное отличие слайдера для мобильных платформ от подобного элемента для web и стационарных клиентов.Outlook 2003
+В заключении стоит отметить, что, как ни странно, это решение работает и для Outlook 2003, если при этом вы укажите корректный doctype (указывается до открывающегося тега &lt;html&gt;: &lt;!DOCTYPE html …&gt;)
+Если doctype явно не указывать, то слайдер отобразится корректно, но при этом он не будет реагировать на наведение курсора.Итоговая разметка
+Ниже представлен код финальной версии слайдера, который поддерживает как мобильные, так и другие платформы.&lt;style&gt;
+  .car-cont{
+    height:327px !important;
+    max-height:327px !important;
+  }
+  .car-img{
+    max-height: none !important;
+    width:auto !important;
+    height: auto !important;  
+    display: none;
+  }
+  .car-img-1{
+    clear:left;
+    display:block;
+  }
+  .car-thumb, .car-thumb img
+  {
+    display: inline-block;
+    float: left;  
+    max-height: none !important;  
+    width:87px;
+    height:65px !important;
+    cursor: pointer;
+  }
+  .car-thumb:hover + .car-img
+  {
+    clear:both;
+    display:block !important;
+  }
+}
+ @media screen and (max-device-width: 1024px) {
+  div[class].car-img{
+    position: absolute;
+    left:0px;
+    top: 65px;    
+  }
+  div[class].car-thumb:hover + .car-img
+  {
+    z-index:2;
+  }
+&lt;/style&gt;
+&lt;table cellpadding=0 border=0 cellspacing=0 style="border-spacing:0px;border-collapse: collapse;"&gt;
+&lt;tr&gt;&lt;td background="http://freshinbox.com/examples/carousel/images/thumbs-background.jpg"&gt;
+&lt;div class="car-cont" style="width:350px;height:263px;max-height:263px;overflow:hidden;position:relative;"&gt;
+&lt;div style="mso-hide:all;"&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/blank.gif"&gt;&lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/blank.gif"&gt;&lt;/div&gt;
+&lt;div class="car-img" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/i-table.jpg" width="350" height="263" border="0" style="display:block;"&gt;&lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/blank.gif"&gt;&lt;/div&gt;
+&lt;div class="car-img" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/i-pool.jpg" width="350" height="263" border="0" style="display:block;"&gt;&lt;/div&gt;
+&lt;div class="car-thumb" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/blank.gif"&gt;&lt;/div&gt;
+&lt;div class="car-img" style="max-height:0px;height:0px;overflow:hidden;"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/i-balcony.jpg" width="350" height="263" border="0" style="display:block;"&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="car-img car-img-1"&gt;&lt;a href="http://www.omnihotels.com/FindAHotel/AmeliaIsland.aspx"&gt;&lt;img src="http://freshinbox.com/examples/carousel/images/i-bed.jpg" width="350" height="263" border="0" alt="Hotel" style="display:block;"&gt;&lt;/a&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+РезюмеСоздать рабочий слайдер только для мобильных платформ намного проще.
+Потратив немного дополнительных усилий, можно создать слайдер, который также будет работать в Yahoo! Mail, Outlook.com, AOL и Outlook 2003.
+
+Теперь бы еще разработчики Gmail поспешили с добавлением поддержки встроенных стилей, и тогда еще больше пользователей смогли бы оценить ваши труды в создании интерактивных email-рассылок!
+      
+    

@@ -1,0 +1,640 @@
+﻿#TITLE:О бедной XWiki замолвите слово
+
+      Пролог.
+"Ежели Вы вежливы,
+То говорите: "Здрасти".
+А ежли Вам ответят: "Нет",
+Сдерживайте страсти!" (с)
+Однажды… когда в очередной раз, выполняя рутинную работу, Ты будешь, теряя время, вспоминать: в каком из вариантов проекта и по какой причине были внесены изменения в расчеты, оформление или текст… о Пользователь — знай, что для тебя настало время борьбы со Страстями за Структурирование! Структурирование, или стратегия организации разрозненной информации, упирается в возможности и способности конкретного человека, продуктивность которого всецело зависит от тех инструментов которыми он пользуется для этих целей, будь то блокнот или АСУ.
+На сегодняшний день существует огромное количество таких инструментов прямо и косвенных решающих эту задачу, с разной степенью эффективности, но на мой взгляд будущее за продуктами интегрирующие в себя не только инструменты ввода, сортировки, представления и оформления данных, но так же содержащие инструменты аналитики, программирования и поиска. XWiki, как представителю такого направления и будет посвящена сея статья, которая будет включать в себя обзор, установку и настройку Вики-движка, которая будет интересная как новичкам, так и продвинутым пользователям.
+Добро пожаловать под Cut (осторожно — трафик, картинки)Экспозиция
+О Вики-движке XWiki в русскоязычном сегменте Интернета почти ничего нет, кроме общей информации и парочки руководств, что на мой взгляд категорически неверно, ибо это замечательный инструмент и помощник, со своими плюсами и минусами, конечно. XWiki — это Вики-движок второго поколения, который характеризуются возможностью структуризации информации и программного доступа к базе вики. Написан на языке Java, лицензия распространения LGPL, функциональность включает в себя блог, инструменты API, комментарии, аутентификацию по LDAP, экспорт страниц в PDF. Используется многими компаниями по всему миру. 25 языков интерфейса, включая русский. Так же более подробно желающие могут сравнить на wikimatrix с наиболее распространенными в Рунете Вики-движками: DokuWiki и MediaWiki.Завязка
+Скачать последнюю, на момент написания статьи, версию XWiki 7.1.2 можно по следующей ссылке: http://enterprise.xwiki.org/xwiki/bin/view/Main/Download
+Варианты установки поддерживают: Windows, Debian, веб-контейнер (веб-сервер) — *.war, мультисистемный формат — *.jar и портативную версию вики на базе связки Jetty+HSQLDB, которая, ИМХО, наиболее удобна для настройки/эксплуатации Пользователем как в Windows, так и в Linux. О ней и пойдет речь.
+Для того чтобы установить Xwiki, необходимо чтобы в системе была установлена Java, а так же распаковать файлы из архива ZIP в корень диска (также рекомендуется переименовать папку до более короткого пути, например так: "D:\xwiki-7.1.2"). Запуск осуществляется файлом start_xwiki.bat, в котором уже прописаны все необходимые настройки.
+Теперь нам необходимо открыть окно web-браузера (окно консоли при этом закрывать категорически не рекомендуется), и ввести указанный URL из консоли, в нашем случае это: panther.itme.info:8080/xwiki/bin/view/Main/
+Здесь так же стоит добавить, что порт по умолчанию, с которого стартует XWiki — 8080, если по тем или иным причинам он у вас занят, то его можно изменить, отредактировав через Блокнот start_xwiki.bat.
+После загрузки в браузере откроется следующее окно:
+Из интересного здесь ссылка на гайд на английском — Documentation, но нас будет интересовать совершенно другое, а именно кликаем в правом верхнем углу на Log-in и вводим для входа в админку:
+Login:        Admin
+Password: admin
+Здесь стоит отметить, что в этом месте регистр имеет значение!
+Здесь хочу остановиться на следующем:
+1. Боковые панели приобрела дополнительный функционал, который настраивается Пользователем.
+2. Функционал в XWiki позволяет на страницах редактировать не только текст, с помощью обычного или WYSIWYG редактора, выводя его в колонки с помощью редактирования Inline form, но и вставлять гаджеты на страницу. Под гаджетом в XWiki понимается выводимый в некоторой области Макрос, т.е. вызов одной или последовательности команд, в частности это может быть ссылка на другую страницу или даже ленту блога, облако тэгов, формы для отправки сообщений и т.д. и т.п.
+Макросы в XWiki по сути являются основой данного движка, именно благодаря им Пользователь может настроить практически все, будь то: свое мини-приложение, внешний вид страниц и панелей или интеграция собственного расширения (плагина).Развитие
+Здесь нужно немного отвлечься и рассказать об организационной структуре XWiki, а именно о жизненном цикле вики-страниц. Здесь есть одна тонкость, а именно: Пользователь может создавать Page и Space, и если с Page'ами все более или менее понятно, то при создании Space создается Заголовок области, внутри которого будет создано автоматом Page с именем WebHome, но при этом выводится будет всюду Заголовок области, а адресация будет на WebHome, что может создать некоторые трудности при ссылке на страницу. При этом нет ограничений по уровню вложения, которые можно делать как к Space, так и к Page.
+Макросы.
+Для начала необходимо выбрать страницу для редактирования и войти в редактор.
+Затем необходимо набрать либо в текстовом режиме сам макрос, вместе с параметрами, либо, воспользовавшись графическим интерфейсом выбрать необходимый макрос из списка.
+и заполнить необходимые поля:
+Но это все была лирика, давайте перейдем к практике и начнем мы с настройки интерфейса. Для этого необходимо кликнуть на левой панели на пиктограмму Panels и в открывшейся странице запустить Panel Wizard. Перед нами предстанет интерфейс настроек администратора, открытый во вкладке Panel Wizard. альтернативный и основной способ перейти к настройкам XWiki — это клик по стрелочке в верхнем выпадающем списке рядом с Home и выбор пункта Administer Wiki.
+Вкладка на странице настроек панели Page Layout позволяет настроить расположение, число и ширину колонок нашей вики. Соседствующая рядом вкладка Panel List включает в себя приложения (макросы), которое может быть расположено на наших полях, при этом они включают в себя окошко предпросмотра, а так же управляющие элементы включения/исключения и редактирования содержимого и функций. Предпросмотр для соответствующих приложений, находящихся в виде кнопок и функционала на полях, выключен. Для того что бы настроить функционал приложения — необходимо кликнуть на Edit, что бы удалить макрос — кликнуть на Delete, что бы убрать/поместить на панель приложение/функционал — перетащить используя метод Drag and Drop.
+Теперь мы сделаем правую панель навигационной, для этого убираем с правой панели Quick Links и My Recent Modifications и добавляем Tag Cloud, Navigation и Create Page, кликаем на Save the new Layout при этом заходим в правку Navigation и вставляем следующий код, который сделает наш серфинг более удобным:код для Content{{velocity}}
+#panelheader($services.localization.render('xe.panels.navigation'))
+## Escape special characters in macro parameter values.
+#set ($openToDoc = $doc.documentReference.toString().replaceAll('([~"])', '~$1'))
+{{documentTree showSpaces="false" showWikis="true" showTranslations="false" showAttachments="true"
+showChildDocuments="true" compact="true" openTo="document:$openToDoc" /}}
+#panelfooter()
+{{/velocity}}
+
+Что нам это дает? Это дает отображение древовидную структуру для навигации между вложениями, Pages и Spaces, без вывода дополнительной отвлекающей информации. Теперь настало самое внести вдохнуть краски в наш новый сайт и уйти от плоского интерфейса. Для этого выбираем в меню LOOK &amp; FEEL пункт Presentation. Здесь мы меняем Icon Theme на Silk и Color Theme на Garden.
+Вуаля.
+Теперь пора подумать и о медиа инструментах, а именно — какой же блог без галереи и графики? К сожалению встроенной галереи XWiki не имеет, а потому придется потрудиться что бы установить и настроить дополнение (Extensions), для этого заходим в меню EXTENSION MANAGER пункт Add Extensions. Здесь можно из веб репозитория установить необходимые дополнения, в данном случае нас будет интересовать плагин Lightbox Macro, с помощью которого удобно организовывать слайд шоу, а так же объединять по группам картинки. Для установки вводим в строку поиска слово lightbox и в полученном результате поиска кликаем install.
+Теперь переходим на главную страницу нашей XWiki и здесь в панели Navigation мы обнаружим 2 новых Space Lightbox и LightboxMacro. Значит наступило самое время применить макрос в дело, для этого создаем тестовый Space под именем Test page и во вкладке Attachments загружаем картинки для тестирования галереи, в нашем случае это будут фотографии со дня празднования 9го мая 2014 года снятые на ничем не примечательный китайфон на Андроиде Jiayu G3.Код для галереи{{velocity}}
+#set($myArray=$doc.AttachmentList)
+#set($myArray=$sorttool.sort($myArray, 'filename'))
+#foreach ($item in $myArray)#if($item.isImage()){{lightbox image=$item.filename title="Hello" width="20%" group="d1" height="20%"/}}#end#end
+{{/velocity}}
+
+Текст кода интерпретируется следующим образом: в массив $myArray закладывается список вложений на странице, затем производится сортировка по имени (для тех случаев если загруженные файлы с камеры были загружены в разнобой, но в то же время хранят в имени файла дату и время съемки, или хотя бы нумерации очередности снимков). После чего для каждого вложения, если оно есть изображение, выводится миниатюра высотой 20% от оригинала. Здесь так же нужно сказать, что параметры макроса включают в себя следующие пункты:Param
+Description
+image(required)
+An url or the attached image file. For example, "cat.jpg" or "xwiki:Space.Page@cat.jpg" or "www.google.com/logos/wateronmoon09-hp.gif"
+title
+A short description
+width
+The width of the image.
+height
+The height of the image.
+group
+A string that identify it as a member of a group. A group of images can be viewed as a series of slides.
+
+Чем удобен этот макрос? Тем, что автоматизирует процесс вывода вложений вне зависимости от того сколько, каких изображений и под каким именем были загружены. Так же можно кликнуть на любую из миниатюр и во всплывающем окне будет выведено понравившееся фото, что так же является несомненным плюсом. Но ложечкой дегтя в данном случае будет тот факт, что во всплывающем окне изображение будет открыто в оригинальном размере, что не всегда удобно, особенно, если это разрешение превышает рабочее разрешение экрана монитора. В таком случае делаем следующее:
+1. Переходим по ссылке на страницу макроса Lightbox;
+2. Кликаем на стрелочке меню Edit и в раскрывшемся списке выпадающего меню выбираем Objects;
+3. В новом окне переходим к коду развернув списки Objects of type XWiki.JavaScriptExtension (1) и Objects of type XWiki.StyleSheetExtension (1);
+4. Теперь в код JS вносим следующие изменения:изменения в код JS+ resizeSpeed: 10, // controls the speed of the image resizing animations (1=slowest and 10=fastest)
+...
++ var maxheight = 640;
++ if(imgPreloader.height &gt; maxheight)
++ {
++ var scale = imgPreloader.height/maxheight
++ imgPreloader.height = maxheight;
++ imgPreloader.width = imgPreloader.width/scale;
++ }
+…Код целиком с учетом исправлений
+//----------------------------------------------------------------------------
+//
+// Lightbox v2.04
+// by Lokesh Dhakar - http://www.lokeshdhakar.com
+//
+// Licensed under the Creative Commons Attribution 2.5 License - http://creativecommons.org/licenses/by/2.5/
+//  - Free for use in both personal and commercial projects
+// - Attribution requires leaving author name, author link, and the license info intact.
+//
+// Cleaned up using jslint.
+//----------------------------------------------------------------------------------
+/*global LightboxOptions, Lightbox, Builder, Class, Prototype, $, $$, $w , Effect*/
+LightboxOptions = Object.extend({
+fileLoadingImage:        '$doc.getAttachmentURL("loading.gif")',
+fileBottomNavCloseImage: '$doc.getAttachmentURL("closelabel.gif")',
+overlayOpacity: 0.8,   // controls transparency of shadow overlay
+animate: true,         // toggles resizing animations
+resizeSpeed: 10,        // controls the speed of the image resizing animations (1=slowest and 10=fastest)
+borderSize: 10,         //if you adjust the padding in the CSS, you will need to update this variable
+// When grouping images this is used to write: Image # of #.
+// Change it for non-english localization
+labelImage: "Image",
+labelOf: "of"
+}, window.LightboxOptions || {});
+// -----------------------------------------------------------------------------------
+var Lightbox = Class.create();
+Lightbox.prototype = {
+imageArray: [],
+activeImage: undefined,
+// initialize()
+// Constructor runs on completion of the DOM loading. Calls updateImageList and then
+// the function inserts html at the bottom of the page which is used to display the shadow
+// overlay and the image container.
+//
+initialize: function () {
+this.updateImageList();
+this.keyboardAction = this.keyboardAction.bindAsEventListener(this);
+if (LightboxOptions.resizeSpeed &gt; 10) {
+LightboxOptions.resizeSpeed = 10;
+}
+if (LightboxOptions.resizeSpeed &lt; 1)  {
+LightboxOptions.resizeSpeed = 1;
+}
+this.resizeDuration = LightboxOptions.animate ? ((11 - LightboxOptions.resizeSpeed) * 0.15) : 0;
+this.overlayDuration = LightboxOptions.animate ? 0.2 : 0;  // shadow fade in/out duration
+// When Lightbox starts it will resize itself from 250 by 250 to the current image dimension.
+// If animations are turned off, it will be hidden as to prevent a flicker of a
+// white 250 by 250 box.
+var size = (LightboxOptions.animate ? 250 : 1) + 'px';
+// Code inserts html at the bottom of the page that looks similar to this:
+//
+//  &lt;div id="overlay"&gt;&lt;/div&gt;
+//  &lt;div id="lightbox"&gt;
+//      &lt;div id="outerImageContainer"&gt;
+//          &lt;div id="imageContainer"&gt;
+//              &lt;img id="lightboxImage"&gt;
+//              &lt;div style="" id="hoverNav"&gt;
+//                  &lt;a href="#" id="prevLink"&gt;&lt;/a&gt;
+//                  &lt;a href="#" id="nextLink"&gt;&lt;/a&gt;
+//              &lt;/div&gt;
+//              &lt;div id="loading"&gt;
+//                  &lt;a href="#" id="loadingLink"&gt;
+//                      &lt;img src="images/loading.gif"&gt;
+//                  &lt;/a&gt;
+//              &lt;/div&gt;
+//          &lt;/div&gt;
+//      &lt;/div&gt;
+//      &lt;div id="imageDataContainer"&gt;
+//          &lt;div id="imageData"&gt;
+//              &lt;div id="imageDetails"&gt;
+//                  &lt;span id="caption"&gt;&lt;/span&gt;
+//                  &lt;span id="numberDisplay"&gt;&lt;/span&gt;
+//              &lt;/div&gt;
+//              &lt;div id="bottomNav"&gt;
+//                  &lt;a href="#" id="bottomNavClose"&gt;
+//                      &lt;img src="images/close.gif"&gt;
+//                  &lt;/a&gt;
+//              &lt;/div&gt;
+//          &lt;/div&gt;
+//      &lt;/div&gt;
+//  &lt;/div&gt;
+var objBody = $$('body')[0];
+objBody.appendChild(Builder.node('div', {id: 'overlay'}));
+objBody.appendChild(Builder.node('div', {id: 'lightbox'}, [
+  Builder.node('div', {id: 'outerImageContainer'},
+      Builder.node('div', {id: 'imageContainer'}, [
+          Builder.node('img', {id: 'lightboxImage'}),
+          Builder.node('div', {id: 'hoverNav'}, [
+              Builder.node('a', {id: 'prevLink', href: '#' }),
+              Builder.node('a', {id: 'nextLink', href: '#' })
+          ]),
+          Builder.node('div', {id: 'loading'},
+              Builder.node('a', {id: 'loadingLink', href: '#' },
+                  Builder.node('img', {src: LightboxOptions.fileLoadingImage})
+              )
+          )
+      ])
+  ),
+  Builder.node('div', {id: 'imageDataContainer'},
+      Builder.node('div', {id: 'imageData'}, [
+          Builder.node('div', {id: 'imageDetails'}, [
+              Builder.node('span', {id: 'caption'}),
+              Builder.node('span', {id: 'numberDisplay'})
+          ]),
+          Builder.node('div', {id: 'bottomNav'},
+              Builder.node('a', {id: 'bottomNavClose', href: '#' },
+                  Builder.node('img', { src: LightboxOptions.fileBottomNavCloseImage })
+              )
+          )
+      ])
+  )
+]));
+$('overlay').hide().observe('click', (function () {
+this.end();
+}).bind(this));
+$('lightbox').hide().observe('click', (function (event) {
+if (event.element().id == 'lightbox') {
+this.end();
+}
+}).bind(this));
+$('outerImageContainer').setStyle({ width: size, height: size });
+$('prevLink').observe('click', (function (event) {
+event.stop();
+this.changeImage(this.activeImage - 1);
+}).bindAsEventListener(this));
+$('nextLink').observe('click', (function (event) {
+event.stop();
+this.changeImage(this.activeImage + 1);
+}).bindAsEventListener(this));
+$('loadingLink').observe('click', (function (event) {
+event.stop();
+this.end();
+}).bind(this));
+$('bottomNavClose').observe('click', (function (event) {
+event.stop();
+this.end();
+}).bind(this));
+var th = this;
+(function () {
+  var ids =
+      'overlay lightbox outerImageContainer imageContainer lightboxImage hoverNav prevLink nextLink loading loadingLink ' +
+      'imageDataContainer imageData imageDetails caption numberDisplay bottomNav bottomNavClose';
+  $w(ids).each(function (id) {
+th[id] = $(id);
+});
+}).defer();
+},
+//
+// updateImageList()
+// Loops through anchor tags looking for 'lightbox' references and applies onclick
+// events to appropriate links. You can rerun after dynamically adding images w/ajax.
+//
+updateImageList: function () {
+this.updateImageList = Prototype.emptyFunction;
+document.observe('click', (function (event) {
+  var target = event.findElement('a[rel^=lightbox]') || event.findElement('area[rel^=lightbox]');
+  if (target) {
+      event.stop();
+      this.start(target);
+  }
+}).bind(this));
+},
+//
+//  start()
+//  Display overlay and lightbox. If image is part of a set, add siblings to imageArray.
+//
+start: function (imageLink) {
+$$('select', 'object', 'embed').each(function (node) {
+node.style.visibility = 'hidden';
+});
+// stretch overlay to fill page and fade in
+var arrayPageSize = this.getPageSize();
+$('overlay').setStyle({ width: arrayPageSize[0] + 'px', height: arrayPageSize[1] + 'px' });
+var effect = new Effect.Appear(this.overlay, { duration: this.overlayDuration, from: 0.0, to: LightboxOptions.overlayOpacity });
+this.imageArray = [];
+var imageNum = 0;
+if ((imageLink.rel == 'lightbox')) {
+  // if image is NOT part of a set, add single image to imageArray
+  this.imageArray.push([imageLink.href, imageLink.title]);
+} else {
+  // if image is part of a set..
+  this.imageArray =
+      $$(imageLink.tagName + '[href][rel="' + imageLink.rel + '"]').
+      collect(function (anchor) {
+return [anchor.href, anchor.title];
+}).
+      uniq();
+  while (this.imageArray[imageNum][0] != imageLink.href) {
+imageNum++;
+}
+}
+// calculate top and left offset for the lightbox
+var arrayPageScroll = document.viewport.getScrollOffsets();
+var lightboxTop = arrayPageScroll[1] + (document.viewport.getHeight() / 10);
+var lightboxLeft = arrayPageScroll[0];
+this.lightbox.setStyle({ top: lightboxTop + 'px', left: lightboxLeft + 'px' }).show();
+this.changeImage(imageNum);
+},
+//
+//  changeImage()
+//  Hide most elements and preload image in preparation for resizing image container.
+//
+changeImage: function (imageNum) {
+this.activeImage = imageNum; // update global var
+// hide elements during transition
+if (LightboxOptions.animate) {
+this.loading.show();
+}
+this.lightboxImage.hide();
+this.hoverNav.hide();
+this.prevLink.hide();
+this.nextLink.hide();
+// HACK: Opera9 does not currently support scriptaculous opacity and appear fx
+this.imageDataContainer.setStyle({opacity: 0.0001});
+this.numberDisplay.hide();
+var imgPreloader = new Image();
+// once image is preloaded, resize image container
+imgPreloader.onload = (function () {
+  var maxheight = 640;
+  if(imgPreloader.height &gt; maxheight)
+    {
+    var scale = imgPreloader.height/maxheight
+    imgPreloader.height = maxheight;
+    imgPreloader.width = imgPreloader.width/scale;
+     }
+       
+  this.lightboxImage.src = this.imageArray[this.activeImage][0];
+  this.resizeImageContainer(imgPreloader.width, imgPreloader.height);
+}).bind(this);
+imgPreloader.src = this.imageArray[this.activeImage][0];
+},
+//
+//  resizeImageContainer()
+//
+resizeImageContainer: function (imgWidth, imgHeight) {
+// get current width and height
+var widthCurrent  = this.outerImageContainer.getWidth();
+var heightCurrent = this.outerImageContainer.getHeight();
+// get new width and height
+var widthNew  = (imgWidth  + LightboxOptions.borderSize * 2);
+var heightNew = (imgHeight + LightboxOptions.borderSize * 2);
+// scalars based on change from old to new
+var xScale = (widthNew  / widthCurrent)  * 100;
+var yScale = (heightNew / heightCurrent) * 100;
+// calculate size difference between new and old image, and resize if necessary
+var wDiff = widthCurrent - widthNew;
+var hDiff = heightCurrent - heightNew;
+if (hDiff != 0) {
+var scaleXEffect = new Effect.Scale(this.outerImageContainer, yScale, {scaleX: false, duration: this.resizeDuration, queue: 'front'});
+}
+if (wDiff != 0) {
+var scaleYEffect = new Effect.Scale(this.outerImageContainer, xScale, {scaleY: false, duration: this.resizeDuration, delay: this.resizeDuration});
+}
+// if new and old image are same size and no scaling transition is necessary,
+// do a quick pause to prevent image flicker.
+var timeout = 0;
+if ((hDiff == 0) &amp;&amp; (wDiff == 0)) {
+  timeout = 100;
+  if (Prototype.Browser.IE) {
+timeout = 250;
+}
+}
+(function () {
+  this.prevLink.setStyle({ height: imgHeight + 'px' });
+  this.nextLink.setStyle({ height: imgHeight + 'px' });
+  this.imageDataContainer.setStyle({ width: widthNew + 'px' });
+  this.showImage();
+}).bind(this).delay(timeout / 1000);
+},
+//
+//  showImage()
+//  Display image and begin preloading neighbors.
+//
+showImage: function () {
+this.loading.hide();
+var effectAppear = new Effect.Appear(this.lightboxImage, {
+  duration: this.resizeDuration,
+  queue: 'end',
+  afterFinish: (function () {
+this.updateDetails();
+}).bind(this)
+});
+this.preloadNeighborImages();
+},
+//
+//  updateDetails()
+//  Display caption, image number, and bottom nav.
+//
+updateDetails: function () {
+// if caption is not null
+if (this.imageArray[this.activeImage][1] != "") {
+  this.caption.update(this.imageArray[this.activeImage][1]).show();
+}
+// if image is part of set display 'Image x of x'
+if (this.imageArray.length &gt; 1) {
+  this.numberDisplay.update(LightboxOptions.labelImage + ' ' + (this.activeImage + 1) + ' ' + LightboxOptions.labelOf + '  ' + this.imageArray.length).show();
+}
+var effectParallel = new Effect.Parallel(
+  [
+new Effect.SlideDown(this.imageDataContainer, { sync: true, duration: this.resizeDuration, from: 0.0, to: 1.0 }),
+      new Effect.Appear(this.imageDataContainer, { sync: true, duration: this.resizeDuration })
+  ],
+  {
+      duration: this.resizeDuration,
+      afterFinish: (function () {
+     // update overlay size and update nav
+     var arrayPageSize = this.getPageSize();
+     this.overlay.setStyle({ height: arrayPageSize[1] + 'px' });
+     this.updateNav();
+      }).bind(this)
+  }
+);
+},
+//
+//  updateNav()
+//  Display appropriate previous and next hover navigation.
+//
+updateNav: function () {
+this.hoverNav.show();      
+// if not first image in set, display prev image button
+if (this.activeImage &gt; 0) {
+this.prevLink.show();
+}
+// if not last image in set, display next image button
+if (this.activeImage &lt; (this.imageArray.length - 1)) {
+this.nextLink.show();
+}
+this.enableKeyboardNav();
+},
+//
+//  enableKeyboardNav()
+//
+enableKeyboardNav: function () {
+document.observe('keydown', this.keyboardAction);
+},
+//
+//  disableKeyboardNav()
+//
+disableKeyboardNav: function () {
+document.stopObserving('keydown', this.keyboardAction);
+},
+//
+//  keyboardAction()
+//
+keyboardAction: function (event) {
+var keycode = event.keyCode;
+var escapeKey;
+if (event.DOM_VK_ESCAPE) {  // mozilla
+  escapeKey = event.DOM_VK_ESCAPE;
+} else { // ie
+  escapeKey = 27;
+}
+var key = String.fromCharCode(keycode).toLowerCase();
+if (key.match(/x|o|c/) || (keycode == escapeKey)) { // close lightbox
+  this.end();
+} else if ((key == 'p') || (keycode == 37)) { // display previous image
+  if (this.activeImage != 0){
+      this.disableKeyboardNav();
+      this.changeImage(this.activeImage - 1);
+  }
+} else if ((key == 'n') || (keycode == 39)) { // display next image
+  if (this.activeImage != (this.imageArray.length - 1)) {
+      this.disableKeyboardNav();
+      this.changeImage(this.activeImage + 1);
+  }
+}
+},
+//
+//  preloadNeighborImages()
+//  Preload previous and next images.
+//
+preloadNeighborImages: function () {
+var preloadNextImage, preloadPrevImage;
+if (this.imageArray.length &gt; this.activeImage + 1) {
+  preloadNextImage = new Image();
+  preloadNextImage.src = this.imageArray[this.activeImage + 1][0];
+}
+if (this.activeImage &gt; 0) {
+  preloadPrevImage = new Image();
+  preloadPrevImage.src = this.imageArray[this.activeImage - 1][0];
+}
+},
+//
+//  end()
+//
+end: function () {
+this.disableKeyboardNav();
+this.lightbox.hide();
+var effectFade = new Effect.Fade(this.overlay, { duration: this.overlayDuration });
+$$('select', 'object', 'embed').each(function (node) {
+node.style.visibility = 'visible';
+});
+},
+//
+//  getPageSize()
+//
+getPageSize: function () {
+var xScroll, yScroll, pageHeight, pageWidth, windowWidth, windowHeight;
+if (window.innerHeight &amp;&amp; window.scrollMaxY) { 
+xScroll = window.innerWidth + window.scrollMaxX;
+yScroll = window.innerHeight + window.scrollMaxY;
+} else if (document.body.scrollHeight &gt; document.body.offsetHeight) { // all but Explorer Mac
+xScroll = document.body.scrollWidth;
+yScroll = document.body.scrollHeight;
+} else { // Explorer Mac...would also work in Explorer 6 Strict, Mozilla and Safari
+xScroll = document.body.offsetWidth;
+yScroll = document.body.offsetHeight;
+}
+if (self.innerHeight) { // all except Explorer
+if (document.documentElement.clientWidth) {
+windowWidth = document.documentElement.clientWidth;
+} else {
+windowWidth = self.innerWidth;
+}
+windowHeight = self.innerHeight;
+} else if (document.documentElement &amp;&amp; document.documentElement.clientHeight) { // Explorer 6 Strict Mode
+windowWidth = document.documentElement.clientWidth;
+windowHeight = document.documentElement.clientHeight;
+} else if (document.body) { // other Explorers
+windowWidth = document.body.clientWidth;
+windowHeight = document.body.clientHeight;
+} 
+// for small pages with total height less then height of the viewport
+if (yScroll &lt; windowHeight) {
+pageHeight = windowHeight;
+} else {
+pageHeight = yScroll;
+}
+// for small pages with total width less then width of the viewport
+if (xScroll &lt; windowWidth) { 
+pageWidth = xScroll; 
+} else {
+pageWidth = windowWidth;
+}
+return [pageWidth, pageHeight];
+}
+};
+document.observe('dom:loaded', function () {
+var lightbox = new Lightbox();
+});
+
+
+Теперь правим Objects of type XWiki.StyleSheetExtension (1)Изменения в XWiki.Styleменяем
+-#lightbox{ position: absolute; left: 0; width: 100%; z-index: 1001; text-align: center; line-height: 0;}#lightbox img{ width: auto; height: auto;}#lightbox a img{ border: none; }
+на
++#lightbox{ position: absolute; left: 0; width: 100%; z-index: 1001; text-align: center; line-height: 0;}#lightbox img{ max-height: 640px;}#lightbox a img{ border: none; }Итоговый XWiki.Style#lightbox{
+position: absolute;
+left: 0;
+width: 100%;
+z-index: 1001;
+text-align: center;
+line-height: 0;
+}
+#lightbox img{ max-height: 640px;}
+#lightbox a img{ border: none; }
+#outerImageContainer{
+position: relative;
+background-color: #fff;
+width: 250px;
+height: 250px;
+margin: 0 auto;
+}
+#imageContainer{
+padding: 10px;
+}
+#loading{
+position: absolute;
+top: 40%;
+left: 0%;
+height: 25%;
+width: 100%;
+text-align: center;
+line-height: 0;
+}
+#hoverNav{
+position: absolute;
+top: 0;
+left: 0;
+height: 100%;
+width: 100%;
+z-index: 10;
+}
+#imageContainer&gt;#hoverNav{
+left: 0;
+}
+#hoverNav a{
+outline: none;
+}
+#prevLink, #nextLink{
+width: 49%;
+height: 100%;
+background-image: url(data:image/gif;base64,AAAA); /* Trick IE into showing hover */
+display: block;
+}
+#prevLink {
+left: 0;
+float: left;
+}
+#nextLink {
+right: 0;
+float: right;
+}
+#prevLink:hover, #prevLink:visited:hover {
+background: url($doc.getAttachmentURL(«prevlabel.gif»)) left 15% no-repeat;
+}
+#nextLink:hover, #nextLink:visited:hover {
+background: url($doc.getAttachmentURL(«nextlabel.gif»)) right 15% no-repeat;
+}
+#imageDataContainer{
+font: 10px Verdana, Helvetica, sans-serif;
+background-color: #fff;
+margin: 0 auto;
+line-height: 1.4em;
+overflow: auto;
+width: 100%;
+}
+#imageData{
+padding:0 10px;
+color: #666;
+}
+#imageData #imageDetails{
+width: 70%;
+float: left;
+text-align: left;
+} 
+#imageData #caption{
+font-weight: bold;
+}
+#imageData #numberDisplay{
+display: block;
+clear: left;
+padding-bottom: 1.0em;
+} 
+#imageData #bottomNavClose{
+width: 66px;
+float: right;
+padding-bottom: 0.7em;
+outline: none;
+} 
+#overlay{
+position: absolute;
+top: 0;
+left: 0;
+z-index: 90;
+width: 100%;
+height: 500px;
+background-color: #000;
+}
+/* IE7 hack */
+*+html #overlay {
+position: fixed;
+}
+Итак что же здесь было изменено? XWiki.Style передает в код JS  габариты изображения, а затем производится масштабирование под высоту 640 пикселей (но так же можно в любой момент изменить значение под себя), это связано с тем, что у моей жены дисплей ноутбука разрешением 1360х768 пикселей. Как сделать так что бы от ОС получить разрешение пользователя в код — я не знаю. Предупреждая дальнейшие замечания к качеству правок в коде — данные правки были сделаны мной на базе знаний полученных в школе на уроках информатики QBasic 4.5 и Borland Pascal 7.0.Кульминацияция
+Теперь у нас есть Вики-движок включающий функционал:
+ — Блога;
+ — WYSIWIG редактора;
+ — Галереи изображений;
+ — Возможность редактирования и создания новых макросов;
+ — Возможностью программирования и поддержки синтаксиса популярных Вики-движков;
+ — Интеграцию с Open Office(!) (правда для этого необходимо установить и запустить службу или воспользоваться костылями);
+Вот что получилось у меня в качестве примера тестового корпоративного сайта:Продолжение следует...
+      
+    

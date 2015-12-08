@@ -1,0 +1,152 @@
+﻿#TITLE:Оптимизация быстродействия динамического выделения памяти в многопоточной библиотеке
+
+      Предисловие
+Данная статья выросла из проблемы, которую мне относительно недавно пришлось решить: скорость кода, предназначенного для работы одновременно в нескольких потоках, резко упала после очередного расширения функционала, но только на Windows XP/2003. С помощью Process Explorer я выяснил, что в большинство моментов времени исполняется только 1 поток, остальные находятся в ожидании, причём TID активного потока постоянно меняется. На лицо явная конкуренция за ресурс, и этим ресурсом оказалась куча по умолчанию (default heap). Новый код активно использует динамическое выделение/высвобождение памяти (копирование строк, копирование/модификация STL контейнеров большого размера), что собственно и привело к возникновению данной проблемы.Немного теории
+Как известно, аллокатор по умолчанию (default allocator) для STL контейнеров и std::basic_string (std::allocator) выделяет память из кучи по умолчанию, а операции выделения/высвобождения памяти в ней являются блокирующими (косвенное подтверждение). Исходя из этого, при частых вызовах HeapAlloc/HeapFree мы рискуем намертво заблокировать кучу для других потоков. Собственно это и произошло в моём случае.Простое решение
+Первое решение данной проблемы — включение так называемой low fragmentation heap. При переключении кучи в данный режим повышается расход памяти за счёт выделения чаще всего существенно большего фрагмента, чем был запрошен, но повышается общее быстродействие кучи. Данный режим по умолчанию включен в Windows Vista и новее (правдоподобная причина тормозов на XP/2003 и их отсутствия на 2008/7/2008R2). Код переключения кучи по умолчанию в данный режим предельно прост:#define HEAP_LFH 2
+ULONG HeapInformation = HEAP_LFH;
+HeapSetInformation(GetProcessHeap(),  HeapCompatibilityInformation, &amp;HeapInformation, sizeof(HeapInformation));
+
+Поправленный и собранный с помощью visual studio 2013 код сделал своё дело — CPU теперь загружен на 100%, время прохождения эталонного теста сократилось в N раз! Однако при сборке на нашей (мне больно это говорить...) visual studio 2003 (да, ей ещё пользуются) эффекта от исправления 0… Хьюстон, у нас проблемы… Универсальное решение
+Второе возможное решение проблемы — создать каждому потоку собственную кучу. Приступим.
+Для хранения хендлов (handle) разных куч предлагаю использовать TLS слоты. Так как мой код — лишь часть библиотеки, непосредственно не управляющей созданием/завершением потоков, у меня нет информации, когда необходимо удалить кучу (с созданием всё тривиально, с удалением — сложнее). В качестве решения предлагаю использовать пул куч следующего вида:class HeapPool
+{
+private:
+    std::stack&lt;HANDLE&gt; pool;
+    CRITICAL_SECTION   sync;
+    bool isOlderNt6;
+public:
+    HeapPool()
+    {
+        InitializeCriticalSection(&amp;sync);
+        DWORD dwMajorVersion = (DWORD)(GetVersion() &amp; 0xFF);
+        isOlderNt6 = (dwMajorVersion &lt; 6); 
+    }
+
+    ~HeapPool()
+    {
+        DeleteCriticalSection(&amp;sync);
+        while (!pool.empty()) // удаляем все кучи при выгрузке библиотеки
+        {
+            HeapDestroy(pool.top());
+            pool.pop();
+        }
+    }
+
+    HANDLE GetHeap()
+    {
+        EnterCriticalSection(&amp;sync);
+        HANDLE hHeap = NULL;
+        if (pool.empty())
+        {
+            hHeap = HeapCreate(0, 0x100000, 0);
+            if (isOlderNt6) // для NT6.0+ данный код не имеет смысла
+            {
+                ULONG info = 2 /* HEAP_LFH */;
+                HeapSetInformation(hHeap, HeapCompatibilityInformation, &amp;info, sizeof(info));
+            }
+        }
+        else
+        {
+            hHeap = pool.top();
+            pool.pop();
+        }
+        LeaveCriticalSection(&amp;sync);
+
+        return hHeap;
+    }
+
+    void PushHeap(HANDLE hHeap)
+    {
+        EnterCriticalSection(&amp;sync);
+        pool.push(hHeap);
+        LeaveCriticalSection(&amp;sync);
+    }
+};
+
+HeapPool heapPool; // создаем пул
+
+Теперь создадим глобальную переменную-слот:class TlsHeapSlot
+{
+private:
+    DWORD index;
+public:
+    TlsHeapSlot()
+    {
+       index = TlsAlloc();
+    }
+    void set(HANDLE hHeap)
+    {
+        TlsSetValue(index, hHeap);
+    }
+    HANDLE get()
+    {
+        return (HANDLE)TlsGetValue(index);
+    }
+};
+
+/*глобальная переменная, однако результат метода get() зависит от потока, в котором он вызван */
+TlsHeapSlot heapSlot; 
+
+Так как наша цель — оптимизация работы std::basic_string и STL контейнеров, нам понадобится «самопальный» аллокатор:template &lt;typename T&gt;
+class parallel_allocator : public std::allocator&lt;T&gt;
+{
+public:
+    typedef size_t size_type;
+    typedef T* pointer;
+    typedef const T* const_pointer;
+
+    template&lt;typename _Tp1&gt;
+    struct rebind
+    {
+        typedef parallel_allocator&lt;_Tp1&gt; other;
+    };
+
+    pointer allocate(size_type n, const void *hint = 0)
+    {
+        return (pointer)HeapAlloc(heapSlot.get(), 0, sizeof(T) * n);
+    }
+
+    void deallocate(pointer p, size_type n)
+    {
+        HeapFree(heapSlot.get(), 0, p);
+    }
+
+    parallel_allocator() throw() : std::allocator&lt;T&gt;() {}
+    parallel_allocator(const parallel_allocator &amp;a) throw() : std::allocator&lt;T&gt;(a) { }
+    template &lt;class U&gt;
+    parallel_allocator(const parallel_allocator&lt;U&gt; &amp;a) throw() : std::allocator&lt;T&gt;(a) { }
+    ~parallel_allocator() throw() { }
+};
+
+
+И финальный штрих:class HeapWatch // вспомогательный класс для возврата кучи в пул при выходе
+{
+private:
+    HANDLE hHeap;
+public:
+    HeapWatch(HANDLE heap) : hHeap(heap) {}
+    ~HeapWatch()
+    {
+       heapPool.PushHeap(hHeap);
+    }
+};
+
+
+extern "C" int my_api(const char * arg) // предположим, что интерфейс такой
+{
+    HANDLE hHeap = heapPool.GetHeap();
+    HeapWatch watch(hHeap);
+    heapSlot.set(hHeap);
+
+    /* Здесь располагается или отсюда вызывается код, интенсивно выделяющий/высвобождающий память.
+       Теперь мы можем использовать код вроде 
+       std::basic_string&lt;char, std::char_traits&lt;char&gt;, parallel_allocator&lt;char&gt; &gt; str и 
+       std::list&lt;int, parallel_allocator&lt;int&gt; &gt; lst,
+       которые будут работать быстрее, чем аналоги со стандартным аллокатором (при параллельном исполнении)
+    */
+}
+Результаты:
+Главное — задача решена, и притом не костыльно. Второе решение сложнее, но даёт прирост производительности на всех протестированных платформах (win xp — windows 10) при сборке решения и в VS2013, и в VS2003 (максимальный эффект достигается в XP/2003 при использовании VS 2003 — время выполнения эталонного теста сократилось почти в N раз (где N — число ядер CPU), на более новых платформах — от 3 до 10 процентов). Простое решение идеально подойдёт тем, кто использует свежие версии компиляторов. Надеюсь, данная информация окажется полезной не только мне.
+      
+    

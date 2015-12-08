@@ -1,0 +1,129 @@
+﻿#TITLE:Кастомизация HTML5 progress element
+
+      
+Прогрессбар — элемент вроде и редко встречающийся на сайтах (в отличии от селектов, чекбоксов, инпутов и прочего), но все равно без него не обойдется ни один ui-kit.
+На данный момент HTML5 предоставляет нам нативный элемент progress, базовый функционал которого поддерживается практически всеми современными браузерами (caniuse.com/#feat=progress).
+Но на базовых возможностях стилизации представляемых скажем IE11, мягко говоря далеко не уедешь. Все же хочется чтобы прогрессбары были с анимацией, градиентом, плавной сменой ползунка прогресса, и самое главное с выводом значения в процентах.
+В этой статье я попытаюсь показать способ кастомизации прогрессбара, исходя из двух условий: Никакого JS. Вся стилизация делается исключительно средствами CSS;
+При последующей работе с кастомизированным прогрессбаром, мы должны работать исключительно с ним (менять значение и не думать о том что нужно поменять ширину ползунка или подставить правильный процент).
+
+То есть, если мы хотим установить значение прогрессбара в 50%, мы делаем приблизительно следующее, и ничего более:document.getElementById('progress').value = '50';
+
+Сразу скажу что при верстке я всегда стараюсь использовать средства CSS по максимуму, на столько на сколько это возможно не прибегая к помощи JS. Так что такой способ может показаться кому-то излишним. Так же в примере будет использован препроцессор, так как без него очень долго писать нужные стили. Я предпочитаю LESS, но при написании статьи я так и не нашел ни одной вменяемой песочницы с поддержкой LESS. Так что в примере будет SCSS.
+Итак, начнем с базовой HTML разметки:&lt;div class="progress"&gt;
+    &lt;progress max="100" value="0"&gt;&lt;/progress&gt;
+    &lt;div class="progress-value"&gt;&lt;/div&gt;
+    &lt;div class="progress-bg"&gt;&lt;div class="progress-bar"&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+Прячем нативный элемент:.progress
+{
+  font: 12px Arial, Tahoma, sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress progress
+{
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  left: -777px;
+}
+
+.progress-bar
+{
+  overflow: hidden;
+  background: #ac92ec;
+  width: 0;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.progress-value
+{
+  color: #333;
+  display: block;
+  line-height: 21px;
+  text-align: center;
+}
+
+.progress-bg
+{
+  background: #e6e9ed;
+  position: relative;
+  height: 8px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+Далее наводим красоту:.progress-bar:after
+{
+  background-image: -webkit-linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+  background-image: -o-linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+  background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+  -webkit-background-size: 40px 40px;
+  background-size: 40px 40px;
+  position: absolute;
+  content: '';
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+Добавляем анимацию:@keyframes progress_bar {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -40px 0;
+  }
+}
+
+.progress-bar
+{
+  transition: width 1s linear;
+}
+
+.progress-bar:after
+{
+  animation: progress_bar 0.8s linear infinite;
+}
+
+И самый главный момент, — это проставление width для прогресса, и числового значения в процентах. Тут все просто, логика будет следующая:.progress progress[value="1"] + .progress-value:before 
+{
+  content: "1%"; 
+}
+.progress progress[value="1"] ~ .progress-bg .progress-bar 
+{
+  width: 1%; 
+}
+
+Как не сложно догадаться, таких правил нам нужно ровно 100, для этого нам и нужны препроцессоры:
+Код на SCSS:@for $i from 0 through 100 {
+  .progress progress[value="#{$i}"]
+  {
+    &amp; + .progress-value:before { content : '#{$i}%' }
+    &amp; ~ .progress-bg .progress-bar { width: $i * 1% }
+  }
+}
+
+Код на LESS:.generate-progress(@n, @i: 0) when (@i =&lt; @n) {
+  .progress progress[value="@{i}"]
+  {
+	&amp; + .progress-value:before { content : '@{i}%' }
+	&amp; ~ .progress-bg .progress-bar { width: @i * 1% }
+  }
+  .generate-progress(@n, (@i + 1));
+}
+
+.generate-progress(100);
+
+Итоговый пример.
+Безусловно здесь есть большой минус — много CSS на выходе. Но по мне плюсы этого метода перекрывают огромный CSS код.
+      
+    

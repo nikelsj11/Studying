@@ -1,0 +1,395 @@
+﻿#TITLE:Простая в использовании обертка над LoadLibrary() и GetProcAddress()
+
+      Преамбула
+Использование динамически связываемых библиотек (DLL), как известно, предполагает один из двух способов подключения: связывание во время загрузки (load-time linking) и связывание во время выполнения (run-time linking). В последнем случае нужно использовать предоставляемый операционной системой API для загрузки нужного модуля (библиотеки) и поиска в нем адреса необходимой процедуры. Существует множество оберток, но, к сожалению, все встречавшиеся мне сильно усложнены и перегружены лишним кодом. Предлагаемое решение изначально предназначено для вызова функций, хранящихся в DLL из исполняемых модулей (EXE), отличается относительной простотой реализации, и (что гораздо более важно) простотой использования в клиентском коде.
+Решение с использованием чистого Win32 API выглядит примерно так (пратически, это повторение фрагмента из MSDN):typedef int (__cdecl *some_proc_t)(LPWSTR);
+
+HINSTANCE hlib = LoadLibrary(_T("some.dll"));
+myproc_t proc_addr = NULL;
+int result = -1;
+
+if (hlib) {
+    proc_addr = (some_proc_t) GetProcAddress(hlib, "SomeProcName");
+    if (proc_addr) {
+        result = proc_addr(L"send some string to DLL function");
+        printf("Successfully called DLL procedure with result %d", result);
+    }
+    FreeLibrary("some.dll");
+}
+
+В этой статье предлагается простая в использовании обертка над этими системными вызовами. Пример использования:ntprocedure&lt;int(LPWSTR)&gt; some_proc_("SomeProcName", _T("some.dll"));
+try {
+    int result = some_proc_(L"send some string to DLL function");
+    printf("Successfully called DLL procedure with result %d", result);
+} catch (...) {
+    printf("Failed to call DLL procedure");
+}
+
+Как видно из листинга, все, что нужно сделать — создать объект ntprocedure с шаблонными параметрами, которые соответствуют типу вызываемой функции, передав в конструкторе её имя и имя библиотеки.Реализация
+Прежде чем приступить к описанию реализации обертки, приведу небольшой заголовочный файл с тривиальными объявлениями, которые многим покажутся бесполезными, от которых легко избавиться, но используются мной в коде.Файл common.h#pragma once
+
+#include "tchar.h"
+#include &lt;string&gt;
+
+#define NS_BEGIN_(A) namespace A {
+#define NS_BEGIN_A_ namespace {
+#define NS_END_ }
+
+#define NO_EXCEPT_ throw()
+#define THROW_(E) throw(E)
+
+#define PROHIBITED_ = delete
+
+//=============================================================================
+typedef std::basic_string&lt;
+  TCHAR, std::char_traits&lt;TCHAR&gt;, std::allocator&lt;TCHAR&gt; &gt; tstring;
+
+Подумаем над тем, как добиться, чтобы разрабатываемый шаблонный класс вел себя как функция в точке вызова и мог поддерживать произвольное количество и тип аргументов. Первое, что приходит на ум — использовать обобщенный функтор. Авторы известных мне реализаций подобных оберток поступают именно так. При этом используется либо частичная специализация шаблона функтора в зависимости от числа аргументов, либо множественная перегрузка оператора вызова функции. Дело, как правило, не обходится без помощи макросов. К счастью, в C++11 появилась шаблоны с переменным числом аргументов, которые значительно упрощают жизнь:R operator () (Args ... args)
+
+В действительности, в нашем случае можно поступить гораздо проще, а именно, использовать оператор приведения вместо оператора вызова функции. Если T является типом указателя на функцию, а address является переменной, в которой хранится ее адрес, можно определить следующий оператор:operator T()
+{
+    return reinterpret_cast&lt;T&gt;(address);
+}
+
+Ниже приводится полный код заголовочного файла «ntprocedure.h».Файл ntprocedure.h#pragma once
+
+#include "common.h"
+
+#include &lt;memory&gt;
+#include &lt;string&gt;
+#include &lt;type_traits&gt;
+
+NS_BEGIN_(ntutils)
+NS_BEGIN_(detail)
+
+class ntmodule;
+
+class ntprocedure_base {
+
+  ntprocedure_base(const ntprocedure_base&amp;) PROHIBITED_;
+  void operator=(const ntprocedure_base&amp;) PROHIBITED_;
+
+public:
+
+  ntprocedure_base(const std::string&amp; a_proc_name, const tstring&amp; a_lib_name);
+  // Constructor.
+
+  virtual ~ntprocedure_base() = 0;
+  // Destructor.
+
+  FARPROC WINAPI address();
+  // Get the procedure address.
+
+  const std::string&amp; name() const;
+  // Get the procedure name.
+
+private:
+
+  std::string m_name;
+  std::shared_ptr&lt;ntmodule&gt; m_module;
+};
+
+NS_END_
+
+template&lt;typename T&gt; class ntprocedure : public detail::ntprocedure_base {
+public:
+
+  typedef typename std::remove_pointer&lt;T&gt;::type callable_t;
+  typedef callable_t *callable_ptr_t;
+
+  ntprocedure(const std::string&amp; a_proc_name, const tstring&amp; a_lib_name)
+  : ntprocedure_base(a_proc_name, a_lib_name),
+    m_function(nullptr)
+  {    
+  }
+  // Constructor.
+
+  virtual ~ntprocedure()
+  {
+  }
+  // Destructor.
+
+  operator callable_ptr_t()
+  {
+    if (!m_function) {
+      m_function = reinterpret_cast&lt;callable_ptr_t&gt;(address());
+    }
+
+    return m_function;
+  }
+  // Return stored function to invoke.
+
+private:
+
+  callable_ptr_t m_function;    
+};
+
+NS_END_
+
+Пара моментов, которые заметил внимательный читатель — адрес процедуры хранится в переменной m_function и вычисляется один раз, и второй момент — в базовом классе хранится разделяемый указатель на объект класса ntmodule. Нетрудно догадаться, что он хранит информацию о загруженном модуле. Использование shared_ptr позволяет автоматически выгрузить модуль после уничтожения всех объектов-процедур, которые его используют.Файл ntmodule.h#pragma once
+
+#include "common.h"
+#include "resource_ptr.h"
+
+#include &lt;list&gt;
+#include &lt;memory&gt;
+
+NS_BEGIN_(ntutils)
+NS_BEGIN_(detail)
+
+class ntmodule : public std::enable_shared_from_this&lt;ntmodule&gt; {
+
+  ntmodule(const ntmodule&amp;) PROHIBITED_;
+  void operator=(const ntmodule&amp;) PROHIBITED_;
+
+public:
+
+  typedef std::list&lt;ntmodule*&gt; container_t;
+
+  ntmodule(const tstring&amp; a_name);
+  // Constructor.
+
+  ~ntmodule();
+  // Destructor.
+
+  const tstring&amp; name() const;
+  // Get the module name.      
+
+  FARPROC WINAPI address(const std::string&amp; a_name);
+  // Get the procedure address.
+
+  std::shared_ptr&lt;ntmodule&gt; share();
+  // Share this object.
+
+  static container_t&amp; cached();
+  // Return the reference to the cache.
+
+private:
+
+  tstring m_name;
+  hmodule_ptr m_handle;
+};
+
+NS_END_
+NS_END_
+
+Рассмотрим определение класса ntmodule:Файл ntmodule.cpp#include "stdafx.h"
+#include "ntmodule.h"
+
+#include "ntprocedure.h"
+#include &lt;cassert&gt;
+#include &lt;exception&gt;
+
+ntutils::detail::ntmodule::ntmodule(const tstring&amp; a_name)
+: m_name(a_name)
+{
+  assert(!a_name.empty());
+
+  cached().push_back(this);
+}
+
+ntutils::detail::ntmodule::~ntmodule()
+{
+  cached().remove(this);
+}
+
+const tstring&amp; ntutils::detail::ntmodule::name() const
+{
+  return m_name;
+}
+
+FARPROC WINAPI ntutils::detail::ntmodule::address(
+  const std::string&amp; a_name
+)
+{
+  assert(!a_name.empty());
+
+  if (!m_handle) {
+    m_handle.reset(::LoadLibrary(m_name.c_str()));    
+  }
+
+  if (!m_handle) {
+    std::string err("LoadLibrary failed");
+    throw std::runtime_error(err);
+  }
+
+  return m_handle ? ::GetProcAddress(m_handle, a_name.c_str()) : 0;
+}
+
+std::shared_ptr&lt;ntutils::detail::ntmodule&gt;
+ntutils::detail::ntmodule::share()
+{
+  return shared_from_this();
+}
+
+ntutils::detail::ntmodule::container_t&amp;
+ntutils::detail::ntmodule::cached()
+{
+  static container_t* modules = new container_t;
+  return *modules;
+}
+
+Как видно, указатели на все используемые модули хранятся в статическом списке. Этим обеспечивается кеширование. Конструктор класса ntmodule помещает указатель на свой объект в список, а деструктор удаляет его. Полностью прояснит картину определение класса ntprocedure.Файл ntprocedure.cpp#include "stdafx.h"
+
+#include "ntmodule.h"
+#include "ntprocedure.h"
+
+#include &lt;cassert&gt;
+#include &lt;exception&gt;
+
+ntutils::detail::ntprocedure_base::ntprocedure_base(
+  const std::string&amp; a_proc_name, const tstring&amp; a_lib_name
+)
+: m_name(a_proc_name),
+  m_module(nullptr)
+{
+  assert(!a_proc_name.empty());
+  assert(!a_lib_name.empty());
+
+  for (auto module : ntmodule::cached()) {
+    // Perform case insensitive comparison:
+    if (!lstrcmpi(module-&gt;name().c_str(), a_lib_name.c_str())) {
+      m_module = module-&gt;share();
+      break;
+    }
+  }
+
+  if (!m_module) {
+    m_module = std::make_shared&lt;ntmodule&gt;(a_lib_name);
+  }
+}
+
+ntutils::detail::ntprocedure_base::~ntprocedure_base()
+{
+}
+
+FARPROC WINAPI ntutils::detail::ntprocedure_base::address()
+{
+  FARPROC addr = m_module-&gt;address(m_name);
+  if (!addr) {
+    std::string err("GetProcAddress failed");
+ 
+    throw std::runtime_error(err);
+  }
+
+  return addr;
+}
+
+const std::string&amp; ntutils::detail::ntprocedure_base::name() const
+{
+  return m_name;
+}
+
+В конструкторе ntprocedure_base происходит поиск нужного модуля в статическом списке по его имени. Если такой модуль найден, то вызов module-&gt;share() создает разделяемый указатель на основе имеющегося в списке указателя, если же такого модуля еще нет, создается новый объект.
+Обратите внимание, что для каждого впервые используемого нами модуля мы вызываем LoadLibrary(), не полагаясь на функцию GetModuleHandle() и уже потом контролируем созданные объекты посредством shared_ptr. Это делает безопасным использование созданной обертки совместно в одном проекте с кодом, использующим непосредственные вызовы LoadLibrary() и FreeLibrary().
+На этом все. Ах, да, в коде фигурирует тип resouce_ptr. Это ничто иное, как RAII-обертка над такими типами, как HANDLE, HMODULE и так далее. Для тех, кому интерено, привожу реализацию:Файл resource_ptr.h#pragma once
+
+#include "common.h"
+#include "windows.h"
+
+#include &lt;cassert&gt;
+#include &lt;memory&gt;
+
+NS_BEGIN_(ntutils)
+
+template&lt;typename HTag_&gt;
+struct resource_close {
+  void operator()(typename HTag_::handle_t) const NO_EXCEPT_;
+};
+
+struct handle_tag {
+  typedef HANDLE resource_t;
+};
+
+struct hmodule_tag {
+  typedef HMODULE resource_t;
+};
+
+template&lt;&gt; struct resource_close&lt;handle_tag&gt; {
+  
+  void operator()(handle_tag::resource_t a_handle) const NO_EXCEPT_
+  {
+    bool status = !!::CloseHandle(a_handle);
+    assert(status);
+  }
+
+};
+
+template&lt;&gt; struct resource_close&lt;hmodule_tag&gt; {
+
+  void operator()(hmodule_tag::resource_t a_handle) const NO_EXCEPT_
+  {
+    bool status = !!::FreeLibrary(a_handle);
+    assert(status);
+  }
+
+};
+
+template&lt;
+  typename RTag_,
+  typename RTag_::resource_t RInvalid_,
+  typename RFree_ = resource_close&lt;RTag_&gt;
+&gt;
+class resource_ptr {
+
+  typedef typename RTag_::resource_t resource_t;
+  typedef RFree_ deletor_t;
+
+  resource_ptr(const resource_ptr&amp;) PROHIBITED_;
+  void operator=(const resource_ptr&amp;) PROHIBITED_;
+
+public:
+
+  resource_ptr() NO_EXCEPT_
+  : m_resource(RInvalid_)
+  {
+  }
+  resource_ptr(resource_t a_resource) NO_EXCEPT_
+  : m_resource(a_resource)
+  {  
+  }
+  // Constructor.
+
+  explicit operator bool() const NO_EXCEPT_
+  {
+    return m_resource &amp;&amp; m_resource != RInvalid_;
+  }
+  // Operator bool().
+
+  operator const resource_t&amp;() const NO_EXCEPT_
+  {
+    return m_resource;
+  }
+  // Get the stored handle value.
+
+  void reset(resource_t a_resource = resource_t()) NO_EXCEPT_
+  {
+    resource_t old = m_resource;
+    m_resource = a_resource;
+    if (old != resource_t() &amp;&amp; old != RInvalid_) {
+      m_deletor(old);
+    }
+  }
+
+  ~resource_ptr() NO_EXCEPT_
+  {
+    if (m_resource != resource_t() &amp;&amp; m_resource != RInvalid_) {
+      m_deletor(m_resource);
+    }
+  }
+  // Destructor.
+
+private:
+
+  resource_t m_resource;
+  deletor_t m_deletor;
+};
+
+typedef resource_ptr&lt;handle_tag, INVALID_HANDLE_VALUE&gt; handle_ptr;
+typedef resource_ptr&lt;hmodule_tag, NULL&gt; hmodule_ptr;
+
+NS_END_
+
+На этом точно все. Спасибо за внимание, буду рад услышать ваши комментарии!
+      
+    

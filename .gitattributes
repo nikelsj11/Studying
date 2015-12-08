@@ -1,0 +1,6 @@
+UniversityTasks/IntelligentSearch/BaseCrawlers/base_crawlers/storage/habrahabr.sqlite filter=lfs diff=lfs merge=lfs -text
+UniversityTasks/IntelligentSearch/MorphologicalAnalysis/raw_files/speakrus.dict filter=lfs diff=lfs merge=lfs -text
+UniversityTasks/IntelligentSearch/MorphologicalAnalysis/raw_files/test.dict filter=lfs diff=lfs merge=lfs -text
+UniversityTasks/IntelligentSearch/MorphologicalAnalysis/raw_files/test.group filter=lfs diff=lfs merge=lfs -text
+UniversityTasks/IntelligentSearch/MorphologicalAnalysis/raw_files/War_and_Peace.txt filter=lfs diff=lfs merge=lfs -text
+UniversityTasks/IntelligentSearch/MorphologicalAnalysis/raw_files/War_and_Peace.txt.out filter=lfs diff=lfs merge=lfs -text

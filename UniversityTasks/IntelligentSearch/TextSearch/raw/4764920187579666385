@@ -1,0 +1,214 @@
+﻿#TITLE:Использование библиотек на Java 8 для приложений под Android с помощью Maven
+
+      Java 8 вышла в начале 2014 года, позволив Java-разработчикам использовать весьма удобные новшества для облегчения программирования тривиальных задач. Среди них — лямбда-выражения, ссылки на методы и конструкторы, реализация интерфейсных методов по умолчанию на уровне языка и JVM, а также использование Stream API на уровне стандартной библиотеки. К сожалению, вялость внедрения таких введений сказывается на поддержке этих средств на других программных платформах, ориентированных на Java. GWT и Android всё ещё не располагают официальной поддержкой хотя бы языковых средств Java 8. Впрочем, весенние SNAPSHOT-версии GWT 2.8.0 уже поддерживали лямбда-выражения. С Android дела обстоят иначе, так как здесь работа лямбда-выражений зависит не только от самого компилятора, но и от среды исполнения. Но с помощью Maven можно относительно просто решить проблему использования Java 8.
+Так сложилось, что всю кодовую базу для своих проектов я держу на Maven из-за того, что:так сложилось исторически, не смотря на всю громоздкость pom.xml;
+есть возможность настраивать сборку в одном месте для модулей любого уровня вложенности;
+есть возможность использовать единый инструмент для сборки всей “вселенной” модулей.
+
+Библиотеки общего назначения из этой кодовой базы написаны и подключаются к другим модулям таким образом, что их можно использовать как и в Java SE-проектах, так и в GWT или Android. Но ввиду того, что у Android плохо с Java 8, эти библиотеки и дальше остаются на Java 6 или 7, как и сами приложения из кодовой базы на Android. Тем не менее, после успешной работы с лямбдами в GWT, появилось желание мигрировать всю свою кодовую базу на Java 8. Скомпилировать и установить в локальный репозиторий свои библиотеки не составляет большого труда:&lt;plugin&gt;
+	&lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+	&lt;artifactId&gt;maven-compiler-plugin&lt;/artifactId&gt;
+	&lt;configuration&gt;
+		&lt;source&gt;1.8&lt;/source&gt;
+		&lt;target&gt;1.8&lt;/target&gt;
+	&lt;/configuration&gt;
+&lt;/plugin&gt;
+
+После установки библиотек в локальный репозиторий можно, в принципе, собирать само приложение. Но в процессе “dex”-ирования возникнет следующая ошибка:[INFO] UNEXPECTED TOP-LEVEL EXCEPTION:
+[INFO] com.android.dx.cf.iface.ParseException: bad class file magic (cafebabe) or version (0034.0000)
+[INFO]  at com.android.dx.cf.direct.DirectClassFile.parse0(DirectClassFile.java:472)
+[INFO]  at com.android.dx.cf.direct.DirectClassFile.parse(DirectClassFile.java:406)
+[INFO]  at com.android.dx.cf.direct.DirectClassFile.parseToInterfacesIfNecessary(DirectClassFile.java:388)
+[INFO]  at com.android.dx.cf.direct.DirectClassFile.getMagic(DirectClassFile.java:251)
+[INFO]  at com.android.dx.command.dexer.Main.processClass(Main.java:665)
+[INFO]  at com.android.dx.command.dexer.Main.processFileBytes(Main.java:634)
+[INFO]  at com.android.dx.command.dexer.Main.access$600(Main.java:78)
+[INFO]  at com.android.dx.command.dexer.Main$1.processFileBytes(Main.java:572)
+[INFO]  at com.android.dx.cf.direct.ClassPathOpener.processArchive(ClassPathOpener.java:284)
+[INFO]  at com.android.dx.cf.direct.ClassPathOpener.processOne(ClassPathOpener.java:166)
+[INFO]  at com.android.dx.cf.direct.ClassPathOpener.process(ClassPathOpener.java:144)
+[INFO]  at com.android.dx.command.dexer.Main.processOne(Main.java:596)
+[INFO]  at com.android.dx.command.dexer.Main.processAllFiles(Main.java:498)
+[INFO]  at com.android.dx.command.dexer.Main.runMonoDex(Main.java:264)
+[INFO]  at com.android.dx.command.dexer.Main.run(Main.java:230)
+[INFO]  at com.android.dx.command.dexer.Main.main(Main.java:199)
+[INFO]  at com.android.dx.command.Main.main(Main.java:103)
+[INFO] ...while parsing foo/bar/FooBar.class
+
+Эта ошибка означает, что dx не может обработать класс-файлы, сгенерированные компилятором Java 8. Поэтому подключаем Retrolambda, что, по идее, должно исправить ситуацию:&lt;plugin&gt;
+	&lt;groupId&gt;net.orfjackal.retrolambda&lt;/groupId&gt;
+	&lt;artifactId&gt;retrolambda-maven-plugin&lt;/artifactId&gt;
+	&lt;version&gt;2.0.6&lt;/version&gt;
+	&lt;executions&gt;
+		&lt;execution&gt;
+			&lt;phase&gt;process-classes&lt;/phase&gt;
+			&lt;goals&gt;
+				&lt;goal&gt;process-main&lt;/goal&gt;
+				&lt;goal&gt;process-test&lt;/goal&gt;
+			&lt;/goals&gt;
+		&lt;/execution&gt;
+	&lt;/executions&gt;
+	&lt;configuration&gt;
+		&lt;defaultMethods&gt;true&lt;/defaultMethods&gt;
+		&lt;target&gt;1.6&lt;/target&gt;
+	&lt;/configuration&gt;
+&lt;/plugin&gt;
+
+К сожалению, foo/bar/FooBar.class принадлежит библиотеке и ошибка не устраняется. retrolambda-maven-plugin не может справиться с задачей инструментирования библиотек приложения в принципе, так как может обработать класс-файлы только для текущего модуля (инача для этого нужно было бы обработать класс-файлы прямо в репозитории). То есть приложение не может использовать Java 8 библиотеки, но может использовать Java 8 код только в текущем модуле. Это можно решить так:распаковать все Java 8 зависимости в директорию, где можно провести “даунгрейд” байткода;
+обработать байткод текущего модуля одновременно с байткодом распакованных зависимостей;
+собрать DEX-файл и APK-файл с исключением модулей, которые уже находятся в обработанном состоянии.
+
+Текущая реализация android-maven-plugin запускает dx с указанием всех зависимостей, что ещё более усугубляет инструментирование зависимостей на Java 8. Вот что примерно запускает android-maven-plugin:$JAVA_HOME/jre/bin/java
+-Xmx1024M
+-jar "$ANDROID_HOME/sdk/build-tools/android-4.4/lib/dx.jar"
+--dex
+--output=$BUILD_DIRECTORY/classes.dex
+$BUILD_DIRECTORY/classes
+$M2_REPO/foo1-java8/bar1/0.1-SNAPSHOT/bar1-0.1-SNAPSHOT.jar
+$M2_REPO/foo2-java8/bar2/0.1-SNAPSHOT/bar2-0.1-SNAPSHOT.jar
+$M2_REPO/foo3-java8/bar3/0.1-SNAPSHOT/bar3-0.1-SNAPSHOT.jar
+
+Здесь все три Java 8 библиотеки отправляются на обработку dx. В самом плагине не существует возможности управлять фильтром зависимостей, которые нужно передать в dx. Почему важно иметь возможность управлять таким фильтром? Можно предположить, что некоторые зависимости уже находятся в более удобном для обработки, чем репозиторий артефактов, месте. Например, в ${project.build.directory}/classes. Именно здесь и можно обработать Java 8 зависимости с помощью retrolambda-maven-plugin.
+Для Maven существует плагин, которым можно распаковать зависимости в нужную директорию, что позволит обработать нужные зависимости нужным образом. Например:&lt;plugin&gt;
+	&lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+	&lt;artifactId&gt;maven-dependency-plugin&lt;/artifactId&gt;
+	&lt;version&gt;2.10&lt;/version&gt;
+	&lt;executions&gt;
+		&lt;execution&gt;
+			&lt;phase&gt;process-classes&lt;/phase&gt;
+			&lt;goals&gt;
+				&lt;goal&gt;unpack-dependencies&lt;/goal&gt;
+			&lt;/goals&gt;
+			&lt;configuration&gt;
+				&lt;includeScope&gt;runtime&lt;/includeScope&gt;
+				&lt;includeGroupIds&gt;foo1-java8,foo2-java8,foo3-java8&lt;/includeGroupIds&gt;
+				&lt;outputDirectory&gt;${project.build.directory}/classes&lt;/outputDirectory&gt;
+			&lt;/configuration&gt;
+		&lt;/execution&gt;
+	&lt;/executions&gt;
+&lt;/plugin&gt;
+
+Я добавил в форк android-maven-plugin поддержку нескольких опций для управления фильтром зависимостей. Среди них — фильтрация и включение (excludes и includes) по идентификатору группы, идентификатору артефакта и версии. Идентификаторы артефактов и их версии можно не указывать. Все элементы, идентифицирующие артефакт или группу артефактов, должны быть разделены двоеточием. Тем не менее, попробовать Java 8 и Java 8-замисимости в Android-приложении можно, хотя запрос на слияние в родительский репозиторий пока не принят. Для этого сначала нужно собрать сам форк плагина:# Хеш коммита последней синхронизации с upstream оригинального плагина:
+PLUGIN_REVISION=a79e45bc0721bfea97ec139311fe31d959851476
+
+# Клонируем форк:
+git clone https://github.com/lyubomyr-shaydariv/android-maven-plugin.git
+
+# Убеждаемся в том, что используем проверенный коммит:
+cd android-maven-plugin
+git checkout $PLUGIN_REVISION
+
+# Собираем плагин:
+mvn clean package -Dmaven.test.skip=true
+
+# Переходим в target, где будем готовиться к установке форка в Maven-репозиторий:
+cd target
+cp android-maven-plugin-4.3.1-SNAPSHOT.jar android-maven-plugin-4.3.1-SNAPSHOT-$PLUGIN_COMMIT.jar
+
+# Исправляем pom.xml:
+cp ../pom.xml pom-$PLUGIN_COMMIT.xml
+sed -i "s/&lt;version&gt;4.3.1-SNAPSHOT&lt;\\/version&gt;/&lt;version&gt;4.3.1-SNAPSHOT-$PLUGIN_COMMIT&lt;\\/version&gt;/g" pom-$PLUGIN_COMMIT.xml
+
+# Обновляем дескриптор плагина:
+unzip android-maven-plugin-4.3.1-SNAPSHOT-$PLUGIN_COMMIT.jar META-INF/maven/plugin.xml
+sed -i "s/&lt;version&gt;4.3.1-SNAPSHOT&lt;\\/version&gt;/&lt;version&gt;4.3.1-SNAPSHOT-$PLUGIN_COMMIT&lt;\\/version&gt;/g" META-INF/maven/plugin.xml
+zip android-maven-plugin-4.3.1-SNAPSHOT-$PLUGIN_COMMIT.jar META-INF/maven/plugin.xml
+
+# Устанавливаем, собственно, плагин:
+mvn org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -DpomFile=pom-$PLUGIN_COMMIT.xml -Dfile=android-maven-plugin-4.3.1-SNAPSHOT-$PLUGIN_COMMIT.jar
+
+После всего этого можно настроить pom.xml своего приложения:&lt;!-- Включаем поддержку Java 8 для текущего модуля --&gt;
+&lt;plugin&gt;
+    &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+    &lt;artifactId&gt;maven-compiler-plugin&lt;/artifactId&gt;
+    &lt;version&gt;3.2&lt;/version&gt;
+    &lt;configuration&gt;
+        &lt;source&gt;1.8&lt;/source&gt;
+        &lt;target&gt;1.8&lt;/target&gt;
+    &lt;/configuration&gt;
+&lt;/plugin&gt;
+
+&lt;!-- Распаковываем классы из зависимостей на Java 8 в текущую директорию сборки --&gt;
+&lt;plugin&gt;
+    &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+    &lt;artifactId&gt;maven-dependency-plugin&lt;/artifactId&gt;
+    &lt;version&gt;2.10&lt;/version&gt;
+    &lt;executions&gt;
+            &lt;execution&gt;
+                &lt;phase&gt;process-classes&lt;/phase&gt;
+                &lt;goals&gt;
+                    &lt;goal&gt;unpack-dependencies&lt;/goal&gt;
+                &lt;/goals&gt;
+                &lt;configuration&gt;
+                    &lt;includeScope&gt;runtime&lt;/includeScope&gt;
+                    &lt;!-- Нужно указать только Java 8 зависимости --&gt;
+                    &lt;includeGroupIds&gt;foo1-java8,foo2-java8.foo3-java8&lt;/includeGroupIds&gt;
+                    &lt;outputDirectory&gt;${project.build.directory}/classes&lt;/outputDirectory&gt;
+                &lt;/configuration&gt;
+        &lt;/execution&gt;
+    &lt;/executions&gt;
+&lt;/plugin&gt;
+
+&lt;!-- Преобразуем байткод --&gt;
+&lt;plugin&gt;
+    &lt;groupId&gt;net.orfjackal.retrolambda&lt;/groupId&gt;
+    &lt;artifactId&gt;retrolambda-maven-plugin&lt;/artifactId&gt;
+    &lt;version&gt;2.0.6&lt;/version&gt;
+    &lt;executions&gt;
+        &lt;execution&gt;
+            &lt;phase&gt;process-classes&lt;/phase&gt;
+            &lt;goals&gt;
+                &lt;goal&gt;process-main&lt;/goal&gt;
+                &lt;goal&gt;process-test&lt;/goal&gt;
+            &lt;/goals&gt;
+        &lt;/execution&gt;
+    &lt;/executions&gt;
+    &lt;configuration&gt;
+        &lt;defaultMethods&gt;true&lt;/defaultMethods&gt;
+        &lt;target&gt;1.6&lt;/target&gt;
+    &lt;/configuration&gt;
+&lt;/plugin&gt;
+
+&lt;!-- DEX-ируем все не Java 8 зависимости (к тому моменту в target/classes уже находятся библиотеки, которые уже понятны для dx) и упаковываем всё в APK --&gt;
+&lt;plugin&gt;
+    &lt;groupId&gt;com.simpligility.maven.plugins&lt;/groupId&gt;
+    &lt;artifactId&gt;android-maven-plugin&lt;/artifactId&gt;
+    &lt;version&gt;4.3.1-SNAPSHOT-a79e45bc0721bfea97ec139311fe31d959851476&lt;/version&gt;
+    &lt;executions&gt;
+        &lt;execution&gt;
+            &lt;phase&gt;package&lt;/phase&gt;
+        &lt;/execution&gt;
+    &lt;/executions&gt;
+    &lt;configuration&gt;
+        &lt;androidManifestFile&gt;${project.basedir}/src/main/android/AndroidManifest.xml&lt;/androidManifestFile&gt;
+        &lt;assetsDirectory&gt;${project.basedir}/src/main/android/assets&lt;/assetsDirectory&gt;
+        &lt;resourceDirectory&gt;${project.basedir}/src/main/android/res&lt;/resourceDirectory&gt;
+        &lt;sdk&gt;
+            &lt;platform&gt;19&lt;/platform&gt;
+        &lt;/sdk&gt;
+        &lt;undeployBeforeDeploy&gt;true&lt;/undeployBeforeDeploy&gt;
+        &lt;proguard&gt;
+            &lt;skip&gt;true&lt;/skip&gt;
+            &lt;config&gt;${project.basedir}/proguard.conf&lt;/config&gt;
+        &lt;/proguard&gt;
+        &lt;excludes&gt;
+            &lt;exclude&gt;foo1-java8&lt;/exclude&gt;
+            &lt;exclude&gt;foo2-java8&lt;/exclude&gt;
+            &lt;exclude&gt;foo3-java8&lt;/exclude&gt;
+        &lt;/excludes&gt;
+    &lt;/configuration&gt;
+    &lt;extensions&gt;true&lt;/extensions&gt;
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;net.sf.proguard&lt;/groupId&gt;
+            &lt;artifactId&gt;proguard-base&lt;/artifactId&gt;
+            &lt;version&gt;5.2.1&lt;/version&gt;
+            &lt;scope&gt;runtime&lt;/scope&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+&lt;/plugin&gt;
+
+Вот, собственно, и всё. Следует отметить, что такой подход подразумевает использование только языковых средств Java 8, а не стандартных библиотек типа Stream API. Хочу также подчеркнуть, что используя данную методику можно не только подружить Android с приложениями и их зависимостями, написанными на Java 8, но и обрабатывать байт-код сторонних зависимостей как заблагорассудится. Не могу сказать, что мне полностью нравится это решение с точки зрения элегантности.
+Возможно, в других системах сборки проектов всё значительно проще. Я даже не знаю, может ли это быть проще в самом Maven, и не является ли вся эта поделка частью велосипедостроения, но, тем не менее, мне было интересно заставить Maven сделать то, что от него требуется.
+      
+    

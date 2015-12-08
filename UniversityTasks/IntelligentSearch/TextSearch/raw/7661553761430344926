@@ -1,0 +1,67 @@
+﻿#TITLE:Протоколирование JDBC запросов и их параметров в существующем приложении
+
+      
+В публикации рассмотрим как можно внедрить логирование jdbc операций в существующее приложение без его пересборки и перекомпиляции. Это даст возможность протоколировать параметры запросов, которые заполняет программа, и многие другие аспекты работы с jdbc.
+Хорошо, если у вас есть возможность добавить log4jdbc в сборку приложения.&lt;dependency&gt;
+	&lt;groupId&gt;com.googlecode.log4jdbc&lt;/groupId&gt;
+	&lt;artifactId&gt;log4jdbc&lt;/artifactId&gt;
+	&lt;version&gt;1.2&lt;/version&gt;
+&lt;/dependency&gt;
+
+И использовать net.sf.log4jdbc.DriverSpy при создании соединения.
+Если же такой возможности нет, то aspectj-scripting поможет вам с логированием jdbc операций.
+Подопытной программой остается SonarQube, как и в статьях про hawt.io/h2 и CRaSH-ssh. В этих статьях был подробнее рассмотрен процесс конфигурирования и принцип работы aspectj-scripting и приведены пошаговые инструкции.
+Для логирования jdbc операций изменим параметры запуска jvm сонара:
+sonar.web.javaAdditionalOpts=-javaagent:aspectj-scripting-1.0-agent.jar -Dorg.aspectj.weaver.loadtime.configuration=config:file:h2_jdbc.xml
+Также требуется доступность jvm агента aspectj-scripting и файл конфигурации h2_jdbc.xml:&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;configuration&gt;
+    &lt;aspects&gt;
+        &lt;name&gt;com.github.igorsuhorukov.JdbcLog&lt;/name&gt;
+        &lt;type&gt;AROUND&lt;/type&gt;
+        &lt;pointcut&gt;execution(* org.apache.commons.dbcp.BasicDataSource.getConnection())&lt;/pointcut&gt;
+        &lt;process&gt;
+            &lt;expression&gt;
+		log4jdbcresultUrls = com.github.smreed.dropship.MavenClassLoader.forMavenCoordinates("com.googlecode.log4jdbc:log4jdbc:1.2").getURLs();
+		slf4jresultUrls = com.github.smreed.dropship.MavenClassLoader.forMavenCoordinates("org.slf4j:slf4j-simple:1.6.0").getURLs();
+
+		resultUrls = new java.net.URL[log4jdbcresultUrls.length + slf4jresultUrls.length];
+		System.arraycopy(log4jdbcresultUrls, 0, resultUrls, 0, log4jdbcresultUrls.length);
+		System.arraycopy(slf4jresultUrls, 0, resultUrls, log4jdbcresultUrls.length, slf4jresultUrls.length);
+
+		log4jdbcLoader = new java.net.URLClassLoader(resultUrls, Thread.currentThread().getContextClassLoader());
+		log4jdbcLoader.loadClass("net.sf.log4jdbc.ConnectionSpy");
+                
+		currentLoader = java.lang.Thread.currentThread().getContextClassLoader();
+		java.lang.Thread.currentThread().setContextClassLoader(log4jdbcLoader);
+		res = new net.sf.log4jdbc.ConnectionSpy(joinPoint.proceed());
+                java.lang.Thread.currentThread().setContextClassLoader(currentLoader);
+		res;
+            &lt;/expression&gt;
+        &lt;/process&gt;
+    &lt;/aspects&gt;
+&lt;/configuration&gt;
+
+Этот аспект позволяет перехватить вызов getConnection() класса BasicDataSource из библиотеки common-dbcp и вернуть обертку ConnectionSpy для соединения с базой данных. При этом классы из log4jdbc становятся доступными в приложении за счет созданиия своего загрузчика классов из maven артефактов в локальном репозитарии. aspectj-scripting загружает артефакты com.googlecode.log4jdbc:log4jdbc:1.2 и org.slf4j:slf4j-simple:1.6.0 на основе конфигурации, которую указал выше. Это работает благодаря тому, что мы передали при старте jvm два дополнительных параметра: "-javaagent" для старта aspectj-scripting агента и -Dorg.aspectj.weaver.loadtime.configuration для передачи ему конфигурации. И aspectj агент инструментирует классы приложения при их загрузки.
+В библиотеке log4jdbc доступны следующие логгеры:jdbc.sqlonly — Логирует только SQL
+jdbc.sqltiming — Логирует SQL и время выполнения
+jdbc.audit — Логирует все вызовы JDBC API, кроме работы с ResultSet
+jdbc.resultset — Все вызовы к ResultSet протоколируются
+jdbc.connection — Логируются открытие и закрытие соединения, полезно использовать для поиска утечек соединений
+
+Напоследок приведу несколько примеров из логов работы SonarQube, веб часть которого написана на ruby и выполняется в jruby:
+[jdbc.connection] 2. Connection opened
+[jdbc.connection] 81. Connection closed
+[jdbc.sqltiming] select * from schema_migrations {executed in 4 msec}
+[jdbc.audit] 7. PreparedStatement.setString(1, «sonar.core.id») returned
+[jdbc.audit] 9. PreparedStatement.setTimestamp(1, 2015-08-09 18:49:08.205) returned 
+[jdbc.audit] 9. PreparedStatement.setFetchSize(200) returned 
+[jdbc.audit] 14. Connection.prepareStatement(update metrics set best_value=?, delete_historical_data=?, description=?, direction=?, domain=?, enabled=?, hidden=?, short_name=?, optimized_best_value=?, origin=?, qualitative=?, val_type=?, user_managed=?, worst_value=? where id=?) returned net.sf.log4jdbc.PreparedStatementSpy@6e22c0e5
+[jdbc.resultset] 2. ResultSet.getMetaData() returned rsMeta0: columns=1
+[jdbc.resultset] 2. ResultSet.getType() returned 1003
+[jdbc.sqlonly] select ar.id from analysis_reports ar where ar.report_status='PENDING' and not exists( select 1 from analysis_reports ar2 where ar.project_key = ar2.project_key and ar2.report_status='WORKING') order by ar.created_at asc, ar.id asc 
+Пример, описаный в статье, вы можете увидеть в скринкасте:
+Итак, мы смогли модифицировать конфигурацию jvm SonarQube таким образом, чтобы в его лог файл записывались все вызовы приложением Jdbc API с их параметрами. Надеюсь, эта публикация вам пригодиться и вы найдете другие способы применения аспектно-ориентированного программирования для существующих java программ
+
+      
+      
+    

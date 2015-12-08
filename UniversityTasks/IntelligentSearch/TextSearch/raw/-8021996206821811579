@@ -1,0 +1,188 @@
+﻿#TITLE:Мониторинг IP в блэклистах с помощью Zabbix
+
+      Немного теории
+Публичные спам-базы или «черные списки» IP адресов содержат информацию об IP, которые по каким-либо причинам были признаны недружественными по отношению к пользователям. Не будем углубляться в технологические тонкости; важно, что почтовые программы и сервисы используют информацию из этих и собственных баз для того, чтобы защищать электронные ящики получателей от нежелательной рассылки, от спама.Суть проблемы
+Если ваш IP адрес попал в черный список – адресаты не будут получать ваши электронные письма.
+Попадание IP в публичные спам-базы грозит наступлением корпоративного почтового коллапса. Это неприятно, даже если e-mail адресов на домене всего 5 и всех пользователей можно временно «пересадить» на «обычную» почту на Яндексе или Mail.ru. Но, когда к внутреннему почтовому серверу «приколочены» более 50 ящиков, интегрированных с CRM-системой, проблема приобретает катастрофический характер.Решение
+«Знать, чтобы предвидеть; предвидеть, чтобы управлять». О. Конт
+Вычислить надвигающуюся угрозу можно и нужно до того, как клиент ощутит на себе карательные меры почтовых серверов, а отдел продаж в панике совершит коллективное линчевание местного админа. Для этого мы создали скрипт автоматического мониторинга IP, оповещающий пользователя о возможных проблемах. В качестве платформы мониторинга выбрали Powershell, а для оповещения использовали zabbix 2.4.Немного о создании скрипта
+Наиболее очевидным вариантом казался парсинг веб страниц известных поисковых систем IP в базах mxtoolbox и 2ip.ru. Для решения этой задачи – использовались технологии .NET и XPATH – наиболее эффективное средство для парсинга XML и WEB, особенно для ненавистников регулярных выражений. Первый блин, в некотором роде, получился комом и после долгого и изнурительного тестирования мы решили отказаться от этого решения. Причиной послужила, прежде всего, зависимость от стороннего сервиса: если создатели площадки поменяют структуру кода, то в лучшем случае нужно будет заново тестировать ПО, в худшем – переписывать код.
+После тщательного анализа существующих в данной области технологий и наработок мы пришли к более интересному и практичному решению. Разработка ПО на базе powershell 3.0, которое будет самостоятельно проверять наличие IP в публичных спам-базах.Как работает?
+Проверка IP адреса на факт наличия в черном списке (DNSBL) проводится следующим образом: указывается проверяемый IP в нотации DNS PTR (то есть наоборот «спереди назад») и добавляется имя домена DNSBL сервера. Если ответ от сервера получен, то проверяемый адрес заблокирован: то есть IP замечен в одном или нескольких черных списках. Вне зависимости от специфики ответа (он может быть любым), сам его факт говорит о том, что IP находится в спам-базе.Немного кодаКод скрипта:&lt;#
+Функция zabbix для отправки данных. Данная функция принимает на вход параметры:
+Key - имя ключа, который создается в элементе данных zabbix
+Также необходимо задать переменные
+$Zabbix_send = указать где находится утилита zabbix_sender
+    $zabbix_port = порт zabbix сервера
+    $zabbix_server = адрес zabbix сервера
+    $zabbix_host = Имя созданого узла сети в zabbix (чувствителен к регистру)
+
+
+#&gt;
+Function Send_Zabbix {
+
+
+    param (
+        [parameter(mandatory=$true)]
+        $key,
+        
+        [parameter(mandatory=$true)]
+        [int64]$value
+    )
+    $Zabbix_send = "C:\zabbix_sender.exe"
+    $zabbix_port = "10051"
+    $zabbix_server = "10.0.33.31"
+    $zabbix_host = "Blacklistcheck"
+    echo "$key : $value"
+                $cmd = "$Zabbix_send -z $zabbix_server -p $zabbix_port -s $zabbix_host  -k `"$key`" -o $value"
+                echo "$cmd"
+    Invoke-Expression $cmd 
+    
+} 
+
+# Место хранения списка адресов для проверки, в формате name,ip
+$FilePath = "D:\powershell\blacklist.csv"
+# импортируем список в текстовый массив
+$iparr = Import-Csv $FilePath
+foreach ($ipaddr in $iparr)
+{
+[string]$IP = $ipaddr.adress
+[string]$organization = $ipaddr.organization
+$reversedIP = ($IP -split '\.')[3..0] -join '.'
+
+ # заготовленый список спамбаз, по которым будет проходить проверка
+
+$blacklistServers = @(
+    "b.barracudacentral.org";
+"bl.deadbeef.com";
+"bl.emailbasura.org";
+"bl.spamcannibal.org";
+"bl.spamcop.net";
+"blackholes.five-ten-sg.com";
+"blacklist.woody.ch";
+"bogons.cymru.com";
+"cbl.abuseat.org";
+"cdl.anti-spam.org.cn";
+"combined.abuse.ch";
+"combined.rbl.msrbl.net";
+"db.wpbl.info";
+"dnsbl-1.uceprotect.net";
+"dnsbl-2.uceprotect.net";
+"dnsbl-3.uceprotect.net";
+"dnsbl.cyberlogic.net";
+"dnsbl.inps.de";
+"dnsbl.njabl.org";
+"dnsbl.sorbs.net";
+"drone.abuse.ch";
+"drone.abuse.ch";
+"duinv.aupads.org";
+"dul.dnsbl.sorbs.net";
+"dul.ru";
+"dyna.spamrats.com";
+"dynip.rothen.com";
+"http.dnsbl.sorbs.net";
+"images.rbl.msrbl.net";
+"ips.backscatterer.org";
+"ix.dnsbl.manitu.net";
+"korea.services.net";
+"misc.dnsbl.sorbs.net";
+"noptr.spamrats.com";
+"ohps.dnsbl.net.au";
+"omrs.dnsbl.net.au";
+"orvedb.aupads.org";
+"osps.dnsbl.net.au";
+"osrs.dnsbl.net.au";
+"owfs.dnsbl.net.au";
+"owps.dnsbl.net.au";
+"pbl.spamhaus.org";
+"phishing.rbl.msrbl.net";
+"probes.dnsbl.net.au";
+"proxy.bl.gweep.ca";
+"proxy.block.transip.nl";
+"psbl.surriel.com";
+"rbl.interserver.net";
+"rdts.dnsbl.net.au";
+"relays.bl.gweep.ca";
+"relays.bl.kundenserver.de";
+"relays.nether.net";
+"residential.block.transip.nl";
+"ricn.dnsbl.net.au";
+"rmst.dnsbl.net.au";
+"sbl.spamhaus.org";
+"short.rbl.jp";
+"smtp.dnsbl.sorbs.net";
+"socks.dnsbl.sorbs.net";
+"spam.abuse.ch";
+"spam.dnsbl.sorbs.net";
+"spam.rbl.msrbl.net";
+"spam.spamrats.com";
+"spamlist.or.kr";
+"spamrbl.imp.ch";
+"t3direct.dnsbl.net.au";
+"tor.dnsbl.sectoor.de";
+"torserver.tor.dnsbl.sectoor.de";
+"ubl.lashback.com";
+"ubl.unsubscore.com";
+"virbl.bit.nl";
+"virus.rbl.jp";
+"virus.rbl.msrbl.net";
+"web.dnsbl.sorbs.net";
+"wormrbl.imp.ch";
+"xbl.spamhaus.org";
+"zen.spamhaus.org";
+"zombie.dnsbl.sorbs.net"
+)
+
+
+$blacklistedOn = @()
+
+
+foreach ($server in $blacklistServers)
+{
+    $fqdn = "$reversedIP.$server"
+
+    try
+    {
+        $null = [System.Net.Dns]::GetHostEntry($fqdn)
+        $blacklistedOn += $server
+    }
+    catch { }
+    
+
+}
+
+if ($blacklistedOn.Count -gt 0)
+{
+   
+    Write-Host "$organization is blacklisted on the following servers: $($blacklistedOn -join ', ')"
+    send_zabbix -key $organization -value 1
+}
+else
+{
+    Write-Host "$organization is not currently blacklisted on any server."
+    send_zabbix -key $organization -value 0
+  
+    }
+  } 
+
+В zabbix данные передаются через траппер. Для использования элемента данных траппера мы должны:
+ — иметь в Zabbix настроенный элемент данных траппер
+ — отправлять данные в Zabbix.
+Создадим хост blacklistcheck:
+Теперь необходимо настроить траппер:
+Создаем элемент данных.Имя – может быть любымКлюч – основной элемент при создании траппера, данный элемент имеет зависимость от регистра. Ключ KEY и key это два разных ключа.Тип информации: есть 3 варианта, подходящие под нашу задачу: число, символ или текст. Но, поскольку мы исключили регулярные выражения, то текстовым массивам предпочли целочисленное значение.Тип данных – логический; нам важно 2 значения IP: присутствует (1), либо не присутствует в спам-листах (0).Отображение значений можно оставить как есть, а можно создать свое преобразование, примерно следующего содержания: 1= ip is listing, 0 = ip isn`t listing – на работу скрипта данные значения не влияют, зато визуализация информации в zabbix получается интересной.
+После этого элемент данных готов принимать значения. Можно выполнить проверку через программу zabbix_sender.
+В случае корректной работы будет получен подобный результат:Результат zabbix senderC:\&gt;zabbix_sender.exe -z 10.0.33.31 -p 10051 -s Blacklistcheck -k fn -o 1 -vv
+zabbix_sender.exe [14276]: DEBUG: answer [{«response»:«success»,«info»:«processe
+d: 1; failed: 0; total: 1; seconds spent: 0.000066»}]
+info from server: «processed: 1; failed: 0; total: 1; seconds spent: 0.000066»
+sent: 1; skipped: 0; total: 1
+Для просмотра диагностических данных используется параметр –vv.
+Скорость проверки одного IP составляет не более 3-х минут. 
+Далее необходимо настроить триггер для оповещения.
+Имя можно задать любое. Выражение соответствует изменению состояния элемента данных с 0 на 1. В случае срабатывания триггера в основной панели zabbix появится оповещение.Практика использования
+Мы создали компактный, хорошо работающий скрипт, который автоматически оповещает клиента о возможных проблемах в работе почтовой системы. Согласитесь, что профилактика этого вопроса куда приятнее и спокойнее по сравнению с необходимостью решать задачу «отвалившейся» почты в условиях цейтнота.
+Мы внедрили данное решение у наших клиентов, и оно хорошо себя показывает – особенно в компаниях, где отдел продаж работает через рассылку коммерческих. Данный скрипт позволяет быстро локализовать проблему, вызвавшую попадание IP в спам-базу, и без ущерба продолжить работу.
+Желаем, чтобы количество взлётов электронных писем совпадало с количеством приземлений!
+      
+    

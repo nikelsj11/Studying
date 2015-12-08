@@ -1,0 +1,380 @@
+﻿#TITLE:Избитая банальность. Как школьник бота писал
+
+      Мне 16 и я школьник. Не так уж давно меня посетила идея написать бота… Нет, не PHP-поделие, уныло висящее на никому не нужном сайте. И даже не бесполезный ответчик на фразы типа "! Погода".
+Бот задумывался для развлечения как «говорилка» на десктоп. Ужасно, правда? Но мне хочется узнать свои ошибки, ведь я ни разу не показывал свой код кому-либо, в школе только паскаль. Итак, следуя ненавидимому некоторыми чистому структурному подходу я написал первоначальный вариант на C++.
+Задумка такова. Бот берет фразу из консоли, вычленяет слова, проверяет каждое по словарю, расположенному в файле «Memory.txt», и возвращает найденный ответ к каждому слову; если ни на одно слово ответ не найден, то он возвращает оговоренную фразу (не принципиально).
+Словарь в файле «Memory.txt» структурирован простейшим образом:
+ слово=ответ
+Пример:
+ яблоко=яблоки вкусные
+Bot.h- заголовочный файл, о нем позже. Основные функции будут располагаться в файле Bot.cpp:/**
+Даниил Демидко, 2015
+Основные функции Cbot
+*/
+#include"Bot.h"
+
+Определим имя для словаря в этом же файле:///Имя тектового файла- памяти бота
+const char *const MemoryPath="Memory.txt";
+
+«Основа основ» бота — это функция, выделяющая слова из одной строки в массив строк и возвращающая указатель на массив.const std::string *const GetWords(const std::string &amp;Word)     ///Количество возвращаемых слов в массиве-глобальная переменная, надеюсь всем понятно почему...
+    int MaxIndex=0;
+    ///Функция выделяет слова из строки
+    const std::string *const GetWords(const std::string &amp;Word)
+    {
+        ///Резервируется массив в куче на 256 слов
+        std::string *const PtrWords=new std::string[256];
+        ///Сбрасываем предидущее значение
+        MaxIndex=0;
+        ///Фиксирует наличие искомого символа в предидущих циклах
+        bool Fix=false;
+        ///Последний символ- служебный, поэтому не учитыватся
+        for(int i=0; i&lt;Word.size(); ++i)
+        {
+            ///Символы- разделители слов
+        if(Word[i]==' '||Word[i]=='.'||Word[i]==','||Word[i]=='!'||Word[i]=='?'||Word[i]=='='||Word[i]=='/')
+            {
+                ///При нахождении разделителя, фиксируем это и пропускаем один цикл
+                Fix=true;
+                continue;
+            }
+            ///Если в предидущих циклах зафиксирован разделитель, то переходим на одну ячейку
+            if(Fix)
+            {
+                Fix=false;
+                ++MaxIndex;
+            }
+            PtrWords[MaxIndex]+=Word[i];
+        }
+        return PtrWords;
+    }
+
+Следующая функция получает строку для поиска и ищет ее по словарю, если ответ не найден, возвращает пустую строку "". Хочу обратить внимание на то, что если слово будет найдено внутри другого слова в файле ассоциаций, то ответ будет засчитан.const std::string GetAssociation(const std::string &amp;Word)///Функция возвращает ассоциацию
+    const std::string GetAssociation(const std::string &amp;Word)
+    {
+        std::ifstream Memory(MemoryPath, std::ios::in);
+        if(!Memory)
+        {
+            std::ofstream NewMemory(MemoryPath);
+            NewMemory.close();
+            Memory.open(MemoryPath);
+            return "";
+        }
+        while(!Memory.eof())
+        {
+            std::string Buffer="";
+            std::getline(Memory, Buffer);
+            if(Buffer.find(Word)!=-1)
+            {
+                std::string Result[2];
+                for(int i=0, Index=0; i&lt;Buffer.size(); ++i)
+                {
+                    if(Buffer[i]=='=')
+                    {
+                        ///Символы после второго знака '=' включительно- игнорируются
+                        if(Index==1)
+                        {
+                            break;
+                        }
+                        ++Index;
+                        continue;
+                    }
+                    Result[Index]+=Buffer[i];
+                }
+                if(Result[0].find(Word)!=-1)
+                {
+                    Memory.close();
+                    return Result[1];
+                }
+            }
+        }
+        Memory.close();
+        return "";
+    }
+
+Теперь можно подумать о необязательное мелочи- ужасной пародии на обучение- добавление новых ассоциаций при нахождении в строке символа '-'.
+Пример:
+ Зло- это добро наоборот
+ В словарь идет:
+ Зло= это добро наоборот
+Не забываем о том, что при нахождении слова внутри другого, ответ засчитывается, так что результат может быть интересным.void PutAssociation(const std::string &amp;Left, const std::string &amp;Right)///Функция добавляет ассоциацию
+    void PutAssociation(const std::string &amp;Left, const std::string &amp;Right)
+    {
+        std::ofstream Memory(MemoryPath, std::ios::app);
+        Memory&lt;&lt;Left&lt;&lt;'='&lt;&lt;Right&lt;&lt;std::endl;
+        Memory.close();
+    }
+
+В моем представлении структурный подход не отменяет инкапсуляцию, поэтому мы добавим анонимное пространство имен — для банальной инкапсуляции включающее в себя все предыдущие функции.
+Таким образом предыдущие функции уже не будут доступны при подключении заголовочного файла «Bot.h». Позволю себе сослаться на гуру: Это самый передовой способ избежать объявления функций и переменных со статическим связыванием. 
+ Доступ может быть осуществлен только в рамках единицы
+ трансляции (т. е. в полученном после предварительной обработки файле), 
+ в которой они находятся, точно так же, как к статическим переменным.
+ Стивен С. Дьюрхест, «C++. Священные знания»
+Вот, все вместе:namespacenamespace
+{
+    ///Имя тектового файла- памяти бота
+    const char *const MemoryPath="Memory.txt";
+    ///Количество возвращаемых слов в массиве
+    int MaxIndex=0;
+    ///Функция выделяет слова из строки
+    const std::string *const GetWords(const std::string &amp;Word)
+    {
+        ///Резервируется массив на 256 слов
+        std::string *const PtrWords=new std::string[256];
+        ///Сбрасываем предидущее значение
+        MaxIndex=0;
+        ///Фиксирует наличие искомого символа в предидущих циклах
+        bool Fix=false;
+        ///Последний символ- служебный, поэтому не учитыватся
+        for(int i=0; i&lt;Word.size(); ++i)
+        {
+            ///Символы- разделители слов
+            if(Word[i]==' '||Word[i]=='.'||Word[i]==','||Word[i]=='!'||Word[i]=='?'||Word[i]=='='||Word[i]=='/')
+            {
+                ///При нахождении разделителя, фиксируем это и пропускаем один цикл
+                Fix=true;
+                continue;
+            }
+            ///Если в предидущих циклах зафиксирован разделитель, то переходим на одну ячейку
+            if(Fix)
+            {
+                Fix=false;
+                ++MaxIndex;
+            }
+            PtrWords[MaxIndex]+=Word[i];
+        }
+        return PtrWords;
+    }
+    
+    ///Функция добавляет ассоциацию
+    void PutAssociation(const std::string &amp;Left, const std::string &amp;Right)
+    {
+        std::ofstream Memory(MemoryPath, std::ios::app);
+        Memory&lt;&lt;Left&lt;&lt;'='&lt;&lt;Right&lt;&lt;std::endl;
+        Memory.close();
+    }
+}
+
+И наконец, функция для связи с внешним миром, разумеется вне пространства имен, но в той же единице компиляции. Принимает фразу, вычленяет слова, получает ассоциации по каждому, при нахождении символа равно добавляет новую ассоциацию при помощи предыдущих функций:const std::string GetFullAssociation(const std::string &amp;Word)///Возвращает ассоциации по всем словам фразы
+const std::string GetFullAssociation(const std::string &amp;Word)
+{
+    const std::string *const Words=GetWords(Word);
+    std::string Result="";
+    for(int i=0; i&lt;=MaxIndex; ++i)
+    {
+        const std::string Buffer=GetAssociation(Words[i]);
+        if(Buffer!="")
+        {
+            Result+=Buffer+' ';
+        }
+    }
+    delete[] Words;
+    if(Word.find('-')!=-1)
+    {
+        std::string NewAssociations[2];
+        for(int i=0, Index=0; i&lt;Word.size(); ++i)
+        {
+            if(Word[i]=='-')
+            {
+                if(Index==1)
+                {
+                    break;
+                }
+                ++Index;
+                continue;
+            }
+            if(Word[i]=='=')
+            {
+                continue;
+            }
+            NewAssociations[Index]+=Word[i];
+        }
+        PutAssociation(NewAssociations[0], NewAssociations[1]);
+    }
+    return Result;
+}
+
+А теперь подведем итог — файл «Bot.cpp» полностью:Bot.cpp/**
+Даниил Демидко, 2015
+Основные функции Cbot
+*/
+#include"Bot.h"
+///Анонимное пространство имен инкапсулирует функции за пределами этой единицы компиляции
+namespace
+{
+    ///Имя тектового файла- памяти бота
+    const char *const MemoryPath="Memory.txt";
+    ///Количество возвращаемых слов в массиве
+    int MaxIndex=0;
+    ///Функция выделяет слова из строки
+    const std::string *const GetWords(const std::string &amp;Word)
+    {
+        ///Резервируется массив на 256 слов
+        std::string *const PtrWords=new std::string[256];
+        ///Сбрасываем предидущее значение
+        MaxIndex=0;
+        ///Фиксирует наличие искомого символа в предидущих циклах
+        bool Fix=false;
+        ///Последний символ- служебный, поэтому не учитыватся
+        for(int i=0; i&lt;Word.size(); ++i)
+        {
+            ///Символы- разделители слов
+            if(Word[i]==' '||Word[i]=='.'||Word[i]==','||Word[i]=='!'||Word[i]=='?'||Word[i]=='='||Word[i]=='/')
+            {
+                ///При нахождении разделителя, фиксируем это и пропускаем один цикл
+                Fix=true;
+                continue;
+            }
+            ///Если в предидущих циклах зафиксирован разделитель, то переходим на одну ячейку
+            if(Fix)
+            {
+                Fix=false;
+                ++MaxIndex;
+            }
+            PtrWords[MaxIndex]+=Word[i];
+        }
+        return PtrWords;
+    }
+    ///Функция возвращает ассоциацию
+    const std::string GetAssociation(const std::string &amp;Word)
+    {
+        std::ifstream Memory(MemoryPath, std::ios::in);
+        if(!Memory)
+        {
+            std::ofstream NewMemory(MemoryPath);
+            NewMemory.close();
+            Memory.open(MemoryPath);
+            return "";
+        }
+        while(!Memory.eof())
+        {
+            std::string Buffer="";
+            std::getline(Memory, Buffer);
+            if(Buffer.find(Word)!=-1)
+            {
+                std::string Result[2];
+                for(int i=0, Index=0; i&lt;Buffer.size(); ++i)
+                {
+                    if(Buffer[i]=='=')
+                    {
+                        ///Символы после второго знака '=' включительно- игнорируются
+                        if(Index==1)
+                        {
+                            break;
+                        }
+                        ++Index;
+                        continue;
+                    }
+                    Result[Index]+=Buffer[i];
+                }
+                if(Result[0].find(Word)!=-1)
+                {
+                    Memory.close();
+                    return Result[1];
+                }
+            }
+        }
+        Memory.close();
+        return "";
+    }
+    ///Функция добавляет ассоциацию
+    void PutAssociation(const std::string &amp;Left, const std::string &amp;Right)
+    {
+        std::ofstream Memory(MemoryPath, std::ios::app);
+        Memory&lt;&lt;Left&lt;&lt;'='&lt;&lt;Right&lt;&lt;std::endl;
+        Memory.close();
+    }
+}
+///Возвращает ассоциации по всем словам фразы
+const std::string GetFullAssociation(const std::string &amp;Word)
+{
+    const std::string *const Words=GetWords(Word);
+    std::string Result="";
+    for(int i=0; i&lt;=MaxIndex; ++i)
+    {
+        const std::string Buffer=GetAssociation(Words[i]);
+        if(Buffer!="")
+        {
+            Result+=Buffer+' ';
+        }
+    }
+    delete[] Words;
+    if(Word.find('-')!=-1)
+    {
+        std::string NewAssociations[2];
+        for(int i=0, Index=0; i&lt;Word.size(); ++i)
+        {
+            if(Word[i]=='-')
+            {
+                if(Index==1)
+                {
+                    break;
+                }
+                ++Index;
+                continue;
+            }
+            if(Word[i]=='=')
+            {
+                continue;
+            }
+            NewAssociations[Index]+=Word[i];
+        }
+        PutAssociation(NewAssociations[0], NewAssociations[1]);
+    }
+    return Result;
+}
+
+Вот и все с файлом «Bot.cpp» мы закончили, теперь быстро набросаем заголовочный файл «Bot.h»:Bot.h#ifndef BOT
+#define BOT
+///На всякий случай проверяем, подключен ли уже iostream
+#ifndef _GLIBCXX_IOSTREAM
+#include&lt;iostream&gt;
+#endif            //_GLIBCXX_IOSTREAM
+///Проверяем fstream
+#ifndef _GLIBCXX_FSTREAM
+#include&lt;fstream&gt;
+#endif           //_GLIBCXX_FSTREAM
+///Наша уже описанная функция для связи с миром
+extern const std::string GetFullAssociation(const std::string&amp;);
+#endif          //BOT
+
+С основной частью мы закончили, дело за малостью — функцией main(). Она у нас будет располагаться в файле Cbot.cpp. Cbot — звучит невероятно оригинально, ведь правда?Cbot.cpp#include"Bot.h"
+int main()
+{
+    ///Файл кодировки 866 OEM (русская), файл "Memory.txt" должен быть в ней же
+    setlocale(LC_ALL, ".866");
+    std::wcout&lt;&lt;"Cbot 2.0\nАвтор: Даниил Демидко\nE-Mail: DDemidko1@gmail.com"&lt;&lt;std::endl;
+    while(true)
+    {
+        std::wcout&lt;&lt;"Я: ";
+        std::string Buffer="";
+        std::getline(std::cin, Buffer);
+        const std::string Association=GetFullAssociation(Buffer);
+        /**
+        Почему такая конструкция? Казалось, ведь можно было бы проще-
+
+        if(Association=="")
+        {
+            Association="Bot: Не распознана ключевая последовательность!";
+        }
+        std::cout&lt;&lt;Association&lt;&lt;std::endl;
+
+        Но мы не должны забывать, что работаем с 866 OEM-
+ с ней не получится корректно присвоить объекту std::string строку кириллических символов прямо из кода-
+        такое возможно (с 866 OEM) только при вводе из консоли.
+        */
+        if(Association=="")
+        {
+            std::wcout&lt;&lt;"Bot: Не распознана ключевая последовательность!"&lt;&lt;std::endl;
+        }
+        else
+        {
+            std::cout&lt;&lt;"Bot: "&lt;&lt;Association&lt;&lt;std::endl;
+        }
+    }
+}
+
+Все, бот готов, собираем вместе, получаем Cbot.exe, сохраняем файл Memory.txt в кодировке OEM 866 и кладем в одну директорию программой. Ссылка на сборку: spaces.ru/files/?r=main/view&amp;Read=58688510
+Ожидаю конструктивный поток критики показывающий на очевидные ошибки в коде.
+      
+    

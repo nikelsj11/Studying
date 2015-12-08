@@ -1,0 +1,139 @@
+﻿#TITLE:Дайджест интересных материалов из мира веб-разработки и IT за последнюю неделю №175 (31 августа — 6 сентября 2015)
+
+      Предлагаем вашему вниманию подборку с ссылками на полезные ресурсы, интересные материалы и IT-новостиВеб-разработка
+CSS
+Javascript
+Браузеры
+Дизайн
+Новости
+Занимательное
+ Веб-разработкаЕженедельная подборка красивых эффектов на CSS/SVG/JS #2
+Представлен открытый шрифт Hack 2.0, оптимизированный для отображения кода
+Новые инструменты для React-разработчиков (New React Developer Tools)
+Gulp для начинающих
+Проблемы с определением функций  (The problems with feature detection)
+Серия статей о Web Animations API
+CSS vs. SVG: фигуры и блоки с нестандартными формами (CSS vs. SVG: Shapes and Arbitrarily-Shaped UI Components)
+Обзор паттернов в SVG  (An Overview of SVG Patterns)
+Чеклист из 15-ти пунков для запуска сайта
+Разбор новых современных возможностей Bootstrap 4 Alpha
+gitualize — визуализирует изменения в репозитории с помощью проигрывателя по коммитам и анимации
+Предсказывающие страницы: ускорение работы сайта с помощью указания предзагружаемых ресурсов (Precognitive Pages: Using Resource Hints to Accelerate Site Performance)
+Сделайте радио-кнопки и чекбоксы более легкими в использовании (Making radio buttons and checkboxes easier to use)
+Веб-анимации на больших экранах (Web animations on large screens)
+DIY приоритетность + навигация (DIY Priority+ Navigation)
+Office-UI-Fabric — фронт-энд фреймворк для быстрого создания веб приложений на языке Office Design под Office и Office 365.
+ CSSПередряги при переносах. Перевод статьи Word Wrapping Woes  сообществом css-live.ru
+Вышла новая версия Autoprefixer 6.0 “Eureka” c большим количеством нововведений
+Связывание трансформаций (Chaining transforms)
+Less CSS mess
+Цветовая алхимия с Less: создание цветовых схем и палитр (Color Alchemy with Less: Creating Color Schemes and Palettes)
+Объяснение работы Scroll snapping
+О том, почему вам нужно прекращать использование ванильного CSS (Embracing Sass: Why You Should Stop Using Vanilla CSS)
+Еще одна техника для создания адаптивных таблиц
+Сервис, создающий единую цветовую схему для выбранного цвета
+Сервис по созданию стилевых руководств
+react-css-modules — синхронизация имен классов с CSS-модулями в React-компонентах
+Juiced: flexbox CSS-фреймворк
+ JavaScriptjQuery Foundation и Dojo Foundation объединяются (jQuery Foundation and Dojo Foundation to Merge)
+ES6:Использование ES6 в AngularJs 1.x со сборкой Browserify+Babel
+ES6 изнутри: стрелочные функции
+Типизированные массивы в ECMAScript 6 (Typed Arrays in ECMAScript 6)
+
+10 плагинов в SublimeText для JavaScript-разработчиков
+Как написать компилятор шаблонов в JS (How to write a template compiler in JavaScript)
+7 причин использовать Knockout.js в веб-разработке
+Измерение быстродействия JS функций (Measuring JavaScript Functions’ Performance)
+Убираем гонку условий при использовании промисов (Defusing Race Conditions when Using Promises)
+History API: управление позицией полосы прокрутки (History API: Scroll Restoration)
+Unimorphic Isoversal JavaScript ЧТО? (Unimorphic Isoversal JavaScript What?)
+5 вопросов, на которые должен отвечать каждый unit-тест (5 Questions Every Unit Test Must Answer)
+Как решить проблему с зависимостями глобального npm модуля (How to Solve the Global npm Module Dependency Problem)
+React Native на продакшене (React Native In Production)
+Как упустить важный момент при сравнении быстродействия фреймворков (How to miss the point when comparing web framework performance)
+Введение в Stage.js, JS-библиотеку для разработки кросс-платформенных 2D HTML5 игр
+Substance — библиотека для редактирования контента в веб-приложениях и создания настраиваемых текстовых редакторов
+webm.js — конвертор видео в WebM-формат
+upup — небольшой скрипт, добавляющий поддержку оффлайн работы с сайтом (a tiny script that makes sure your site is always there for your users)
+БраузерыРелиз web-браузера Chrome 45
+Видеоблог разработчиков Google о Chrome 45: лучшая поддержка ECMA Script 2015, улучшенный стартовый экран и другое
+Chrome стал лучше экономить память и заряд батареи
+В Firefox появятся контекстные личности
+Microsoft выпустила JavaScript Browser – proof-of-concept с открытым исходным кодом
+Microsoft Edge получит поддержку формата WebM
+Бриллиантовые дороги: история браузера Microsoft — от Internet Explorer до Edge
+Chrome 46 Beta: гибкие анимации и улучшенная производительность
+Google, Mozilla и Microsoft прекратят поддержку RC4 в своих web-браузерах
+Тренды браузеров сентября 2015-го (Browser Trends September 2015: IE’s Demise Edges Closer)
+ ДизайнНовый логотип Google:Как создавалась новая айдентика и логотип Google и что за ними стоит
+Насколько хорош новый логотип Google? (How good is Google’s new logo?)
+Логотип Google и шрифт Futura сравнили в наложении
+Google и Lenovo влюблены в одну и ту же буву 'e' (Google and Lenovo fell in love with the same 'e')
+Действительно ли новый логотип Google выглядит как Comic Sans? (Does the New Google Logo Really Look Like Comic Sans?)
+Новый логотип Google сделанный внутри компании (New Logo for Google done In-house)
+
+7 смертных грехов геймдизайнера
+Воронежская область получила логотип от Ильи Осколкова-Ценципера
+Делаем состояния кнопок понятными для дальтоников (Making Selected Button States Clear for Color Blind Users)
+Почему UX — это не про дизайн (Why UX is not about design)
+Sketch vs. Photoshop: 5 экспертов в веб-дизайне делятся своими мыслями по этому поводу
+Что случилось со всеми идеями в веб-дизайне?
+Лучше ли адаптивный дизайн, чем отзывчивый? (Is adaptive better than responsive design?)
+Самая узнаваемая вещь на планете (The Most Recognizable Thing on the Planet)
+Двадцать креативных дизайнеров, на которых вы должны подписаться на Behance (20 Creative Designers You Should Follow On Behance)
+Используя новейшие веб-тренды: на основе карточного дизайна (Embracing the latest web trend: card-based design)
+Движение и дизайн интерфейса  —  непрерывность и ожидание (Motion and interface design — continuity and expectation)
+Креативные контактные формы (25 Amazingly Creative Contact Forms)
+Мыслите формами, а не линиями: поднимите навык рисования на новый уровень (Think With Forms, Not Lines: Take Your Drawing to the Next Level)
+Новый флаг Новой Зеландии (A New Zealand Flag)
+Флажки никогда не бывают круглыми (Checkboxes Are Never Round)
+Как Skype привлекает новых пользователей (How Skype Onboards New Users)
+Одна из самых больших ошибок, которые я сделал в моей карьере (One of the biggest mistakes I’ve made in my career)
+Дизайн телефонной клавиатуры (Telephone Keypad Design)
+Как писать отличные сообщения об ошибках (How to write a great error message)
+Миньоны популяризировали Pantone-цвет (Meet Minion Yellow by Pantone: the world's first character-branded colour)
+Дизайн фото-историй (Designing Photostories)
+Стала ли адаптивность последней игрой веб-дизайна (Is Responsive the End Game of Web Design)
+7 простых правил для создания элегантных взаимодействий с UI (7 Simple Rules for Creating Elegant UI Interactions)
+Ошибки в фотошопе: быстрое решение проблем с инструментом Liquify (Photoshop Errors: Quick Solutions for Liquify Tool Problems)
+Создание дизайна для Bezar (Building Bezar)
+Детали типографики на сайтах выбранных в Typewolf в августе 2015 (The Typographic Details Behind Typewolf’s Favorite Sites of August 2015)
+Руководство (и подсказки) по созданию качественных иконок в стиле Material Design (Guide (&amp; tips) on Creating Quality Material Design Icons)
+ Подборка бесплатных дизайнерских печенекБесплатный клипарт в стиле стимпанк
+Бесплатный векторный клипарт на тему кино
+Наборы графики с плоским дизайном (25 Flat Design Freebies You Should Download)
+Напитки и блюда, набор UI (Food &amp; Drink UI Kit (PSD + Sketch))
+Наборы иконок – август 2015 Edition (27 Useful Free Icon Sets – August 2015 Edition)
+Набор с сотней контурных иконок (Free 100 PSD Line Icons)
+Stoked — декоративный шрифт с засечками
+Геометрический шрифт Product Sans от Google
+Amsdam — декоративный лаконичный геометрический шрифт
+Стильный шрифты для ультра-гладких веб-сайтов (30 Stylish Fonts for Ultra Sleek Websites)
+ НовостиGoogle представила новый логотип компании
+Рыночная доля Windows 10 превысила 5 процентов
+C 1 ноября Google понизит в поисковой выдаче сайты с полноэкранной рекламой приложений
+Apple заинтересовалась возможностью создания собственных сериалов и фильмов
+Офисный пакет Google Docs научился распознавать голос и автоматически строить диаграммы
+Google представил нативную рекламу в Gmail
+Windows 7/8/8.1 учатся шпионить
+WhatsApp достиг 900 млн ежемесячных пользователей
+Twitter заменит “Favorite” на “Like”
+Adobe объединил функционал Adobe Analytics и Adobe Target в едином интерфейсе
+Рекламу в мобильном вебе стали смотреть вдвое больше
+ Занимательное11 главных научных событий осени
+Зомби-куки: было бы смешно, если б не было грустно
+Почему Slack скоро убьет Dropbox
+Снова QWERTY?
+Ссылка дня: исследуйте 44 эксперимента по программированию
+На старт: Чем руководствовались основатели YouTube, Google, Facebook при проектировании первых версий сайтов
+Учёные подсчитали и показали число деревьев на Земле
+Цифра дня: за последние 30 лет интернет-трафик вырос в 2,7 миллиардов раз
+3D-печать восстанавливает историческую справедливость
+Oculus взорвет или лопнет как Google Glass? (Will Oculus explode or flop like Google Glass?)
+
+ Просим прощения за возможные опечатки или неработающие/дублирующиеся ссылки. Если вы заметили проблему — напишите пожалуйста в личку, мы стараемся оперативно их исправлять. Дайджест за прошлую неделю.
+Материал подготовили  dersmoll и  alekskorovin.
+
+      
+      
+    

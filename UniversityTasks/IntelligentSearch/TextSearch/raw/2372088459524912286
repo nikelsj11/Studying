@@ -1,0 +1,147 @@
+﻿#TITLE:Шаблоны проектирования мобильных приложений. Command Processor
+
+      “Пишите код так, как будто сопровождать его будет склонный к насилию психопат, который знает, где вы живёте.”
+Мартин Голдинг
+При разработке одного из проектов, использующего GooglePlacesAPI, у меня возникла проблема организации сетевого взаимодействия между моим Android–приложением и API сервера. Интуиция и “лапша” из AsyncTask’ов подсказывала, что должны быть другие способы организации такого рода взаимодействия. Так я наткнулся на шаблон проектирования CommandProcessor. Об использовании этого паттерна проектирования в Android-приложениях я и хочу рассказать.
+Для начала, опишу задачу, которую нужно было решить. Требовалось написать приложение, использующее Google Places API, показывающее превью любого места на карте, которое выбрал пользователь, а далее, если пользователь захочет получить больше информации (например просмотреть больше картинок), то подгружать картинки по заданному Id выбранного места, и показывать уже все картинки, относящиеся к выбранному месту. Самым очевидным на тот момент для меня способом было использование AsyncTask. Но после некоторых попыток стало ясно, что должны быть и другие способы, более удобные. Использование AsyncTask’ ов было неудобным потому что:1) Чтобы получить превью какого-нибудь места, необходимо было сначала сделать запрос для получения информации о всех местах, которые находились рядом с выбранным пользователем местом.2) По полученным Id сформировать и отправить запрос о получении фотографии-превью. 3) При клике на превью получить все картинки относящиеся к этому месту.
+Таким образом, при использовании AsyncTask’ов получался некий «водопад» и пришлось бы использовать один AsyncTask внутри другого. И тогда, погуглив, я нашел информацию о паттерне Command Processor, который отлично справляется с задачами, описанными выше.
+Паттерн проектирования CommandProcessor разделяет запросы к сервису от их выполнения. Главный компонент паттерна — CommandProcessor, управляет запросами, планирует их выполнение, а также предоставляет дополнительный сервис, например, хранение запросов для позднего выполнения или отмены запроса. Диаграмма, заимствованная из [1] показывает отношения между компонентами паттерна:Области применения паттерна Программы, в которых пользователь взаимодействует с системой через графический интерфейс. Например: текстовые редакторы, приложения для офиса. Команды (здесь и далее команды тоже самое что и запросы) используются для выполнения какой-то задачи, после того как пользователь нажал кнопку мыши, горячую клавишу, кнопку меню и т.д. Команды являются объектами, которые передаются процессору для выполнения.
+ Распределенные или Параллельные системы. Используя этот паттерн можно передавать команды на выполнение в отдельный поток. Создать очередь команд и т.д.
+ Приложения, взаимодействующие с сетью.
+Реализация
+Теперь, рассмотрим, как этот паттерн можно применять при разработке мобильных приложений, а конкретно, Android–приложений. Способов реализации много, можно использовать IntentService или HaMeR-фрэймворк (Handler, Messages, Runnable) Давайте рассмотрим, как я имплементировал данный паттерн в тестовом приложении. Итак, тестовое приложение показывает маршруты и список мест, которые содержатся в том или ином маршруте. Соответственно, у нас есть два типа запросов (команд): TracksRequest и PlacesRequest. Оба класса являются наследниками базового класса CommonRequest, для того чтобы обрабатываться нашим процессором (CommandProcessor).//Базовый класс CommonRequest для запросов
+public abstract class CommonRequest {
+public abstract void sendRequest(int i);
+public int requestId;
+}
+// Реализация PlaceRequest
+public class PlacesRequest extends CommonRequest{
+private MessageController handler_;
+
+public PlacesRequest(MessageController handler){
+this.handler_ = handler;
+}
+public void sendRequest(int id){
+sendAsyncPlaceRequest(id);
+}
+}
+// Реализация TracksRequest
+public class TracksRequest extends CommonRequest {
+private MessageController handler_;
+
+public TracksRequest(MessageController handler) {
+this.handler_ = handler;
+}
+public void sendRequest(int id) {
+sendAsyncTracksRequest();
+}
+}
+
+В методе sendAsyncPlaceRequest происходит вся работа: это может быть создание URL для запроса к API, создание нового Thread, парсинг ответа и передача результата работы контроллеру с помощью Handler.private void sendAsyncPlaceRequest(final int id){
+Thread background = new Thread(new Runnable() {
+@Override
+public void run() {
+            String response = sendRequest(getUrl(id));
+            List&lt;Place&gt; places = new ArrayList&lt;&gt;();
+                try {
+                places = getPlacesFromJson(response);
+                     } catch (JSONException e) {
+                            Log.e("JSONException", e.getMessage());
+                          }
+            handler_.sendMessage(handler_.obtainMessage(States.PLACES_WERE_FOUND,places));
+        }
+    });
+    background.start();
+}
+
+Далее следует реализовать класс CommandProcessor, который будет управлять нашими запросами и выполнять их:publicclassRequestProcessor {
+
+private UpdateCallbackListener clientActivity_;
+public RequestProcessor(UpdateCallbackListener clienActivity) {
+this.clientActivity_ = clienActivity;
+   }
+
+// В зависимости от типа объекта отправляется соответствующая команда
+public void execute(CommonRequest request, int id) {
+        request.sendRequest(id);
+    }
+public void updateActivity(List&lt;? extends Result&gt; results) {
+        clientActivity_.onUpdate(results);
+    }
+}
+
+
+Теперь нам нужен котроллер, который, в зависимости от состояния будет отправлять разные команды процессору. Результат работы запроса отправляется из потока с помощью Handler:public class MessageController extends Handler {
+
+    private static MessageController instance = null;
+
+    private RequestProcessor processor_;
+
+    public void init (UpdateCallbackListener listener) {
+        processor_ = new RequestProcessor(listener);
+    }
+
+    public static MessageController getInstance(){
+        if (instance == null){
+            instance = new MessageController();
+        }
+        return instance;
+    }
+
+    public void handleMessage(Message msg) {
+        switch (msg.what) {
+            case States.INIT_REQUEST:
+                CommonRequest request = (CommonRequest)msg.obj;
+                processor_.execute(request);
+                break;
+
+            case States.REQUEST_COMPLETED:
+                List&lt;Result&gt; results = (List&lt;Result&gt;)msg.obj;
+                processor_.updateActivity(results);
+                break;
+
+            default:
+                break;
+        }
+    }
+}
+
+
+Для того, чтобы теперь вернуть результат работы в активити, и вызвать какой-нибудь updateUI() для обновления пользовательского интерфейса (наполнения ListView, отрисовка маркеров на карте и т.д.) нужно определить интерфейс UpdateCallbackListener:public interface UpdateCallbackListener {
+    void onUpdate(List&lt;? extends Result&gt; results);
+}
+
+И реализовать его в нашей активити:    public void onUpdate(List&lt;? extends Result&gt; results){
+        tracks_ = (List&lt;Track&gt;) results;
+        TrackAdapter trackAdapter = new TrackAdapter(this,tracks_);
+        listView_.setAdapter(trackAdapter);
+    }
+
+
+После того, как результат вернется в ответе на запрос (к примеру, запрос на получение всех мест по этому маршруту) нам необходимо обновить актвити и передать объекты Place в адаптер. Это мы можем сделать через метод processor_.updateActivity(places), который вызовет onUpdate() в активити, которая имплементировала данный метод. Следующая диаграмма, также взята из [1] показывает динамику поведения паттерна:
+Чтобы инициировать запрос, нам нужно создать в активити объект TracksRequestи передать его в controller:        controller_ = MessageController.getInstance();
+        controller_.init(this);
+        TracksRequest tracksRequest = new TracksRequest(controller_);
+        controller_.sendMessage(controller_.obtainMessage(States.INIT_REQUEST,tracksRequest));
+Реализация с помощью IntentService
+Использование IntentService также отлично позволяет реализовать этот паттерн. Рассмотрим диаграмму:
+В качестве объекта-команды можно использовтаь Intent и передавать его в наш процессор. Creator — это наша activity, которая создает объект-команду, и передает этот объект executor’у, то есть IntentService’у в нашем случае. Таким образом, роль CommandProcessor выполняет класс CustomIntentService, а именно метод onHandleIntent() который в зависимости от данных, содержащихся в Intent, может выполнять различные операции. Чтобы вернуть результат в активити, в данном случае можно использовать BroadcastReceiver.Пошаговая инструкция
+Итак, подведем итоги, чтобы реализовать данный паттерн необходимо выполнить следующее:Определить интерфейс абстрактной команды. Интерфейс инкапсулирует реализацию каждой отдельной команды. В нашем случае это был метод sendRequest(int i) который каждая из команд (запросов) реализовывала по – разному.
+Определить способ, которым команда вернет результат тому, кто её вызвал. Как было показано для этого мы определили интерфейс UpdateCallbackListener, с методом onUpdate() для каждой из активити.
+Реализовать каждую из команд. У нас было два вида запросов – один для получения информации о маршрутах (TracksRequest), второй для получения информации о местах(PlacesRequest). 
+Реализовать контроллер, который будет отправлять команды. Создание и отправление команд можно реализовать с помощью Abstract Factory или Prototype. Однако не обязательно, чтобы контроллер был создателем команд. Как было видно из примера, объекты запросов были созданы в активти. 
+Реализовать класс процессора, который будет принимать команду и обрабатывать. Для каждого из запросов класс RequestProcessor выполняет метод execute() .
+Достоинства и недостатки паттерна.Достоинства:В таких приложениях как текстовый редактор, различные элементы интерфейса могут использовать одни и те же команды. Например, кнопка в меню “Создать”, и кнопка с таким же названием в контекстном меню могут обращаться к одной и той же команде.
+Возможность отправлять асинхронные запросы, управлять порядком вызовов, в зависимости от результата запроса.
+Гибкость при добавлении нового функционала в виде новой команды (запроса), не нарушая уже существующий функционал. Изменение или добавление новой команды никак не повлияет на обработчик команд.
+Разные клиенты (в нашем случае активити) могут использовать одни и те же команды. К примеру, запрос на загрузку изображения по Id, может использоваться для разных активити.
+Недостатки:Дополнительно нужно отслеживать каждое состояние и соответствующе его обрабатывать. 
+Количество команд может быть очень большим
+Двусторонняя связь. После того, как активити инициировала создание запроса, и ответ был получен, необходимо результат вернуть в активити.
+Заключение
+Скорее всего, в том или ином виде вы уже видели реализацию паттерна. Но так как тема архитектуры мобильных приложений является достаточно актуальной, надеюсь, статья была полезной. В дальнейшем планируется рассмотреть еще несколько паттернов, применяемых в разработке мобильных приложений. Пишите вопросы в комментариях, до встречи.Список источников
+[1] PATTERN-ORIENTED SOFTWARE ARCHITECTURE VOLUME 1. Douglas Schmidt, Michael Stal, Hans Rohnert, Frank Buschmann
+[2] Command Revisited www.dre.vanderbilt.edu/~schmidt/PDF/CommandRevisited.pdf
+Тестовый проект на гитхабе: github.com/GregaryMaster/CommandProcessor
+      
+    

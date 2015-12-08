@@ -1,0 +1,64 @@
+﻿#TITLE:Настройка отправки почтовых уведомлений в Zabbix на CentOS 7
+
+      Вроде бы и задача не самая новая. И статей в гугле воз и маленькая тележка. Но почему то у меня ушла почти неделя на все эксперименты и топтания по всевозможным граблям.
+Итак, задача: Сервер CentOS 7, установлен комплект LEMP, установлен сервер Zabbix 2.4.6. Нужно настроить отправку уведомлений админам на почту.
+Оговорка — CentOS ставился по методу «секс и еще раз секс» — minimal installations. Ввиду этого некоторые пакеты «должные быть из коробки» не работают, ибо их никто еще не поставил.
+После курения ряда мануалов стало понятно, что для отправки почты нам надо, как минимум, почтовую прокладку умеющую SMTP с авторизацией и скрипт для Zabbix.
+В качестве почтового клиента используем ssmtp.yum install ssmtp
+
+Затем в /etc/ssmtp/ssmtp.conf root=mailbox@mail.server #почтовый ящик zabbixa
+mailhub=smtp.mail.server #Если нужен TLS, то указывает еще порт ":465"
+rewriteDomain=mail.server
+AuthUser=mail_username
+AuthPass=mail_password
+FromLineOverride=YES
+#UseTLS=YES #если нужен TLS раскомментировать эту строку
+
+Дальше была попытка выставить ssmtp в качестве подмены для sendmail и использовать команду mail (пакет mailx) для отправки почты, но письма, хоть и приходили, были не удобочитаемыми (текст приходил не в поле текста, а как бинарное вложение).
+В итоге пришлось поставить mutt, в качестве замены mail. yum install mutt
+
+Смотри где у нас домашний каталог пользователя zabbix:getent passwd zabbix
+zabbix:x:997:996:Zabbix Monitoring System:/var/lib/zabbix:/bin/bash
+
+Затем создаем файл настроек mutt в домашнем каталоге zabbix touch /var/lib/zabbix/.muttrc
+echo set from="mailbox@mail.server" &gt;&gt; /var/lib/zabbix/.muttrc
+set realname ="My Zabbix Monitoring" &gt;&gt; /var/lib/zabbix/.muttrc
+set sendmail="/usr/sbin/ssmtp" &gt;&gt; /var/lib/zabbix/.muttrc
+set charset="utf-8" &gt;&gt; /var/lib/zabbix/.muttrc
+set copy=no &gt;&gt; /var/lib/zabbix/.muttrc
+chown zabbix:zabbix /var/lib/zabbix/.muttrc
+
+Теперь надо написать скрипт для отправки почты и положить его в /usr/lib/zabbix/alertscripts. Имя скрипта пусть будет: send_mail.sh:#!/bin/bash
+to=$1
+subject=$2
+body=$3
+
+echo `date`" mail sended to:" $to &gt;&gt; /var/log/zabmail.log #после завершения отладки закомментировать эти строки
+echo `date`" mail subj:" $subject &gt;&gt; /var/log/zabmail.log #после завершения отладки закомментировать эти строки
+echo `date`" mail text:" $body &gt;&gt; /var/log/zabmail.log #после завершения отладки закомментировать эти строки
+
+echo $body | mutt -s "$subject" "$to"
+
+Теперь настройка самого zabbix. В Web-интерфейсе: Администрирование — Способы оповещений — Email Тип: Скрипт
+Имя скрипта: send_mail.sh
+Активировано: Да (cheked)
+Проверяем конфиг zabbix (/etc/zabbix/zabbix_server.conf) AlertScriptsPath=/usr/lib/zabbix/alertscripts
+
+Перезапускаем zabbix сервер:service zabbix-server restart
+
+И вот, если мы, в нарушение всех гайдлайнов, отключили SELinux, у нас все работает и оповещения ходят.
+Однако, при включенном SELinux писем не было и нет. Переходим к дрессировке SELinux. Для ускорения дальнейшей настройки удобно завести какой-нибудь триггер, которому мы сможем легко и часто менять состояние (я не заморачивался и использовал перезагрузку сервера с zabbix, т.к. на этой виртуалке у меня никаких других нагрузок пока не было). Для выполнения настройки SELinux понадобится всего 4 действия, но их придется повторить столько раз сколько потребуется в вашей системе (у меня на это ушло 5 или 6 итераций).
+Для личного «удобства» я собирал разрешающие правила не в один файл модуля SELinux, а в отдельный файл для каждой итерации, чтобы потом можно было внимательнее рассмотреть их содержимое. Поэтому имя модуля использовалось по схеме ZabSeModuleN, где N в конце имени файла — номер итерации, в итоге получается группа файлов ZabSeModule1.te, ZabSeModule1.mod, ZabSeModule1.pp, ZabSeModule2.te, ZabSeModule2.mod, ZabSeModule2.pp и т.д. 
+• ausearch -m avc -ts today
+Если вывод отличается от  — выполняем действия ниже.
+• cat /var/log/audit/audit.log | audit2allow -m ZabSeModuleN &gt; ZabSeModuleN.te
+• checkmodule -M -m -o ZabSeModuleN.mod ZabSeModuleN.te
+• semodule_package -o ZabSeModuleN.pp -m ZabSeModuleN.mod 
+• semodule -i ZabSeModuleN.pp
+• rm /var/log/audit/audit.log
+• reboot
+Перезагрузка только метод вызвать сработку триггера «Zabbix server restarted»
+Для любителей порядка — после получения полного списка правил SELinux, их можно собрать в один .te файл, и, удалив из системы предыдущие модули, создать и установить один новый.
+По результату оповещения от Zabbix ходят регулярно и с удовольствием.
+В процессе настройки были честно использованы статьи:Лиссяра — 'Решение проблем' или 'Ковыряния в Линуксе — 2' (с) FomalhautДенис Волков — Настройка политик безопасности SELinuxNetSkills — Zabbix. Видео урок №4. Настройка email оповещений. Часть 2 (zabbix gmail)
+    

@@ -1,0 +1,111 @@
+﻿#TITLE:Functional C#: Immutability
+
+      Это первая статья из небольшой серии, посвященной программированию на C# в функциональном стиле. Серия не про LINQ, как можно было бы подумать, а про более фундаметальные вещи. Навеяно F#-ом.Functional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+Immutability (неизменяемость)
+Наибольшая проблема в мире enterprise разработки — это борьба со сложнотью. Читаемость кода — это пожалуй первое чего мы должны стараться достичь при написании любого более-менее сложного проекта. Без этого наша способность понимать код и принимать на основе этого разумные решения значительно ухудшается.
+Помогают ли нам изменяемые объекты при чтении кода? Давайте рассмотрим пример:// Create search criteria
+var queryObject = new QueryObject&lt;Customer&gt;(name, page: 0, pageSize: 10);
+ 
+// Search customers
+IReadOnlyCollection&lt;Customer&gt; customers = Search(queryObject);
+ 
+// Adjust criteria if nothing found
+if (customers.Count == 0)
+    AdjustSearchCriteria(queryObject, name);
+
+// Is queryObject changed here?
+Search(queryObject);
+
+Изменился ли queryObject к моменту поиска кастомеров во второй раз? Может быть, да. А может, и нет. Это зависит от того, был ли этот объект изменен методом AdjustSearchCriteria. Чтобы выяснить это, нам необходимо заглянуть внутрь этого метода, его сигнатура не дает нам достаточной информации.
+Сравните это со следующим кодом:// Create search criteria
+var queryObject = new QueryObject&lt;Customer&gt;(name, page: 0, pageSize: 10);
+ 
+// Search customers
+IReadOnlyCollection&lt;Customer&gt; customers = Search(queryObject);
+ 
+if (customers.Count == 0)
+{
+    // Adjust criteria if nothing found
+    QueryObject&lt;Customer&gt; newQueryObject = AdjustSearchCriteria(queryObject, name);
+    Search(newQueryObject);
+}
+
+В этом примере ясно, что AdjustSearchCriteria создает новый объект критерия и использует его в дальнейшем для нового поиска.
+Так в чем проблема с изменяемыми структурами данных?Сложно обдумывать код, если нет уверенности меняются ли данные, передающиеся от одного метода к другому.
+Сложно сделить за ходом выполнения программы если вам приходится углубляться на несколько уровней вниз по стеку.
+В случае с многопоточным приложением, понимание и отладка кода усложняется многократно.
+Как создавать неизменямые типы
+В будущих версиях C# возможно появится ключевое слово immutable. С его помощью можно будет понимать является ли тип неизменямым просто глядя на его сигнатуру. Пока же нам приходится пользоваться тем, что есть.
+Если вы имеете сравнительно простой класс, рассмотрите возможность сделать его неизменямым. Этот гайд-лайн коррелирует с понятием Value Objects.
+Возьмем для примера класс ProductPile, описывающий какое-то количество продуктов на продажу:public class ProductPile
+{
+    public string ProductName { get; set; }
+    public int Amount { get; set; }
+    public decimal Price { get; set; }
+}
+
+Чтобы сделать его неизменяемым, мы можем пометить его свойства как read-only и добавить конструктор:public class ProductPile
+{
+    public string ProductName { get; private set; }
+    public int Amount { get; private set; }
+    public decimal Price { get; private set; }
+ 
+    public ProductPile(string productName, int amount, decimal price)
+    {
+        Contracts.Require(!string.IsNullOrWhiteSpace(productName));
+        Contracts.Require(amount &gt;= 0);
+        Contracts.Require(price &gt; 0);
+ 
+        ProductName = productName;
+        Amount = amount;
+        Price = price;
+    }
+}
+
+Теперь предположим, что вам необходимо уменьшать свойство Amount на единицу каждый раз когда вы продаете один из продуктов. Вместо того, чтобы изменять имеющийся объект, мы может создавать новый на основе имеющегося:public class ProductPile
+{
+    public string ProductName { get; private set; }
+    public int Amount { get; private set; }
+    public decimal Price { get; private set; }
+ 
+    public ProductPile(string productName, int amount, decimal price)
+    {
+        Contracts.Require(!string.IsNullOrWhiteSpace(productName));
+        Contracts.Require(amount &gt;= 0);
+        Contracts.Require(price &gt; 0);
+ 
+        ProductName = productName;
+        Amount = amount;
+        Price = price;
+    }
+ 
+    public ProductPile SubtractOne()
+    {
+        return new ProductPile(ProductName, Amount – 1, Price);
+    }
+}
+
+Что нам это дает?Имея неизменяемый тип, нам необходимо валидировать его контракты только единожды, в конструкторе. После этого мы можем быть абсолютно уверены, что объет находится в корректном состоянии.
+Объекты неизменяемых типов потокобезопасны.
+Улучшается читаемость кода, т.к. больше нет необходимости углубляться в стек для того, чтобы убедиться, что переменные, с которыми работает метод, не были изменены.
+Ограничения
+Конечно, каждая полезная практика имеет свою цену. В то время как небольшие классы пользуются преимуществами неизменяемости в полной мере, такой подход не всегда применим в случае с большими типами.
+В первою очередь, неизменяемость несет в себе потенциальные проблемы с производительностью. Если объект довольно большой, необходимость создавать его копию при каждом изменении может стать проблемой.
+Хорошим примером тут будут неизменяемые коллекции. Авторы учли потенциальные проблемы с производительностью и добавили специальный класс Builder, который позволяет изменять состояние коллекций. После того, как коллекция приведена к необходимому состоянию, ее можно финализировать, конвертировав в неизменяемую:var builder = ImmutableList.CreateBuilder&lt;string&gt;();
+builder.Add(“1”);  // Adds item to the existing object
+ImmutableList&lt;string&gt; list = builder.ToImmutable();
+ImmutableList&lt;string&gt; list2 = list.Add(“2”);  // Creates a new object with 2 items
+Заключение
+В большинстве случаев, неизменяемые типы (особенно если они довольно просты) делают код лучше.Остальные статьи в серии:Functional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+
+Английская версия статьи: Functional C#: Immutability
+
+      
+      
+    

@@ -1,0 +1,66 @@
+﻿#TITLE:Разворачиваем Flask-приложение на Nginx, используя Gunicorn
+
+      Предположим, у вас есть Ubuntu, в котором нужно развернуть Nginx с Flask-приложением. Вам необходимо использовать WSGI сервер, например, Gunicorn. Gunicorn (Green Unicorn) — WSGI HTTP сервер на Python для UNIX систем. Представляю вольный перевод статьи Onur Güzel «How to Run Flask Applications with Nginx Using Gunicorn», где шаг за шагом показано процесс развертывания.Шаг 0: Требования
+Мы будет использовать virtualenv для работы с виртуальным окружением Python и pip для работы с Python-пакетами. Установим их введя в терминал следующую команду:sudo apt-get install python-virtualenv python-pip
+
+Создадим виртуальное окружение и активируем его:virtualenv hello
+source hello/bin/activate
+
+Замечаем, что у нас prompt теперь начинается с названия виртуальной среды.Шаг 1: Приложение
+Установим Flask:pip install Flask
+
+После установки Flask, используя pip, вы можете написать следующий код в hello.py и запустить его:from flask import Flask
+app = Flask(__name__)
+@app.route('/')
+def hello():
+    return "Hello world!"
+ 
+if __name__ == '__main__':
+    app.run()
+
+Flask имеет встроенный веб-сервер, который позволяет запускать приложения. Тем не менее, он не является масштабируемым и не подходит для production. С другой стороны, есть Gunicorn, который является готовым к использованию для production и обеспечивает масштабируемость. Шаг 2: Gunicorn
+Установим Gunicorn:pip install gunicorn
+
+Для того чтобы наше Flask-приложение работало с Gunicorn, нужно добавить 2 и 9 строки из кода в hello.py:from flask import Flask
+from werkzeug.contrib.fixers import ProxyFix
+app = Flask(__name__)
+ 
+@app.route('/')
+def hello():
+    return "Hello world!"
+
+app.wsgi_app = ProxyFix(app.wsgi_app)
+if __name__ == '__main__':
+    app.run()
+
+Теперь мы можем запустить приложение с Gunicorn:gunicorn hello:app
+
+Где hello это имя python-файла(без расширения). И app это имя Flask-объекта. Шаг 3: Nginx
+Создадим новую конфигурацию сервера и сохраним файл в:/etc/nginx/sites-available/hello.conf
+Содержимое hello.conf:server {
+    listen 80;
+    server_name hello.itu24.com;
+ 
+    root /path/to/hello;
+ 
+    access_log /path/to/hello/logs/access.log;
+    error_log /path/to/hello/logs/error.log;
+ 
+    location / {
+        proxy_set_header X-Forward-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $http_host;
+        proxy_redirect off;
+        if (!-f $request_filename) {
+            proxy_pass http://127.0.0.1:8000;
+            break;
+        }
+    }
+}
+
+Создадим символическую ссылку для директории sites-enabled:sudo ln -s /etc/nginx/sites-available/hello.conf /etc/nginx/sites-enabled/
+
+Проверим конфигурацию на ошибки:nginx -t
+
+Если с конфигурацией все нормально, вы можете перезапустить Nginx и получить развернутое приложение.
+      
+    

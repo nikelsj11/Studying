@@ -1,0 +1,325 @@
+﻿#TITLE:Эгоистичный ген
+
+       Всё началось одним летним вечером, во время чтения книги эволюционного биолога Ричарда Докинза «Бог как иллюзия». Данная книга о религии, вере и атеизме, но автор кратко ссылается на другую книгу «Эгоистичный ген» и вводит одноимённое понятие. Меня долгое время восхищало изящество генетических алгоритмов. И вот, спустя месяц, в очередной раз пытаясь придумать какой-нибудь мини-проект, меня внезапно осенило – а что, если с помощью генетических алгоритмов симулировать эволюцию и посмотреть, что и как будет развиваться. Задача это сложная и на данном этапе развития IT, полагаю, нерешаемая, так что пришлось заняться чем-либо попроще. А именно, проверить гипотезу эгоистичного гена. Заинтересовавшихся, прошу под кат…
+Для начала определимся со стандартным представлением эволюции. Согласно википедии: «Биологическая эволюция – естественный процесс развития живой природы, сопровождающийся изменением генетического состава популяций, формированием адаптаций, видообразованием и вымиранием видов, преобразованием экосистем и биосферы в целом». И что важно, единицей эволюции является популяция. Ричард Докинз выдвинул теорию, согласно которой единицей эволюции является не популяция особей какого-либо вида, а сам ген (потому он и назван эгоистичным). И «предназначение» гена не в том, чтобы приспособить особь к окружающим условиям (чтобы она выжила и дала потомство), а сделать всё, чтобы сам ген «выжил». Другим взглядом на данный вопрос являются генетические алгоритмы в программировании — в них «единицей эволюции» признается отдельная особь.Отказ от ответственностиХочу заметить, что мои знания биологии и эволюции ограничиваются школьным курсом и научно-популярными фильмами, так что в случае нахождения в тексте ошибок, прошу отписываться в комментариях или в личку.
+Таким образом можно исследовать (и смоделировать), какие гены будут преобладать в генофонде какой-либо популяции:Те, которые приносят пользу всей популяции;
+Те [гены], которые приносят пользу родственникам текущей особи (так как именно родственники с большой долей вероятности будут «хранить» те же гены);
+Те, которые приносят пользу только текущей особи.
+
+Для симуляции разработана программа на C# 6 и .NET 4.6.
+Модель данных в программе довольно простая. У нас есть классы World и Creature и пара вспомогательных перечислений Relation и Gene. Также присутствует класс Statistic, инкапсулирующий в себе необходимые данные о состоянии мира на определенной итерации.WorldЗдесь и далее приведены только основные вырезки кода. Весь код выложен на гитхабе по ссылке в конце статьи.    public class World
+    {
+        public readonly List&lt;Creature&gt;[] Species = new List&lt;Creature&gt;[8];
+
+        public void Run(int generations)
+        {
+            for (int i = 0; i &lt; generations; i++, this.age = this.Age + 1)
+            {
+                this.SelectBest();
+                this.MakeChildren();
+                this.Mutate();
+                Debug.Print("Age: {0}", i);
+            }
+        }
+
+        private void SelectBest()
+        {
+            var allCreatures = new List&lt;Creature&gt;(this.Species.Sum(kind =&gt; kind.Count));
+            allCreatures.AddRange(this.Species.SelectMany(kind =&gt; kind));
+            allCreatures =
+                allCreatures.OrderByDescending(creature =&gt; creature.SummaryStrength).Take(allCreatures.Count &gt;&gt; 1).ToList();
+            for (int i = 0; i &lt; this.Species.Length; i++)
+            {
+                this.Species[i].ForEach(creature =&gt; creature.BreakRedundantConnections());
+                this.Species[i].Clear();
+                this.Species[i].AddRange(allCreatures.Where(creature =&gt; creature.IdOfSpecies == i));
+            }
+        }
+
+        private void MakeChildren()
+        {
+            Parallel.For(
+                0, 
+                this.Species.Length, 
+                i =&gt;
+                    {
+                        var temp = new List&lt;Creature&gt;(this.Species[i].Count &lt;&lt; 1);
+
+                        // Random parents (of same species) - for supporting different genes
+                        this.Species[i].Shuffle();
+                        Random rnd = RandomProvider.GetThreadRandom();
+                        for (int j = 1; j &lt; this.Species[i].Count; j += 2)
+                        {
+                            double value = rnd.NextDouble();
+                            if (value &lt; 0.33)
+                            {
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                            }
+                            else if (value &lt; 0.665)
+                            {
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                            }
+                            else
+                            {
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                                temp.Add(new Creature(this.Species[i][j - 1], this.Species[i][j]));
+                            }
+                        }
+
+                        this.Species[i].ForEach(creature =&gt; creature.BreakRedundantConnections());
+                        this.Species[i].Clear();
+                        this.Species[i] = temp;
+                    });
+        }
+
+        private void Mutate()
+        {
+            Parallel.ForEach(this.Species, list =&gt; list.ForEach(creature =&gt; creature.Mutate()));
+        }
+    }
+
+World содержит в себе только один публичный метод Run, который выполняет заданное количество итераций «моделирования мира», которое включает в себя выборку лучших особей, создание их потомства и затем внесение мутаций в их [особей потомства] гены. В мире присутствуют 8 видов. Изначально, в каждом из них по 1024 особей. Несколько видов присутсвует для того: во-первых, симулировать гонку между видами (битву за выживание); во-вторых, уменьшить вероятность нахождения локального максимума.
+Фитнесс-функция в данном эксперименте простая — каждое существо обладает некоторым параметром «Сила»; чем он выше, тем приспособленнее существо для выживания в симулированном мире. Мир («окружающая среда») статичен. Из всех существ выбирается 50% самых приспособленных.
+Дочернее поколение создается на основе «оставшихся в живых» особей родительского поколения. Случайными парами (из одного и того же вида) выбираются особи родительского поколения, на основе генов которого создаются дочерние особи. При этом с вероятностью в 33% будет создано 3 особи, 33.5% — 4 особи и 33.5% — 5 особей. Таким образом количество особей будет медленно расти от поколения к поколению. В проводимой мною симуляции количество особей в мире возросло с 8.192 до ~30.000 за 1024 итерации.
+Мутации просто применяются ко всем вновь созданным особям.Enums    public enum Gene : byte
+    {
+        SelfishGene = 1,
+        AltruisticGene = 2,
+        CreatureLevelGene = 4
+    }
+
+    public enum Relation
+    {
+        Child,
+        BrotherOrSister,
+        GrandChild,
+        NephewOrNiece,
+        Cousin
+    }
+
+Гены просто представлены перечислением трёх значений.
+Родственники, на которых влияют гены представлены пятью значениями. Ограничения были следующие: схожесть генов с генами родственника должна быть не ниже 10%, особи старших поколений могут помогать особям этого или младших поколений (так как каждая особь (поколение) только один раз участвует в отборе в данной симуляции), особи поколения n могут помогать особям поколения не больше n + 2 (полагаю, это некоторое среднее реальное допущение для людей и некоторых других млекопитающих).Creature    public class Creature
+    {
+        private const int GeneStrength = 128;
+
+        private readonly Gene[] genes = new Gene[128];
+
+        private readonly List&lt;Creature&gt; childs = new List&lt;Creature&gt;(8);
+
+        private Creature mother;
+
+        private Creature father;
+
+        public Creature(int idOfSpecies, World world)
+        {
+            Contract.Requires&lt;ArgumentNullException&gt;(world != null);
+            Contract.Ensures(this.IdOfSpecies == idOfSpecies);
+            this.IdOfSpecies = idOfSpecies;
+            this.world = world;
+            for (int i = 0; i &lt; this.genes.Length; i++)
+            {
+                this.genes[i] = EnumHelper.CreateRandomGene();
+            }
+        }
+
+        public Creature(Creature mommy, Creature daddy)
+        {
+            Debug.Assert(mommy.IdOfSpecies == daddy.IdOfSpecies, "Interspecies relation are FORBIDDEN!!!");
+            this.mother = mommy;
+            this.father = daddy;
+            mommy.childs.Add(this);
+            daddy.childs.Add(this);
+            this.world = mommy.world;
+            this.IdOfSpecies = mommy.IdOfSpecies;
+            for (int i = 0; i &lt; this.genes.Length; i++)
+            {
+                this.genes[i] = EnumHelper.ChooseRandomGene(mommy.genes[i], daddy.genes[i]);
+            }
+        }
+        
+        public int SummaryStrength
+        {
+            get
+            {
+                double sum = 0.0;
+                World world = this.world;
+                string cacheKey = $"AltruisticGenesOutStrength{this.IdOfSpecies}";
+                object cachedValue = Cache.Get(cacheKey, world.Age);
+                if (cachedValue != null)
+                {
+                    sum = (double)cachedValue;
+                }
+                else
+                {
+                    for (int i = 0; i &lt; world.Species[this.IdOfSpecies].Count; i++)
+                    {
+                        if (world.Species[this.IdOfSpecies][i] != this)
+                        {
+                            sum += world.Species[this.IdOfSpecies][i].AltruisticGenesOutStrength;
+                        }
+                    }
+
+                    Cache.Put(cacheKey, world.Age, sum);
+                }
+
+                return this.ThisCreatureGenesStrength + (int)sum + (int)this.HelpFromRelations;
+            }
+        }
+
+        private int ThisCreatureGenesStrength
+            =&gt; this.genes.Sum(g =&gt; g == Gene.CreatureLevelGene ? GeneStrength : GeneStrength &gt;&gt; 1);
+
+        private double AltruisticGenesOutStrength
+        {
+            get
+            {
+                int sum = 0;
+                for (int i = 0; i &lt; this.genes.Length; i++)
+                {
+                    Gene gene = this.genes[i];
+                    if (gene == Gene.AltruisticGene)
+                    {
+                        sum += GeneStrength &gt;&gt; 1;
+                    }
+                }
+
+                return (double)sum / (this.world.Species[this.IdOfSpecies].Count - 1);
+            }
+        }
+
+        private double HelpFromRelations
+        {
+            get
+            {
+                Creature mommy = this.mother;
+                Creature daddy = this.father;
+                if (mommy == null)
+                {
+                    return 0;
+                }
+
+                if (mommy.mother == null)
+                {
+                    return mommy.GetSelfishGenesOutStrength(Relation.Child)
+                           + daddy.GetSelfishGenesOutStrength(Relation.Child)
+                           + mommy.childs.Sum(
+                               brother =&gt;
+                               brother == this ? 0 : brother.GetSelfishGenesOutStrength(Relation.BrotherOrSister));
+                }
+
+                return mommy.GetSelfishGenesOutStrength(Relation.Child)
+                       + daddy.GetSelfishGenesOutStrength(Relation.Child)
+                       + mommy.childs.Sum(
+                           brother =&gt; brother == this ? 0 : brother.GetSelfishGenesOutStrength(Relation.BrotherOrSister))
+                       + mommy.mother.GetSelfishGenesOutStrength(Relation.GrandChild)
+                       + mommy.father.GetSelfishGenesOutStrength(Relation.GrandChild)
+                       + daddy.mother.GetSelfishGenesOutStrength(Relation.GrandChild)
+                       + daddy.father.GetSelfishGenesOutStrength(Relation.GrandChild)
+                       + mommy.mother.childs.Sum(
+                           aunt =&gt; aunt == mommy ? 0 : aunt.GetSelfishGenesOutStrength(Relation.NephewOrNiece))
+                       + daddy.mother.childs.Sum(
+                           uncle =&gt; uncle == daddy ? 0 : uncle.GetSelfishGenesOutStrength(Relation.NephewOrNiece))
+                       + mommy.mother.childs.Sum(
+                           aunt =&gt;
+                           aunt == mommy
+                               ? 0
+                               : aunt.childs.Sum(cousin =&gt; cousin.GetSelfishGenesOutStrength(Relation.Cousin)))
+                       + daddy.mother.childs.Sum(
+                           uncle =&gt;
+                           uncle == daddy
+                               ? 0
+                               : uncle.childs.Sum(cousin =&gt; cousin.GetSelfishGenesOutStrength(Relation.Cousin)));
+            }
+        }
+
+        public void Mutate()
+        {
+            // Tries to change 6 genes with 50% probability
+            int length = this.genes.Length;
+            int rnd = RandomProvider.GetThreadRandom().Next(length &lt;&lt; 1);
+            int limit = Math.Min(length, rnd + 6);
+            for (; rnd &lt; limit; rnd++)
+            {
+                this.genes[rnd] = EnumHelper.CreateRandomGene();
+            }
+        }
+
+        public void BreakRedundantConnections()
+        {
+            Creature mommy = this.mother;
+            Creature daddy = this.father;
+            if (mommy?.mother?.mother != null)
+            {
+                mommy.mother.mother?.childs.Clear();
+                mommy.mother.mother = null;
+                mommy.mother.father?.childs.Clear();
+                mommy.mother.father = null;
+                mommy.father.mother?.childs.Clear();
+                mommy.father.mother = null;
+                mommy.father.father?.childs.Clear();
+                mommy.father.father = null;
+                daddy.mother.mother?.childs.Clear();
+                daddy.mother.mother = null;
+                daddy.mother.father?.childs.Clear();
+                daddy.mother.father = null;
+                daddy.father.mother?.childs.Clear();
+                daddy.father.mother = null;
+                daddy.father.father?.childs.Clear();
+                daddy.father.father = null;
+            }
+        }
+
+        private double GetSelfishGenesOutStrength(Relation whoAreYou)
+        {
+            Creature mommy = this.mother;
+            Creature daddy = this.father;
+            int summarySelfishStrength = this.genes.Sum(g =&gt; g == Gene.SelfishGene ? GeneStrength &gt;&gt; 1 : 0);
+            switch (whoAreYou)
+            {
+                case Relation.Child:
+                    return summarySelfishStrength / this.childs.Count * 30.78;
+                case Relation.BrotherOrSister:
+                    Debug.Assert(mommy.childs.Count &gt; 1, "LIER! He is not our brother!");
+                    return summarySelfishStrength / (mommy.childs.Count - 1) * 30.78;
+                case Relation.GrandChild:
+                    return summarySelfishStrength / this.childs.Sum(creature =&gt; creature.childs.Count) * 15.38;
+                case Relation.NephewOrNiece:
+                    Debug.Assert(mommy.childs.Count &gt; 1, "LIER! We don't have any brothers!");
+                    return summarySelfishStrength
+                           / mommy.childs.Sum(brother =&gt; brother == this ? 0 : brother.childs.Count) * 15.38;
+                case Relation.Cousin:
+                    return summarySelfishStrength
+                           / (mommy.mother.childs.Sum(aunt =&gt; aunt == mommy ? 0 : aunt.childs.Count)
+                              + daddy.mother.childs.Sum(uncle =&gt; uncle == daddy ? 0 : uncle.childs.Count)) * 7.68;
+                default:
+                    throw new NotImplementedException("Unknown enum value");
+            }
+        }
+    }
+
+Каждая особь содержит ровно 128 генов. Для особей нулевого поколения гены выбираются случайно. Особи каждого следующего поколения берут случайные гены родителей. Каждый ген обладает базовой силой равной 128. Гены действуют следующим образом:AltruisticGene — 50% силы гена идет «в копилку» существа-носителя гена, оставшиеся 50% делятся поровну между всеми существами данного вида;
+CreatureLevelGene — все 100% силы гена идет «в копилку» существа-носителя гена;
+SelfishGene — 50% силы гена идет «в копилку» существа-носителя гена, оставшиеся 50% делятся между родственниками данной особи в следующем соотношении: дети получают 15.39% силы, родные браться и сестры — столько же, внуки — 7.69%, племянники — 7.69% и двоюродные братья и сестры — 3.84% силы гена.
+Соотношения связаны с вероятностью присутствия этих же генов у родственников:
+Мутация с вероятностью 50% меняет 4 гена.
+Последний интересный метод — BreakRedundantConnections. Чтобы позволить сборщику мусора собрать память требуется убрать ссылки на родительских особей, когда они уже не нужны (разница в поколениях больше двух).Memory leakНа данном этапе была получена забавная утечка памяти. По идее, GC должен собрать все объекты в хипе, до которых он не может добраться, так как он работает по алгоритму обхода графа объектов. Для этого достаточно было у дочерних поколений установить в null ссылки на родителей (так как это единственное место, где хранятся ссылки на (отживших свое) существ). Однако это не работало и мне пришлось также очищать массив ссылок на дочерних особей у родителей. Не могу сказать в чем причина такого поведения: не хочется верить, что это баг .NET-а. Скорее всего я чего-то не знаю или намудрил с LINQ и создаваемыми им вспомогательными классами.
+Программа отрабатывает 1024 итерации за ~20 минут (на ноутбуке с процессором Intel Core i7 2.4 GHz), потребляя до 50 Мб оперативной памяти. В среднем на одну итерацию тратится 1 секунда. Количество особей на каждой итерации колеблется от ~10.000 до ~30.000. За всю симуляцию просчитывается около 20.000.000 особей и 2.500.000.000 ген.
+68% существующих генов — это эгоистичные гены. Поровну (по 16%) абсолютно добрых генов и генов, приносящих пользу только особи-носителю. К такому соотношению пришли на 89-ом поколении. На 201-ом поколении остался только один вид (который вырвался вперед всего уже 9-ом поколении (первом, с которого была снята статистика)).Ужасно неэстетичные скриншоты
+…
+…
+Какие можно из этого попытаться сделать выводы:Мы генетически запрограммированы на некую помощь родственникам;
+Одно из свойств эволюции — то что она не случайна. Это закон. На любой планете во вселенной, на которой есть простая жизнь и носитель генетической информации будет протекать эволюция также, как и на Земле. Сколько бы мы не запускали симуляцию, мы получим те же результаты. Что является небольшим подтверждением этого. На самом деле это является подтверждением того, что оптимизированный перебор (под названием генетический алгоритм) находит некоторый максимум некоторой функции. Но ведь эволюция делает тоже самое!
+Воможно, стоит подумать о том, чтобы впредь при использовании генетических алгоритмов для решения реальных задач, учитывать данную особенность эволюции.
+
+Исходники доступны (под свободной лицензией СС 4.0) на github.
+Буду рад конструктивной критике. В случае наличия вопросов — прошу спрашивать в комментариях.Всем спасибо за внимание!Если Вас заинтересовала данная статьяP.S. В ожидании доставки книги «Эгоистичный ген» планируется следующая версия (программы и/или статьи) со следующими изменениями: повышение производительности (на данный момент в коде присутствует несколько крайне неоптимизированных участков, а также бешенный memory traffic), снятие большего количества статистических данных и их визуализация, возможно, выпуск (вероятно, очередного) мини-фреймворка для симуляции процессов с помощью генетических алгоритмов и более точное определение того, насколько мы добрые. Также если у вас есть какие-либо свои пожелания (более точное моделирование естественного отбора, генетические алгоритмы в применении к мемам, а не генам, исследование плюсов/минусов полигамии/моногамии, генетическое моделирование параметров другого генетического моделирования...), прошу отписываться в комментариях.
+      
+    

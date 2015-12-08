@@ -1,0 +1,665 @@
+﻿#TITLE:Корпоративный VPN c ACCEL-PPP+IPsec и авторизацией в Freeradius через AD
+
+      
+В этой заметке я хочу показать пример быстрой реализации корпоративного VPN сервера с поддержкой PPTP, L2TP (как с IPsec так и без), IPSec vpn с единой базой, который сможет работать с пулами адресов, разными группами пользователей, авторизировать пользователей как из LDAP, так и из локальной базы, опциональная настройка шейпирования как для групп, так и для отдельных пользователей с поддержкой windows, linux, osx, ios, android клиентов и все это на открытых решениях. 
+P.S. В данной заметке аспекты сетевой безопасности затронуты не будут, иначе она разрастется в огромный документ, с кучей нюансов в реализации, возможно о защите периметра и сетевой безопасности отдельно расскажу в следующий раз.
+Кому интересно, добро пожаловать под кат.Оглавление:ВведениеПодготовительные работы на сервереAccel-PPP (PPTP, L2TP)Strongswan (IPsec)FreeradiusSamba 4
+В результате мы планируем получить примерно такую схему:
+В сети есть мобильные клиенты, офисные клиенты и защищенная сеть с важными сервисами, которая должны быть доступна только через VPN при этом офисные клиенты и мобильные клиенты должны получать от ВПН разные подсети и иметь разные права на доступы к ресурсам, что-то общее, что-то только для одних или других, также в сети присутствуют администраторы, которые должны иметь полный доступ к внутренней инфраструктуре компании как работая из офиса, так и на выезде, данная схема не охватывает внутриофисную сеть с ее серверами, доступными офисным пользователям локально, а мобильным клиентам через VPN. 
+Начинаем настройку сервера.0) Подготовительные работы.
+Перед тем как приступить непосредственно к настройке VPN, проведем некоторые подготовительные работы.
+И так у нас есть свежеустановленный сервер с Debian 7 (не принципиально, аналогично будет работать на любом другом linux) в минимальной конфигурации. Логинимся на него по ssh или в локальной консоли, затем:
+Ставим правильный часовой пояс (в примере я ставлю MSK)mv /etc/localtime /etc/localtime_org &amp;&amp; ln -s /usr/share/zoneinfo/"Europe/Moscow" /etc/localtime &amp;&amp; date
+
+Отключаем IPv6, если не планируете использовать на данном сервереecho net.ipv6.conf.all.disable_ipv6=1 &gt; /etc/sysctl.d/disableipv6.conf
+
+В репы подключаем бэкпорты(чтоб не ставить древние samba и strongswan в которых есть ряд проблем), для этого добавляем в /etc/apt/sources.list следующие строки:deb http://http.debian.net/debian wheezy-backports main contrib non-free
+deb http://mirror.yandex.ru/debian/ wheezy-backports main contrib non-free
+
+Устанавливаем минимально необходимые на данном этапе пакетыapt-get update
+apt-get install cmake make libssl-dev libpcre3-dev libnet-snmp-perl libtritonus-bin bzip2 checkinstall ntpdate
+
+Синхронизируем время на сервере, лучше сразу с доменными часами, самый простой вариант черезntpdate DC.DOMAIN.COM
+
+Указываем DNS сервер домена в /etc/resolv.confНастройки фаирвола специфичны для компании и тут не публикую, но на основе его мы привязываем разные подсети клиентов VPN к разным запретам и разрешениям.
+Тут и далееХХ.УУ.1.99 — внешний IP вашего сервера.1) Accel-PPP — основной сервис для работы с L2TP и PPTPОписание с сайта проектаACCEL-PPP представляет собой высокопроизводительный VPN/IPoE сервер для linux.
+Его преимущество перед другими решениями является объединение различных популярных VPN технологий в единое приложение.
+Существует много открытых решений для организации VPN сервисов, но все они ориентированы на какой-то один вид VPN: только PPTP, только PPPOE, только L2TP.
+Если вы хотите запустить мультисервисный VPN сервер, то должны изучать и настраивать каждое приложение отдельно.
+С ACCEL-PPP вы получаете одно приложение, которое поддерживает всё, с единым конфигурационным файлом, единым управлением и мониторингом.
+…
+С проектом можно ознакомиться более подробно тут.Данный VPN очень слабо освещен, на хабре упоминаний нет, все более-менее обсуждения крутятся на одной ветке нага, хотя по удобству эксплуатации, стабильности работы и возможностям на голову обходит более популярные решения, но закончим с лирикой и приступим.
+Скачиваем и кидаем на сервер. http://downloads.sourceforge.net/project/accel-ppp/accel-ppp-1.9.0.tar.bz2
+
+разархивируемtar -xjf accel-ppp-1.9.0.tar.bz2
+mkdir accel-ppp-build
+cd accel-ppp-build
+
+собираемcmake -DBUILD_PPTP_DRIVER=FALSE -DLOG_PGSQL=FALSE -DNETSNMP=FALSE -DRADIUS=TRUE -DSHAPER=TRUE /root/accel-ppp-1.9.0/
+make
+checkinstall -D
+
+Создаем скрипт автозапуска из примера.cd ../accel-ppp-1.9.0/contrib/debian
+cp accel-ppp-init /etc/init.d/accel-ppp
+
+Определяем дирректорию с демономwhich accel-pppd
+
+Скорее всего для deb будет /usr/local/sbin/accel-pppd
+В стартовом файле меняем пути на полученный выше.nano /etc/init.d/accel-ppp
+
+Добавляем в автозапускinsserv -v accel-ppp
+
+Создаем дирректорию для логов
+mkdir /var/log/accel-ppp/
+
+Создаем фаил с доступами для проверки коннектов, в дальнейшем заменим его на radius авторизациюtouch /etc/ppp/chap-secrets
+
+Формат:login * password ip_для выдачи(если надо брать из пула, то просто *)
+Создаем конфигурационный фаил /etc/accel-ppp.confСодержимое*попытался максимально прокомментировать опции, во время теста раскомментируйте chap-secrets и закомментируйте radius в секции modules[modules]
+path=/usr/local/lib64/accel-ppp
+#Данный модуль предназначен для записи журнала событий в файл.
+log_file
+#Данный модуль записывает события в syslog.
+#log_syslog
+
+#Рабочие протоколы
+pptp
+l2tp
+
+#Методы аутентификации
+auth_mschap_v2
+auth_mschap_v1
+auth_chap
+auth_pap
+#модуль поддержки файла CHAP-secrets конфликтует с radius
+#chap-secrets
+#модуль поддержки файла RADIUS конфликтует с chap-secrets
+radius
+
+#Назначение IPv4 адреса из статического пула.
+ippool
+sigchld
+#Данный модуль запускает скрипты ip-up/ip-down при старте сессии и обработки RADIUS CoA запрос.
+#pppd_compat
+#Модуль управления пропускной способностью.
+shaper
+#Модуль управления частотой подключений.
+#connlimit
+
+[core]
+log-error=/var/log/accel-ppp/core.log
+thread-count=4
+
+[ppp]
+verbose=0
+min-mtu=1280
+mtu=1480
+mru=1480
+#ccp=1
+check-ip=1
+#    Если эта опция управления отсутствует контроль количество сессий на пользователя выключен.
+#    Если эта опция replace - accel-ррр прекращает первую сессию, когда вторая выполяет подключение.
+#    Если эта опция deny accel-ррр будет сбрасывать попытки авторизации второй сессии
+#single-session=replace
+#Задаё политику шифрования MPPE (Microsoft Point-to-Point Encryption)
+# prefer – Не разрывает соединение при отрицании шифрования клиентом
+mppe=prefer
+ipv4=prefer
+#Если эта опция задана, и больше 0, то PPP модуль будет отправлять LCP пакеты эхо-запроса каждые n секунд.
+lcp-echo-interval=300
+#Определяет максимальное количество эхо-запросов без ответа, по достижению значения n сессия будет сброшена.
+lcp-echo-failure=6
+
+[dns]
+dns1=8.8.8.8
+dns2=8.8.4.4
+
+[auth]
+#any-login=0
+#noauth=0
+
+[pptp]
+bind=ХХ.УУ.1.99
+echo-interval=300
+echo-failure=6
+verbose=0
+
+[l2tp]
+bind=ХХ.УУ.1.99
+#ppp-max-mtu=1300
+dictionary=/usr/local/share/accel-ppp/l2tp/dictionary
+hello-interval=300
+#timeout=60
+#rtimeout=5
+retransmit=3
+host-name=vpn.mydomain.ru
+#dir300_quirk=1
+#secret=
+verbose=0
+
+[radius]
+dictionary=/usr/local/share/accel-ppp/radius/dictionary
+nas-identifier=cisco
+nas-ip-address=127.0.0.1
+gw-ip-address=ХХ.УУ.1.99
+auth-server=127.0.0.1:1812,Radius-Sicret
+acct-server=127.0.0.1:1813,Radius-Sicret
+server=127.0.0.1,Radius-Sicret,auth-port=1812,acct-port=1813,req-limit=0,fail-time=0
+dae-server=127.0.0.1:3799,Radius-Sicret
+timeout=5
+max-try=3
+acct-timeout=600
+acct-delay-time=1
+verbose=0
+
+[shaper]
+attr=Filter-Id
+#down-burst-factor=1.0
+#up-burst-factor=1.0
+#latency=50
+#mpu=0
+#time-range=1,7:00-00:59
+#time-range=2,1:00-3:59
+#time-range=3,4:00-6:59
+#leaf-qdisc=sfq perturb 10
+up-limiter=htb
+down-limiter=htb
+cburst=1375000
+ifb=ifb0
+r2q=10
+quantum=1500
+verbose=0
+
+# Указывает диапазон IP-адресов, с которых клиенты могут подключиться к серверу в виде: x.x.x.x/mask (for example 10.0.0.0/8)
+[client-ip-range]
+#192.168.0.0/18
+disable
+
+[log]
+log-file=/var/log/accel-ppp/accel-ppp.log
+log-emerg=/var/log/accel-ppp/emerg.log
+log-fail-file=/var/log/accel-ppp/auth-fail.log
+log-debug=/var/log/accel-ppp/debug.log
+#syslog=accel-pppd,daemon
+#log-tcp=127.0.0.1:3000
+copy=1
+color=1
+#per-user-dir=per_user
+#per-session-dir=per_session
+#per-session=1
+level=0
+
+# Раскоментировать во время теста, пока не настроен радиус
+#[chap-secrets]
+#gw-ip-address=ХХ.УУ.1.99
+#chap-secrets=/etc/ppp/chap-secrets
+
+[ip-pool]
+attr=Framed-Pool
+gw-ip-address=ХХ.УУ.1.99
+10.65.16.129-254,fullaccess
+10.65.17.129-254,mobila
+10.65.18.129-254,office
+
+[cli]
+telnet=127.0.0.1:2000
+tcp=127.0.0.1:2001
+#password=123
+
+#[connlimit]
+#limit=10/min
+#burst=3
+#timeout=60
+
+Запускаемservice accel-ppp start
+
+Если что-то не так, увеличиваем в конфиге уровень логирования и смотрим логи.
+Для работы под нагрузкой необходим небольшой тюнинг, если у вас менее 500 одновременных клиентов на VPN, можно не делать, кроме пункта net.ipv4.ip_forward=1, он обязателен.Добавляем в /etc/sysctl.conf############################
+net.ipv4.ip_forward=1
+net.ipv4.neigh.default.gc_thresh1 = 1024
+net.ipv4.neigh.default.gc_thresh2 = 2048
+net.ipv4.neigh.default.gc_thresh3 = 4096
+net.ipv4.netfilter.ip_conntrack_max=9548576
+net.netfilter.nf_conntrack_max=9548576
+# turn off selective ACK and timestamps
+net.ipv4.tcp_sack = 0
+net.ipv4.tcp_timestamps = 0
+# memory allocation min/pressure/max.
+# read buffer, write buffer, and buffer space
+net.ipv4.tcp_rmem = 10000000 10000000 10000000
+net.ipv4.tcp_wmem = 10000000 10000000 10000000
+net.ipv4.tcp_mem = 10000000 10000000 10000000
+net.core.rmem_max = 524287
+net.core.wmem_max = 524287
+net.core.rmem_default = 524287
+net.core.wmem_default = 524287
+net.core.optmem_max = 524287
+net.core.netdev_max_backlog = 300000
+net.core.netdev_tstamp_prequeue = 0
+############################
+Применяем:sysctl -p
+
+Пробуем подключиться с PPTP и L2TP без IPsec с логином и паролем, указанным в /etc/ppp/chap-secrets
+На самом сервере список подключенных клиентов можно посмотреть командойaccel-cmd show session
+
+Очень рекомендую прочитать справку по accel-cmd, имеет много возможностей, включая изменение метода авторизации пользователей на лету без обрыва сессий
+Если все ОК, переходим к следующему пункту2) IPsec
+Ознакомиться с тем, что это и для чего нужно можно кратко тут
+устанавливаемapt-get -t wheezy-backports install strongswan libcharon-extra-plugins
+
+Конфиги приводим к виду:nano /etc/ipsec.confipsec.conf# ipsec.conf - strongSwan IPsec configuration file
+
+config setup
+  # Нужно ли требовать неистекший лист отзывов для проведения аутентификации клиента
+        strictcrlpolicy=no
+  include /var/lib/strongswan/ipsec.conf.inc
+
+conn %default
+        ikelifetime=1440m
+        keylife=60m
+        rekeymargin=3m
+        keyingtries=1
+        keyexchange=ikev1
+        authby=xauthpsk
+  # включает механизм Dead Peer Detection (DPD) и указывает, что нужно забывать о клиенте, если он не отзывался дольше таймаута
+  dpdaction=clear
+  # задержка до включения DPD
+  # dpddelay=35s
+  # таймаут для DPD
+  # dpdtimeout=300s
+  #включение внутренней фрагментации пакетов. Позволяет использовать IPsec с провайдерами, у которых сломана IP-фрагментация пакетов
+  fragmentation=yes
+  # выключение инициации смены ключей со стороны сервера. Windows это не любит.
+  rekey=no
+  # перечень ciphersuites для использования с IKE
+  ike=aes256gcm16-aes256gcm12-aes128gcm16-aes128gcm12-aesxcbc-sha256-sha1-modp4096-modp2048-modp1024,aes256-aes128-sha256-sha1-modp4096-modp2048-modp1024!
+  # перечень ciphersuites для шифрования трафика
+  esp=aes128gcm12-aes128gcm16-aes256gcm12-aes256gcm16-modp4096-modp2048-modp1024,aes128-aes256-sha1-sha256-modp4096-modp2048-modp1024,aes128-sha1-modp1024,aes128-sha1!
+
+conn L2TP_Accel-PPP
+        authby=psk
+        rekey=no
+        type=transport
+        esp=aes128-sha1,null-sha1,md5
+        ike=aes128-sha-modp1024,null-sha1,md5
+        left=194.135.1.99
+        leftprotoport=17/%any # при 1701 не пашет на iOS
+        right=%any
+        rightprotoport=17/%any
+        rightsubnetwithin=0.0.0.0/0
+        auto=add
+        compress=no
+        dpddelay=30
+        dpdtimeout=120
+        dpdaction=clear
+        forceencaps=yes
+
+conn IPsec
+  authby=secret
+  rekeymargin=3m
+  keyingtries=1
+  keyexchange=ikev1
+  leftfirewall=yes
+  rekey=no
+  left=XX.YY.1.99
+  leftsubnet=0.0.0.0/0
+  leftauth=psk
+  rightsourceip=%radius
+  rightdns=8.8.8.8
+  right=%any
+  rightauth=psk
+  rightauth2=xauth-radius
+  dpdaction=clear
+  dpdtimeout = 5s
+  auto=add
+
+Далее указываем наш приватный ключnano /etc/ipsec.secrets
+: PSK "Sicret-Test-Key"
+
+Для дальнейшей интеграции с Freeradius также правимnano /etc/strongswan.d/charon/eap-radius.confeap-radius.confeap-radius {
+    accounting = yes
+    load = yes
+    nas_identifier = StrongSwan
+    #Наш секрет для Radius
+    secret = Radius-Sicret
+    server = 127.0.0.1
+    dae {
+        enable = yes
+        listen = 127.0.0.1
+        port = 3799
+        secret = Radius-Sicret
+    }
+    forward {
+    }
+    servers {
+    }
+    xauth {
+    }
+}
+
+Запускаемservice ipsec start
+
+Статус можно посмотреть так:ipsec statusall
+3) FreeRadius*для тех, кто не знает что это.
+Устанавливаем стандартноapt-get install freeradius freeradius-ldap
+
+Правим фаил /etc/freeradius/clients.conf в нем содержатся настройки для пользователей FreeRadius, у нас такими выступают локальные демоны Accel-PPP и Strongswan, минимально достаточно следующего содержимого:client localhost {
+ipaddr = 127.0.0.1
+secret = Radius-Sicret
+nastype = cisco
+shortname = MY_TEST_VPN
+}
+
+Теперь подготовим профиль для запуска, стандартный находится тут /etc/freeradius/sites-enabled/default, нам необходимо привести его к виду:/etc/freeradius/sites-enabled/default*пока не настроена интеграция с LDAP необходимо закомментировать все опции связанные с ldap и ntlm_auth, в дальнейшем раскоментируем одну из них, но не обе сразу, они конфликтуют, если нам не нужны группы из LDAP проще использовать ntlm_auth, если группы нужны, тогда ldap, в примере рабочий конфиг уже с группами.authorize {
+	preprocess
+	chap
+	mschap
+	ldap
+#	ntlm_auth
+	digest
+	suffix
+	eap {
+		ok = return
+	}
+	files
+	expiration
+	logintime
+	pap
+}
+authenticate {
+	Auth-Type PAP {
+		pap
+	}
+	Auth-Type CHAP {
+		chap
+	}
+	Auth-Type MS-CHAP {
+		mschap
+	}
+	Auth-Type LDAP {
+		ldap
+        }
+
+#    	Auth-Type ntlm_auth {
+#        	ntlm_auth
+#    	}
+	digest
+	unix
+	eap
+}
+preacct {
+	preprocess
+	acct_unique
+	suffix
+	files
+}
+accounting {
+	detail
+	unix
+	radutmp
+	exec
+	attr_filter.accounting_response
+}
+session {
+	radutmp
+}
+post-auth {
+	exec
+	Post-Auth-Type REJECT {
+		attr_filter.access_reject
+	}
+}
+pre-proxy {
+}
+post-proxy {
+	eap
+}
+
+Теперь создадим фаил локальных пользователей, а также описание настроек для различных групп из LDAP/etc/freeradius/users#Указываем что пользователь берется из локального файла, его имя и пароль, 
+# можно откртым текстом либо зашифровать через 
+#perl -e 'print(crypt("testpassword","abrakadabra")."\n");'
+#Тогда указываем сразу зашифрованно
+#testuser Crypt-Password := "abA5hjwYqm1.I"
+
+testuser  Cleartext-Password := "testpassword" , MS-CHAP-Use-NTLM-Auth := 0
+        Service-Type = Framed-User,
+        Framed-Protocol = PPP,
+# Можно не указывать конкретный IP, тогда он возьмется автоматически из пула, переданного в Framed-Pool
+        Framed-IP-Address = 10.65.18.12,
+        Framed-IP-Netmask = 255.255.255.255,
+# Пул из которого берем адреса для клиентов, описан в секции ip-pool конфига accel-ppp
+        Framed-Pool = "office",
+# Скорость шейпера в килобитах на пользователя.
+        Filter-Id = "100000/100000",
+# В ответе указываем что авторизация взята из локального файла, удобно для тестов
+        Reply-Message = "Accepted from local file"
+# Можно указать дополнительно любые другие параметры соединения
+# такие как Idle-Timeout, Acct-Interim-Interval и т.п.
+
+# Описываем привязку к различным группам LDAP, например привязываем доменную группу 
+# remote-connection к группе office, описанной в секции ip-pool конфига accel-ppp
+DEFAULT Ldap-Group == "remote-connection"
+        Service-Type = Framed-User,
+        Framed-Protocol = PPP,
+        Framed-Pool = "office",
+        Filter-Id = "100000/100000"
+
+# Остальные группы по аналогии
+DEFAULT Ldap-Group == "full-access"
+        Service-Type = Framed-User,
+        Framed-Protocol = PPP,
+        Framed-Pool = "fullaccess"
+# Админская группа уберем для нее шейпер
+#        Filter-Id = "100000/100000"
+
+DEFAULT Ldap-Group == "mobile-access"
+        Service-Type = Framed-User,
+        Framed-Protocol = PPP,
+        Framed-Pool = "mobila",
+        Filter-Id = "100000/100000"
+
+Перезапустим радиусservice freeradius restart
+
+*Для отладки можно запускать в режиме вывода лога на терминал freeradius -X
+Если все ОК и ошибок в запуске нет, проверим тестового пользователя:radtest testuser testpassword 127.0.0.1 0  Radius-Sicret
+
+мы должны получить ответ вида:Sending Access-Request of id 238 to 127.0.0.1 port 1812
+	User-Name = "testuser"
+	User-Password = "testpassword"
+	NAS-IP-Address = XX.YY.1.99
+	NAS-Port = 0
+	Message-Authenticator = 0x00000000000000000000000000000000
+rad_recv: Access-Accept packet from host 127.0.0.1 port 1812, id=238, length=105
+	Service-Type = Framed-User
+	Framed-Protocol = PPP
+	Framed-IP-Address = 10.65.18.12
+	Framed-IP-Netmask = 255.255.255.255
+	Framed-Pool = "office"
+	Filter-Id = "100000/100000"
+	Reply-Message = "Accepted from local file"
+
+Если в ответе есть Access-Accept, то все хорошо и можно переходить к настройке интеграции Freeradius с LDAP, конфиги помещаю в этой секции заранее, нам надо подправить:nano /etc/freeradius/modules/ntlm_auth
+*вместо KR.LOC просто указываем свой доменexec ntlm_auth {
+	wait = yes
+	program = "/usr/bin/ntlm_auth --request-nt-key --domain=KR.LOC --username=%{mschap:User-Name} --password=%{User-Password}"
+}
+
+Чуток подправим авторизацию через mschap, т.к. pap использовать не безопасно.nano /etc/freeradius/modules/mschapmschap {
+        #Используем шифрование
+	use_mppe = yes
+        # Но разрешаем подключаться и без шифрования, для некоторых клиентов это важно, если таких нет - заменить на yes
+	require_encryption = no
+	require_strong = yes
+	with_ntdomain_hack = no
+	ntlm_auth = "/usr/bin/ntlm_auth --request-nt-key --username=%{%{Stripped-User-Name}:-%{%{User-Name}:-None}} --challenge=%{%{mschap:Challenge}:-00} --nt-response=%{%{mschap:NT-Response}:-00}"
+}
+
+ну и самое важное, непосредственно интеграция с LDAPnano /etc/freeradius/modules/ldapприводим к виду*не забываем параметры доступа к ldap сменить на свои, пользовательская учетка должна иметь права на чтение профилей в домене.ldap {
+        server = "10.13.205.7"   #свой контроллер
+        identity = "sf-test@KR.LOC"   #своя учетка
+        password = "987654321"   # свой пароль
+        basedn = "dc=KR,dc=LOC"   # свой домен
+        filter = "(sAMAccountName=%{%{Stripped-User-Name}:-%{User-Name}})"
+         ldap_connections_number = 5
+        max_uses = 0
+        #port = 389
+        timeout = 4
+        timelimit = 3
+        net_timeout = 1
+
+        tls {
+                start_tls = no
+        }
+        dictionary_mapping = ${confdir}/ldap.attrmap
+        password_attribute = userPassword
+        edir_account_policy_check = no
+
+        groupname_attribute = cn
+        groupmembership_filter = "(|(&amp;(objectClass=GroupOfNames)(member=%{control:Ldap-UserDn}))(&amp;(objectClass=GroupOfUniqueNames)(uniquemember=%{control:Ldap-UserDn})))"
+        groupmembership_attribute = memberOf
+
+        access_attr_used_for_allow = yes
+
+        chase_referrals = yes
+        rebind = yes
+        # set_auth_type = yes
+
+        keepalive {
+                idle = 60
+                probes = 3
+                interval = 3
+        }
+}
+
+Еще один важный момент, для того чтоб получать radius атрибуты для конкретного пользователя прямо из ldap атрибутов домена необходимо настроить соответствие их между собой, это делается в файле /etc/freeradius/ldap.attrmap там многое уже заполнено и интуитивно понятно, но для примера покажу несколько своих:replyItem	Framed-IP-Address		msRADIUSFramedIPAddress
+replyItem	Framed-Pool			msRADIUSFramedRoute
+
+Таким образом указав в домене у пользователя персональный атрибут msRADIUSFramedIPAddress мы передадим радиусу считать его атрибутом Framed-IP-Address и выдать пользователю конкретно его по VPN, для пулов по аналогии.
+Со стороны домена это выглядит так:
+IP необходимо преобразовать в HEX на любом IP калькуляторе, можно конечно создать и любые свои атрибуты для ldap, через редактор атрибутов, но для ускоренного описания будем использовать стандартные.
+*данные опции станут доступны после настройки samba4, необходимо не забыть раскомментировать секцию ldap в /etc/freeradius/sites-enabled/default4) SAMBA 4*краткая справка
+Для начала установим все необходимое:apt-get install krb5-user libpam-krb5 samba winbind libnss-winbind libpam-winbind -t wheezy-backports
+
+Настройки samba находятся в файле /etc/samba/smb.confsmb.conf*не забываем менять имя домена на свое.[global]
+     obey pam restrictions = Yes
+     log file = /var/log/samba/log.%m
+     log level = 1
+     socket options = TCP_NODELAY SO_SNDBUF=8192 SO_RCVBUF=8192
+
+     encrypt passwords = yes
+
+     idmap config * : range = 10000-20000
+     idmap config * : backend = tdb
+
+     auth methods = winbind
+     name resolve order = hosts bcast lmhosts
+
+     case sensitive = no
+     dns proxy = no
+     netbios name = SAMBA
+     server string = %v samba
+     password server = DC02.KR.LOC
+
+     # обязательно указывать имя домена в верхнем регистре
+     realm = KR.LOC
+     client use spnego = yes
+     client signing = yes
+     local master = no
+     domain master = no
+     preferred master = no
+     workgroup = KR
+     debug level = 2
+
+    # ads указывает что авторизация проходит на уровне домена
+     security = ads
+     unix charset = UTF-8
+     dos charset = 866
+     max log size = 50
+     os level = 0
+     follow symlinks = yes
+
+     winbind uid = 10000-20000
+     winbind gid = 10000-20000
+     winbind enum groups = yes
+     winbind enum users = yes
+
+Теперь настроим winbind (позволяет Самбе узнавать пользователей AD и общаться с ними как с локальными).
+Нам необходимо отредактировать фаил /etc/nsswitch.conf , добавляем в него:passwd:         compat  winbind
+group:          compat  winbind
+shadow:         compat  winbind
+
+Осталось настроить Kerberos (используется для интеграции Samba в Active Directory)
+Приводим фаил /etc/krb5.conf к видуkrb5.conf*Домен меняем на свой.    [logging]
+    default = FILE:/var/log/krb5.log
+    kdc = FILE:/var/log/krb5kdc.log
+
+    [libdefaults]
+    default_realm = KR.LOC
+
+    clockskew = 500
+    dns_lookup_realm = false
+    dns_lookup_kdc = true
+    ticket_lifetime = 324000
+
+    [realms]
+    KR.LOC = {
+    kdc = DC02.KR.LOC
+    admin_server = DC02.KR.LOC
+    default_domain = KR.LOC
+    }
+
+    [domain_realm]
+    .kr.loc = KR.LOC
+
+    [login]
+    krb4_convert = true
+    krb4_get_tickets = false
+
+
+Конфиги поправлены, можно перезапустить сервисы:service samba restart
+service winbind restart
+
+Проверяем для своего доменного пользователя:kinit sf-test@KR.LOC
+
+Получаем запрос на ввод пароля, вводим.Password for sf-test@KR.LOC:
+
+Если все ОК, вывода на экран не будет, если все-же что-то выводит, внимательно читаем и правим ошибки в конфиге.
+Считаем что у вас все хорошо и вводим сервер в доменnet join –U sf-test@KR.LOC
+
+Проверим работу winbind:wbinfo -u
+wbinfo -g
+
+В выводе должны видеть список доменных пользователей и групп.
+Что бы проверить воспринимаются ли доменные пользователи как локальные, можно воспользоваться командой:id domain_user
+
+Проверяем работу модуля аутентификации (логин/пароль/домен — естественно свои)ntlm_auth --request-nt-key --domain=KR.LOC --username=sf-test --password=123456789
+
+Получили OK, значит можно раскомментировать в конфиге радиуса модуль ldap или ntlm_auth (если не нужны доменные группы), перезапускать freeradius и наслаждаться работой VPN сервера с учетками домена, но для успокоения совести проверим что радиус авторизирует доменных пользователей:radtest -t mschap sf-test 123456789 127.0.0.1 0  Radius-Sicret
+
+Теперь можно создавать VPN подключение у себя и проверять всю связку.5) Бонус
+Пролистывая заметку еще раз посмотрел на схему сети и вспомнил, что у нас есть соединения site-to-site для IPsec — это так-же удобно если пользователям ВПН необходимо давать доступ в другие сети, все это реализовано фаирволом, но пример настройки strongswan для такого соединения привожу ниже.ipsec.confВ /etc/ipsec.conf добавляем в конец секцию:conn juniper
+        forceencaps=yes
+        dpddelay=30 # Dead peer detection - 30 секунд - интервал между keep-alive пакетами
+        dpdtimeout=120 # dpd таймаут 120 секунд, после которого хост будет объявлен недоступным
+        # IKE alg 3DES - HASH sha1 - DH group 2 (1024)
+        ike=3des-sha1-modp1024
+        # IKE lifetime 86400 seconds (24 hours)
+        ikelifetime=86400s
+        # IKE auth method Pre-Shared Key (PSK secret)
+        authby=secret
+        # IPSec type tunnel
+        type=tunnel # режим - туннель
+        #left side (myside)
+        left=ХХ.УУ.1.99 # OpenSWAN side
+        leftsubnet=10.65.0.0/16 #наши локальные сети, которые мы экспортируем удаленному маршрутизатору
+        right=ХХ.УУ.116.5 #Удаленный маршрутизатор
+        rightsubnet=192.168.105.0/24 #Сети с удаленного маршрутизатора, которые доступны пользователям нашего VPN
+        auto=start
+	esp=3des-sha1,3des-md5
+	keyexchange=ikev1
+Заключение.
+Надеюсь все получилось с первого раза и сразу заработало, если это не так — задавайте вопросы в комментариях. Автор паталогически безграмотен, если увидели ошибку, опечатку, не однозначность или любой другой момент, мешающий восприятию заметки — просьба сообщать в личку. Всем спасибо за потраченное время.
+
+      
+      
+    

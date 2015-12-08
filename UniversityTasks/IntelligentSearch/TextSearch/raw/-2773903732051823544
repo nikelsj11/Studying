@@ -1,0 +1,169 @@
+﻿#TITLE:Дайджест интересных материалов из мира веб-разработки и IT за последнюю неделю №177 (14 — 20 сентября 2015)
+
+      Предлагаем вашему вниманию подборку с ссылками на полезные ресурсы, интересные материалы и IT-новостиВеб-разработка
+CSS
+Javascript
+Браузеры
+Дизайн
+Новости
+Занимательное
+ Веб-разработкаВеб-производительноcть:Одного лишь адаптивного дизайна мало: нам нужна адаптивная производительность
+Сохраняем траффик, используя изображения правильно (Saving Bandwidth by Using Images the Smart Way)
+Подробный анализ производительности веб-шрифтов (Analyzing Web Font Performance)
+Делаем веб-страницы быстрыми (Making web pages go fast)
+Полный список свойств и методов, которые приводят к reflow страницы (What forces layout / reflow)
+
+Веб-анимация:Сообщество css-live.ru начало перевод ряда статей о Web Animations API: Поговорим об Web Animations API, Часть 1: создание базовой анимации, Часть 2: AnimationPlayer и управление временной шкалой
+Создание анимации с эффектом ручной отрисовки с помощью SVG (Creating Cel Animations With SVG)
+Основы современной анимации от Google Developers
+ Свежий доклад Animation performance on the web от Ada Rose Edwards с London Web Standards.
+Ana Tudor о том, как она создавала свою самую популярную трехмерную демку (How I Live-Coded My Most-Hearted Pen)
+
+Эффектный веб:Еженедельная подборка красивых эффектов на CSS/SVG/JS #4
+9 клевых демо на CodePen от David Walsh
+Создание эффекта ряби в стиле Material Design с JS и SVG (Creating Material Design Ripple Effects with SVG)
+Элементы UI в стиле хай-тек с помощью SVG и Border-Image
+Создание эффекта Apple TV постера с параллакс эффектом на CSS3 &amp; jQuery (Create an Apple TV Poster Parallax Effect in CSS3 &amp; jQuery)
+
+Конференции:10 свежих видео с London Web Standards
+Видео с OdessaJS Conference, прошедшей 22 августа
+Запись трансляции конференции FrontTalks 2015, прошедшей 19 сентября в Екатеринбурге
+
+Анахроничная Борода: новая методология разработки сайтов для любых устройств и платформ (Перевод стати Брюса Лоусона Anachronistic Beard: a new methodology to make sites work anywhere)
+Web Field Manual — модерируемые ссылки на значимые проекты и статьи по веб-разработке (дизайн и frontend)
+Bosonic — курируемая коллекция веб-компонентов для ежедневного использования (A practical collection of everyday Web Components)
+Видео: начало работы с Grunt
+Загружайте Grunt и… руководство по использованию npm, как средства сборки (Give Grunt the Boot! A Guide to Using npm as a Build Tool)
+О том, почему важна последовательность кода с точки зрения доступности (Source Order Matters)
+Используйте только один &lt;main&gt; на странице
+Как профессионально использовать Chrome DevTools  (How to use Chrome DevTools like a Pro)
+Как быть крутым фронтенд-разработчиком (How to be a bad-ass Front-end Developer)
+ CSSИспользуем возможности CSS4 уже сегодня с cssnext
+Назад к истокам. Перевод статьи Back to the :roots от simurai
+Кастомизация HTML5 progress element
+Стилизация и кастомизация элемента File Input по-умному
+Простой способ вёрстки сетки с выравниванием элементов по ширине, а в последней строке — по левому краю
+Финальное сравнение CSS и SVG в блоге разработчиков Adobe
+Синхронизация CSS-анимаций с HTML5-аудио. Урок по созданию анимации биения сердца (Syncing CSS Animations with HTML5 Audio)
+Делаем фоновые изображения в высоком разрешении с помощью CSS (webkit-min-device-pixel-ratio и min-resolution)
+Валидация данных примесях и функциях Sass  (Validating Input in Sass Mixins and Functions)
+Используем Flexbox с Modernizr
+Воссоздание эффекта иконок Apple TV с помощью JS и CSS (Recreating the Apple TV icons in JavaScript and CSS)
+Подробная статья о том, как Chris Pearce прожил два месяца с CSS модулями (Elephants, The Three Code Ilities, &amp; Two Months With CSS Modules)
+Создание поэтапной анимации, используя множественные классы с переходами (Using multiple class-based CSS transitions to create staged animations)
+Создание Enterprise CSS Framework
+CSSSteal — расширение для Chrome, которое извлекает CSS из нужных классов
+ JavaScriptOm, милый Om: (высоко-?)? функциональное проектирование фронтенда с ClojureScript и React
+Подкаст RadioJS: Выпуск 30. Интервью с командой Protein, Node 4.0, стили в JS и Falcor, БЭМ инструменты и библиотеки и прочее.
+Новые релизы:Node v4.1.0 (Stable), ESLint v1.4.0
+TypeScript 1.6 выпущен с поддержкой React.js и несколько других новостей о JS (TypeScript 1.6 Launches with React.js Support, Plus Some Other JavaScript News)
+
+ES6:ES6 в деталях: прокси
+ES5, ES6, ES2016, ES.Next: что происходит с версионированием JavaScript? (ES5, ES6, ES2016, ES.Next: What's going on with JavaScript versioning?)
+ Серия занятных статей от Nicolas Bevacqua о ES6: ES6 Reflection, ES6 прокси (ES6 Proxies in Depth), Еще о прокси, Улучшениях по работе с числами в ES6 (ES6 Number Improvements in Depth), а также о ES6 WeakMaps, Sets, и WeakSets (ES6 WeakMaps, Sets, and WeakSets in Depth)
+ECMAScript 6: пустоты в массивах (ECMAScript 6: holes in Arrays)
+__proto__ в ECMAScript 6 (__proto__ in ECMAScript 6)
+Top ES2015 Features in 15 Minutes
+
+Фреймворки:Создание компонентов в стиле Angular 2 на Angular 1 (часть I) (Creating Angular 2 Style Components Using Angular 1)
+Почему мы перешли от Angular к React (Why We Moved From Angular to React)
+Что я извлек из создания приложения React Native. (What I learned from building a React Native app)
+Создание приложения реального времени работающего на ReactJS с помощью веб-сокетов (Making ReactJS Realtime With Websockets)
+
+Плагины и библиотеки:lrStickyHeader — библиотека без зависимостей для создания прилипающего заголовка таблицы
+OpenSeadragon — просмотрщик изображений с высоким разрешением на чистом JS с поддержкой мобильных устройств
+HashMap.js — легковесная библиотека (&lt; 500 byte) для работы с HashMaps
+
+Видео: Скринкаст Функциональный JavaScript: Частичное применение
+Адаптивные изображения с Picturefill.js (Watch: Responsive Images with Picturefill.js)
+ Видео с Devday.pl: Видео Quo vadis, JavaScript?
+ Несколько видео с The Polymer Summit 2015: Оценка быстродействия вашего приложения на Polymer, Использование ES6 с библиотекой Polymer
+
+SpeckJS — Comment Driven Development. npm модуль, который парсит JavaScript и получает юнит-тесты
+Демистификация экосистемы JS (The JavaScript Ecosystem Demystified)
+Hail, Babel! The Transpiling Overlord
+Создание приложения по определению лица с помощью Node.js и OpenCV (Build a Face Detection App Using Node.js and OpenCV)
+Как сделать открывающееся на весь экран видео с анимацией
+БраузерыMicrosoft добавит в Edge поддержку кодека VP9
+Mozilla запустила Suggested Tiles в Firefox
+В Firefox 41 заработает буфер обмена на Javascript без использования Flash
+Mozilla работает над меньшим расходом батареи браузером Firefox
+Браузер «Яндекса» снабдили технологией защиты данных
+«Яндекс.Браузер» стал вторым по популярности интернет-обозревателем в России
+Как перенести куки браузера с одного компьютера на другой
+Детали для разработчиков в релизах Opera 32 и Chrome 45 в блоге Dev.Opera 
+Технические детали о новом Safari в iOS 9: 3D Touch, новый отзывчивый дизайн, нативная интеграция и HTML5 API
+Заметка о станностях в изменении размера шрифтов в мобильном Хроме
+Detox — расширение к Chrome и FF, которое заменит вашу ленту Facebook новостями из Hacker News, Designer News, Dribbble и т.д.
+ ДизайнТаймлайны в веб-дизайне
+Портрет из текста в Adobe Photoshop
+Минималистичные иконки на тему еды в Adobe Illustrator
+Правильный дизайн в правильное время (The right design at the right time)
+Психология чисел в дизайне (The Psychology of Numbers in Design)
+Изучаем тренд долгого скроллинга в веб-дизайне (Exploring the Long Scrolling Web Design Trend)
+4 ошибки UX, которые убивают ваш продукт (4 UX mistakes killing your product (and how to fix them))
+Набор инструментов, которые используют дизайнеры сегодня (The Tools Designers Are Using Today)
+Объяснение главных трендов 2015 в дизайне лейаутов  (Top Web Design Layout Trends of 2015 Explained)
+Сравнение еще трех инструментов для прототипирования (Principle, Flinto (Mac), Tumult Hype) (Three more prototyping tools compared, Principle, Flinto for Mac, and Tumult Hype)
+Визуализация мирового знания (Visualizing theWorld’s Knowledge)
+Должны ли дизайнеры...? (Should designers like to be coddled?)
+Должны ли вы использовать индикатор кастомной полосы прокрутки? Результаты исследования с помощью Eye-Tracking (Should You Use a Custom Scroll Indicator? A Study with Eye-Tracking)
+Креативные упражнения для креативных команд (A list of creative exercises for creative teams)
+Спроси что угодно у Tobias van Schneider, дизайнера и разработчика (AMA: Tobias van Schneider, Designer &amp; Maker)
+Десять примеров дизайнов с рукописной работой (10 Examples of Hand-Lettering Design Work)
+Более двух десятков приложений с лучшим дизайном за 2015 год (The 21 Best Designed Apps of 2015)
+Концепты дизайнов для вдохновения (Searching For UI Design Inspiration? Here Are A Few Concepts)
+Темнокожие в дизайне (Black In Design)
+Эволюция дизайна обложек альбомов (The Evolution of Packaging)
+Создание дизайна для Airborne (Designing Airborne)
+Давайте исправим иконку пользователя (Let’s fix the “user” icon)
+Введение в Adobe Edge Web Fonts (An Intro to Adobe Edge Web Fonts)
+Рассмотрение деталей шрифта Obsidian от Hoefler &amp; Co. (Inside Obsidian by Hoefler &amp; Co.)
+ Подборка бесплатных дизайнерских печенекБесплатные шаблоны сайтов в формате PSD
+Бесплатные сладости в векторном формате
+Винтажные векторные изображения (30 Vintage Vector Freebies Download Roundup)
+Шаблоны веб-сайтов в формате PSD (25 Downloadable Freebie PSD Website Layout Mockups)
+Векторные винтажные бейджи (Freebie: Vector Vintage Badges (AI &amp; EPS))
+Наборы UI этой недели (FREE UI KITS OF THE WEEK)
+Набор UI “Land.io” + дизайн посадочной страницы (Sketch) (Freebie: “Land.io” UI Kit + Landing Page Design (Sketch))
+Illustricons: набор из 36 иконок (Illustricons: 36 Free Icons)
+Иконки посвященные SEO (36 free seo icons)
+Коллекция бесплатных шрифтов этой недели: от ATZUR до Athene (WEEKLY COLLECTION OF FREE FONTS)
+Barbaro — ретро-шрифт с засечками (Barbaro Font)
+Ретро-шрифт Banthers (Banthers Free Font)
+ НовостиКоличество сайтов с элементами Flash упало с 50% до 22% за четыре года
+Google прекращает поддержку SSLv3 и RC4 и повышает требования к HTTPS
+Google: HTTPS даёт преимущество при выборе между двумя равными результатами поиска
+The Next Web: Facebook реализует аналог кнопки Dislike при помощи эмодзи
+Facebook запустит корпоративную сеть Facebook at Work к концу года
+Фонд Wikimedia тестирует собственный картографический сервис
+Воздушный шар проекта Loon компании Google упал во дворе жилого дома
+Google объявил войну ПО Ad Injectors
+Экс-глава Hyundai возглавит автопроект Google
+Google признали виновной в споре с «Яндексом»
+Apple обещает побить рекорд продаж iPhone
+Разрешение у iPad Pro сравнили с дисплеями других устройств Apple
+Эрик Шмидт раскритиковал стриминги с кураторами
+Canon работает над собственным устройством виртуальной реальности
+NASA запустит телеканал в 4K
+ ЗанимательноеMicrosoft Virtual Academy: подборка онлайн-курсов по программированию для новичков
+Бюджетные планшеты Amazon продаются по 6 штук в упаковке
+Сколько хэштегов добавлять в разных соцсетях (инфографика)
+Гендиректор Amazon будет выпускать многоразовые ракеты-носители на мысе Канаверал
+Цифровой этикет: Ссылки вместо почтовых вложений
+Как настроить фейсбук, чтобы не бесило? 
+Зачем фейсбуку нужна кнопка Dislike
+Порно – двигатель прогресса или Как видео для взрослых изменило мир
+Двадцатилетие «Хакеров»: как полный стереотипов фильм предсказал будущее
+Как справиться с потоком информации в интернете и не сойти с ума
+Я учусь программировать: 5 игровых подходов к коду
+Как киберспорт завоевывает мир и почему в него вкладывают деньги: отчет инвестора с конференции eSports Conference
+Чему можно научиться на ранних презентациях Airbnb, BuzzFeed, LinkedIn и YouTube
+Видео: похоже, что на продуктовой странице iPhone 6s блики созданы с помощью WebGL (Realtime Reflections on the iPhone 6s Product Page)
+
+ Просим прощения за возможные опечатки или неработающие/дублирующиеся ссылки. Если вы заметили проблему — напишите пожалуйста в личку, мы стараемся оперативно их исправлять. Дайджест за прошлую неделю.
+Материал подготовили  dersmoll и  alekskorovin.
+
+      
+      
+    

@@ -1,0 +1,692 @@
+﻿#TITLE:Nhibernate: Варианты маппингов, варианты запросов
+
+      В этой статье я решил собрать воедино всю ту информацию, к которой я регулярно обращаюсь, роясь в интернете либо в коде. Это маппинги и связи в NHibernate. Этакая статья-памятка будет. Я решил её слишком сильно не перегружать, (к примеру про NHibernate Queries я написал очень мало), и поэтому в каждом заголовке будет ссылка на статью (на английском), на которую я опирался, создавая статью-памятку. Надеюсь, она будет полезна и вам. 
+Я буду приводить примеры для ASP.NET MVC 4 и SQL Server 2008 (кстати, к последнему мы будем обращаться очень редко, лишь проверять, как там сохранились наши данные, да строкой подключения упомним). Постараюсь писать конкретно и емко, а если будут непонятные моменты, прошу на статью Уроки по FluentNHibernate c ASP.NET MVC и SQL Server. Часть 1 где более подробно все описано. Итак, приступим, для начала, запускаем Visual Studio и:Создаем новый проект File-&gt;New-&gt;Project.
+Выберем ASP.NET MVC 4 (.Net Framework 4) и назовем его NHibernateMVC.
+В папке Models создайте папку NHibernate
+В Package Manager Console пропишем install-package nhibernate (приведенные ниже примеры работает и в FluentNhibernate, (проверено!): install-package Fluentnhibernate).
+
+После того, как установили Nhibernate, возникает вопрос, по какому пути мы будем связывать (маппить) классы из приложения с таблицами из БД. NHibernate припас для нас аж три вида маппинга, такие как:XML. Создаем *.hbm.xml маппинг-файл
+Attributes. Является дополнением (add-in) для xml-маппинга. Маппинг выглядит, как аттрибуты .NET
+Mapping by code. — вместо xml-файлов используются *.cs ConfORM маппинг-классы
+Fluent. Создаем *.cs fluent маппинг-классы
+Варианты маппингов.1.XML — файлы
+Самый первый из разработанных маппингов. 
+Плюсы:
++ Есть множество примеров в интернете.
++ Все остальные способы (Attributes и Fluent) сводятся к получению этих xml файлов. 
+Минусы:
+ — Полностью отсутствует intellisense(!). 
+ — Отсутствует валидация во время компиляции.
+Ну что ж, давайте рассмотрим его. 
+После установки NHibernate, добавьте в папку Models-&gt;NHibernate файл Nhibernate.cfg.xml &lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;hibernate-configuration xmlns="urn:nhibernate-configuration-2.2"&gt;
+	&lt;session-factory&gt;
+		&lt;property name="connection.provider"&gt;
+			NHibernate.Connection.DriverConnectionProvider
+		&lt;/property&gt;
+		&lt;property name="connection.driver_class"&gt;
+			NHibernate.Driver.SqlClientDriver
+		&lt;/property&gt;
+		&lt;property name="connection.connection_string"&gt;
+			Server=...\SQLENTERPRISE; database=NhibernateTutor; Integrated Security=SSPI;
+		&lt;/property&gt;
+		&lt;property name="dialect"&gt;
+			NHibernate.Dialect.MsSql2008Dialect
+		&lt;/property&gt;
+	&lt;/session-factory&gt;
+&lt;/hibernate-configuration&gt;
+
+Я работаю с SQL Server, поэтому выбрал SqlClientDriver. Если вы работаете с другой базой данных, то список NHibernate.Driver'ов можно посмотреть тут NHibernate.Driver
+Так как у меня SQL Server 2008 стоит, я выбрал MsSql2008Dialect, все диалекты можно посмотреть тут SQL Dialects
+Создайте в SQL Server БД NhibernateTutor и пропишите строку подключения. В этой статье я не буду создавать таблицы, они будут генерироваться сами, NHibernate'ом.
+Далее добавим в папку Models класс Book.cspublic class Book {
+		public virtual int Id { get; set; }
+		public virtual string Name { get; set; }
+		public virtual string Description { get; set; }
+}
+
+(P.S. Все его поля должы быть virtual – это требование необходимо для lazy load (ленивой загрузки) и для отслеживания NHibnerate’ом всех изменений в объектах.)
+После того, как создали класс, пришло время создать для него маппинг. Для этого создадим в папке Models-&gt;NHibernate xml-файл — «Book.hbm.xml». (Внимание!. Все маппинг файлы должны иметь расширение *.hbm.xml. 
+Перейдите в свойства этого файла (правой кнопкой по Book.hbm.xml -&gt; Properties), и в списке «Advanced» измените свойство Build Action на Embedded Resource. Тоже самое нужно будет проделать еще раз и для других *.hbm.xml-файлов. Если же его не указать, то в строке configuration.AddAssembly(typeof(Book).Assembly); класса NhibernateHelper (который будет создан позже) будет ошибка, что невозможно для класса Book найти его маппинг файл.)
+&lt;?xml version="1.0" encoding="utf-8" ?&gt;
+&lt;hibernate-mapping xmlns="urn:nhibernate-mapping-2.2" auto-import="true" assembly="NhibernateMVC" namespace="NhibernateMVC.Models"&gt;
+	&lt;class name="Book" dynamic-update="true" &gt;
+		&lt;cache usage="read-write"/&gt;
+		&lt;id name="Id" type="int"&gt;
+			&lt;generator class="native" /&gt;
+		&lt;/id&gt;
+		&lt;property name="Name" /&gt;
+		&lt;property name="Description" /&gt;
+	&lt;/class&gt;
+&lt;/hibernate-mapping&gt;
+
+На что тут следует обратить внимание. Во-первых, assembly и namespace должен быть такой же, как и у класса Book. Id я сделал &lt;generator class=«native» /&gt; потому что мне не нравятся guid, и он сам определяет, какой из типов (identity, sequence или hilo) использовать, в зависимости от возможностей БД (у Sql Server это identity). Полный список генераторов здесь IdGenerator. 
+Список свойств класса Class. 
+Список свойств Id можно прочитать здесь Id. 
+Список свойств Property Property. 
+
+После того, как создали xml-маппинг, создадим в корневом каталоге класс NHibernateHelper.cs.     public class NHibernateHelper {
+		public static ISession OpenSession() {
+			var configuration = new Configuration();
+			var configurePath = HttpContext.Current.Server.MapPath(@"~\Models\Nhibernate\nhibernate.cfg.xml");
+			configuration.Configure(configurePath);
+			//Если бы не сделали Book.hbm.xml Embedded Resource, то он бы написал ошибку о невозможности найти файл
+			configuration.AddAssembly(typeof(Book).Assembly);
+			ISessionFactory sessionFactory = configuration.BuildSessionFactory();
+                        //Позволяет Nhibernate самому создавать в БД таблицу и поля к ним. 
+			new SchemaUpdate(configuration).Execute(true, true);
+			return sessionFactory.OpenSession();
+		}
+    }
+
+Более подробная информация про настройку ISessionConfiguration здесь ISessionFactory Configuration
+В конце всех этих операций, должны были быть созданы следующие файлы.
+Давайте сейчас посмотрим, как NHibernate создаст в БД таблицу Book. Создадим в папке Controllers класс HomeController и напишем следующий код.        public ActionResult Index()
+        {
+            var session = NHibernateHelper.OpenSession();
+            return View();
+        }
+
+Как будет выглядет View нас сейчас не интересует, пусть будет пустой. Запускаем приложения, заходим в БД SQL Server и (вуаля!) видим в БД NhibernateTutor таблицу Book. Там можно поменять типы данных по своему усмотрению (nvarchar(255) сделать nvarchar(MAX), но не int!). Пока не будем заполнять её данными, давайте вначале настроим связи (когда появится связь один-к-одному, будет вылетать ошибка о том, что таблице Mind не соответсвует таблица Book) или заполните данными а затем удалите.
+Теперь перейдем к настройке отношений между таблицами.1.1 ОтношенияМногие-ко-многимBook.cs
+Author.cs
+private ISet&lt;Author&gt; _authors;
+public virtual ISet&lt;Author&gt; Authors { 
+    get { 
+        return _authors ?? (_authors = new HashSet&lt;Author&gt;()); 
+    } 
+    set { _author = value; }
+ }
+
+private ISet&lt;Book&gt; _books;
+public virtual ISet&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new HashSet&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+Book.hbm.xml
+Author.hbm.xml
+&lt;property ~~~/&gt;
+...........................................
+&lt;set name="Authors" table="Book_Author" 
+cascade="save-update"&gt;
+	&lt;key column="BookId"/&gt;
+	&lt;many-to-many class="Author" column="AuthorId"/&gt;
+&lt;/set&gt;
+
+&lt;property ~~~/&gt;
+...........................................
+&lt;set name="Books" table="Book_Author"  inverse="true" 
+cascade = "save-update"&gt;
+	&lt;key column="AuthorId"/&gt;
+	&lt;many-to-many class="Book" column="BookId"/&gt;
+&lt;/set&gt;
+
+
+Давайте разберем xml-маппинги этих классов. Начнем с тега set, он применяется для .NET ISet. Более подробную информацию, какие бывают теги для коллекций, можно прочитать здесь Collection of Values, а я ниже предоставлю таблицу коллекций и какие теги применяются к ним..Net Collection
+Mapping
+IEnumerable/ICollection/IList
+bag
+IList with order
+list
+ISet
+set
+IDictionary
+map
+table=«Book_Author» — аттрибут, создающий промежуточную таблицу Book_Author, необходимую для отношения многие-ко-многим.
+name=«Books/Authors» — указывает на название коллекции
+cascade=«save-update» — указывает, что при сохранении и обновлении также сохраняются и обновляются связанные с ним таблицы. Виды cascade=«all|none|save-update|delete|all-delete-orphan», более подробно здесь LifeCycles and object graphs 
+inverse=«true» означает, что противоположная таблица Book является родителем (несет ответственность за отношения) и будет обновлен. Более подробно можно узнать здесь inverse true example
+key column=«BookId» — указывает что таблица Book будет связана с таблицей Book_Author по ключу BookId
+ many-to-many class=«Author» column=«AuthorId» — указывает, что таблица Book будет связана с таблицей Author по ключу «AuthorId»
+Многие-к-одному (один-ко-многим)Book.cs
+Series.cs
+public virtual Series Series { get; set; }
+
+private IList&lt;Book&gt; _books;
+public virtual IList&lt;Book&gt; Books {
+	get {
+		return _books ?? (_books = new List&lt;Book&gt;());
+	}
+	set { _books = value; }
+}
+
+Book.hbm.xml
+Series.hbm.xml
+&lt;many-to-one name="Series" class="Series" 
+column="Series_id" cascade = "save-update"/&gt;
+
+&lt;bag name="Books" inverse="true"&gt;
+	&lt;key column="Series_id"/&gt;
+	&lt;one-to-many class="Book"/&gt;
+&lt;/bag&gt;
+
+
+Так, ну что тут можно сказать? Мы использовали тег «bag» так как у нас IList, column=«Series_id» создает в таблице Book столбец Series_Id, остальное было сказано выше.Один-к-ОдномуBook.cs
+Mind.cs
+private Mind _mind;
+public virtual Mind Mind { 
+    get { return _mind ?? (_mind = new Mind()); } 
+    set { _mind = value; } 
+}
+
+public virtual Book Book { get; set; }
+
+Book.hbm.xml
+Mind.hbm.xml
+&lt;one-to-one name="Mind" class="Mind" 
+constrained="true" cascade = "All"/&gt;
+
+&lt;one-to-one name="Book" class="Book" /&gt;
+
+
+А вот тут уже интересно! constrained=«true» означает, что для каждой записи таблицы Book должна существовать запись в таблице Mind, то есть Id таблицы Book должен быть равен Id таблицы Mind. Если вы попытаетесь сохранить объект Book, забыв про таблицу Mind, то Nhibernate выдаст исключение, что он не может сохранить данные. То есть предварительно нужно создать объекту Book объект Mind. Постоянно создавать объект Mind очень утомительно, поэтому при создании объекта Book при сохранении у меня инициализирует объект Mind кодом ниже, а заполнить таблицу Mind я всегда успею.private Mind _mind;
+public virtual Mind Mind { 
+    get { return _mind ?? (_mind = new Mind()); } 
+    set { _mind = value; } 
+}
+
+Cascade = «All» При сохранении, изменении, удалении таблицы Book также сохраняется, изменяется, удаляется таблица Mind. Итак, мы создали все связи, пора проверить их, сохранив, отредактировав или удалив данные. Подробная информация под спойлером ниже.Проверка работы маппингов: Операции CRUDДавайте создадим тестовое приложение, которое будет сохранять данные в БД, обновлять и удалять их, изменив HomeController следующим образом (Ненужные участки кода комментируем):public ActionResult Index()
+{
+	using (ISession session = NHibernateHelper.OpenSession()) {
+		using (ITransaction transaction = session.BeginTransaction()) {
+			//Создать, добавить
+			var createBook = new Book();
+			createBook.Name = "Metro2033";
+			createBook.Description = "Постапокалипсическая мистика";
+			createBook.Authors.Add(new Author { Name = "Глуховский" });
+			createBook.Series = new Series { Name = "Метро" };
+			createBook.Mind = new Mind { MyMind = "Постапокалипсическая мистика" };
+			session.SaveOrUpdate(createBook);
+
+			//Обновить (По идентификатору)
+			var updateBook = session.Get&lt;Book&gt;(1);
+			updateBook.Name = "Metro2033";
+			updateBook.Description = "Постапокалипсическая мистика";
+			updateBook.Authors.ElementAt(0).Name = "Петров";
+			updateBook.Series.Name = "Метроном";
+			updateBook.Mind.MyMind = "11111";
+			session.SaveOrUpdate(updateBook);
+
+			//Удаление (По идентификатору)
+			var deleteBook = session.Get&lt;Book&gt;(1);
+			session.Delete(deleteBook);
+					
+			transaction.Commit();
+		}
+		var criteria = session.CreateCriteria&lt;Book&gt;();
+		criteria.CreateAlias("Series", "series", JoinType.LeftOuterJoin);
+		criteria.CreateAlias("Authors", "author", JoinType.LeftOuterJoin);
+		criteria.CreateAlias("Mind", "mind", JoinType.LeftOuterJoin);
+		criteria.SetResultTransformer(new DistinctRootEntityResultTransformer());
+		var books = criteria.List&lt;Book&gt;();
+
+		return View(books);
+	}
+}
+
+и изменим представление следующим образом:@model IEnumerable&lt;NhibernateMVC.Models.Book&gt;
+@{    Layout = null; }
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+	&lt;meta name="viewport" content="width=device-width" /&gt;
+	&lt;title&gt;Index&lt;/title&gt;
+	&lt;style&gt;
+		th, td {
+			border: 1px solid;
+		}
+	&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+	&lt;p&gt;@Html.ActionLink("Create New", "Create")&lt;/p&gt;
+	&lt;table&gt;
+		&lt;tr&gt;
+			&lt;th&gt;@Html.DisplayNameFor(model =&gt; model.Name)&lt;/th&gt;
+			&lt;th&gt;@Html.DisplayNameFor(model =&gt; model.Mind)&lt;/th&gt;
+			&lt;th&gt;@Html.DisplayNameFor(model =&gt; model.Series)&lt;/th&gt;
+			&lt;th&gt;@Html.DisplayNameFor(model =&gt; model.Authors)&lt;/th&gt;
+			&lt;th&gt;Операции&lt;/th&gt;
+		&lt;/tr&gt;
+
+		@foreach (var item in Model) {
+			&lt;tr&gt;
+				&lt;td&gt;@Html.DisplayFor(modelItem =&gt; item.Name)&lt;/td&gt;
+				&lt;td&gt;@Html.DisplayFor(modelItem =&gt; item.Mind.MyMind)&lt;/td&gt;
+				@{string strSeries = item.Series != null ? item.Series.Name : null;}
+				&lt;td&gt;@Html.DisplayFor(modelItem =&gt; strSeries)&lt;/td&gt;
+				&lt;td&gt;
+					@foreach (var author in item.Authors) {
+						string strAuthor = author != null ? author.Name : null;
+						@Html.DisplayFor(modelItem =&gt; strAuthor) &lt;br /&gt;
+					}
+				&lt;/td&gt;
+				&lt;td&gt;
+					@Html.ActionLink("Edit", "Edit", new { id = item.Id }) |
+					@Html.ActionLink("Details", "Details", new { id = item.Id }) |
+					@Html.ActionLink("Delete", "Delete", new { id = item.Id })
+				&lt;/td&gt;
+			&lt;/tr&gt;
+		}
+	&lt;/table&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+Думаю, вы сами справитесь, создав соответсвующие поля для Author, Mind и Series. Проверив поочередно все операции, мы заметим, что:При операциях Create и Update обновляются все данные, связанные с таблицей Book (уберите Cascade=«save-update» или cascade=«all» и связанные данные не будут сохранены)
+При удалении удаляются данные из таблиц Book, Mind, Book_Author, а остальные данные не удаляются, потому что у них Cascade=«save-update»
+При удалении удаляются данные из таблиц Book, Mind, Book_Author, а остальные данные не удаляются, потому что у них Cascade=«save-update»
+
+Далее для проверки связей в остальных вариантах маппингов можете использовать этот код, потому что Criteria работает и в Attributes и в Fluent'e. И не забудьте проверить ключи в БД, мало ли какую ошибку вы допустили, о которой узнаете в последствии. К примеру, таблица Book ссылается ключом на AuthorId таблицы Book_Author, вместо ключа BookId.Подробную информацию можно прочесть здесь.NHibernate Reference Documentation2. АТРИБУТЫ
+Является Дополнением (add-in) к Nhibernate.
+Плюсы:
++ Не нужно создавать отдельные файлы (*.hbm.xml), пишите атрибуты сразу над полями класса, то есть сущности и маппинги находятся рядом.
++ Поддрежка Intellisense 50/50(!). Есть подсказки для написания аттрибутов (таких как Name), но нет для его свойств, которые представлены в виде строки. 
++ Легко перейти с xml-файлов на Атрибуты.
+Минусы:
+ — Ухудшается удобочитаемость кода.
+ — Отсутсвие валидации во время компиляции. 
+ — У свойств, состоящих из более 1 атрибута следует прописывать индексы.
+В интернете материалов по NHibernate.Mapping.Attributes мало, даже на сайте nhibernate.info ему отведена всего ОДНА глава(!) NHibernate.Mapping.Attributes и этому есть простое объяснение: он является дополнением (Add-in) к NHibernate, и поэтому фактически имеет такие же настройки, как Nhibernate *.hbm.xml-файлы. Таким образом, вы используете Attributes вместо nasty *.hbm.xml-файлов. Поэтому, если вы используете Атрибуты и у вас возникли проблемы, смело применяйте решения, которые применимы для *.hbm.xml-файлов, благо синтаксис у них одинаков, разобраться не составит труда.Прежде чем использовать аттрибуты, удалим вначале все маппинг (*.hbm.xml) файлы, они нам больше не понадобятся. (Nhibernate.cfg.xml оставляем!) 
+Для работы с аттрибутами нам понадобится NHibernate.Mapping.Attribute.dll, устанавливаем его через Package Manager Console, где пропишем Install-Package NHibernate.Mapping.Attributes . 
+Изменим NHibernateHelper класс следующим образом
+      public class NHibernateHelper {
+		public static ISession OpenSession() {
+			var configuration = new Configuration();
+			var configurePath  = HttpContext.Current.Server.MapPath(@"~\Models\Nhibernate\nhibernate.cfg.xml");
+			configuration.Configure(configurePath);
+//configuration.AddAssembly(typeof(Book).Assembly); заменяем вот на этот код\\
+			HbmSerializer.Default.Validate = true;
+			var stream = HbmSerializer.Default.Serialize(Assembly.GetAssembly(typeof(Book)));
+			configuration.AddInputStream(stream);
+//*****************************************************************************************************\\
+			ISessionFactory sessionFactory = configuration.BuildSessionFactory();
+//Позволяет Nhibernate самому создавать в БД таблицу и поля к ним. 
+			new SchemaUpdate(configuration).Execute(true, true);
+			return sessionFactory.OpenSession();
+		}
+	}
+configurePath -Указываеn путь к конфигурации файла Nhibernate
+HbmSerializer.Default.Validate — включает или отключает проверку генерируемых xml-потоков
+ HbmSerializer.Default.Serialize — сериализует классы в xml-файлы
+
+Теперь настало время прописать Атрибуты. Изменим класс Book, добавив туда аттрибуты следующим образом	[Class]
+	public class Book {
+		[Id(0, Name = "Id")]
+		[Generator(1, Class = "native")]
+		public virtual int Id { get; set; }
+		[Property]
+		public virtual string Name { get; set; }
+		[Property]
+		public virtual string Description { get; set; }
+}
+
+Что следует заметить? Первое, над каждым свойством, который вы хотите замапить, должны быть атрибуты. Второе, вы обратили внимание на индексы Id(0...) и Generator(1...)? Индексы нужно применять для свойств, которые состоят из более чем одного атрибута. Это связано с тем, что NHMA генерирует *.hbm.xml файлы на «лету» из атрибутов, и он должен знать в каком порядке выписывать xml-элементы. (К сожалению, порядок атрибут не поддерживается с помощью reflection). 
+Удалим из БД таблицу Book (можно и не удалять, это для проверки.) Запустим проект, и если в БД не было таблицы Book, то она создастся. 
+Про отношения не буду писать, так как синтаксис такой же как и у *.hbm.xml файлов, единственное различие, что для коллекций нужно прописывать индексы.2.1 Отношения (В таблицах)Многие-ко-многимBook.cs
+Author.cs
+[Set(0, Table = "Book_Author", Cascade = "save-update")]
+[Key(1, Column = "BookId")]
+[ManyToMany(2, ClassType = typeof(Author), Column = "AuthorId")]
+private ISet&lt;Author&gt; _authors;
+public virtual ISet&lt;Author&gt; Authors { 
+get { 
+  return _authors ?? (_authors = new HashSet&lt;Author&gt;());
+} 
+set { _author = value; }
+ }
+
+[Set(0, Table = "Book_Author", Inverse = true, Cascade = "save-update")]
+[Key(1, Column = "AuthorId")]
+[ManyToMany(2, ClassType = typeof(Book), Column = "BookId")]
+private ISet&lt;Book&gt; _books;
+public virtual ISet&lt;Book&gt; Books{
+    get { 
+    return _books?? (_books= new HashSet&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+Многие-к-одному, один-ко-многимBook.cs
+Series.cs
+[ManyToOne(Name = "Series", Column = "SeriesId", 
+ClassType = typeof(Series), Cascade = "save-update")]
+public virtual Series Series { get; set; }
+
+[Bag(0, Name = "Books", Inverse = true)]
+[Key(1, Column = "SeriesId")]
+[OneToMany(2, ClassType = typeof(Book))]
+private IList&lt;Book&gt; _books;
+public virtual IList&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new List&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+Один-к-одномуBook.cs
+Mind.cs
+[OneToOne(Name = "Mind", ClassType = typeof(Mind), 
+Constrained = true, Cascade = "All")]
+private Mind _mind;
+public virtual Mind Mind { 
+    get { return _mind ?? (_mind = new Mind()); } 
+    set { _mind = value; }
+ }
+
+[OneToOne(Name = "Book", ClassType = typeof(Book))]
+public virtual Book Book { get; set; }
+
+3. Mapping ByCode
+Плюсы:
++ Не требуются дополнительных библиотек (как в случае с аттрибутами)
++ Поддрежка Intellisense 100(!). 
++ Не требуются *.hbm.xml-файлы и Nhibernate.cfg.xml
++ Взяли лучшее у Fluent-Nhibernate, (лямбда-выражения) и сделали синтаксис под *.hbm.xml — файлы. 
+Минусы:
+ — Убрали у cascade Save-Update свойство (можно использовать Cascade.Persist, но всё-таки).
+ — Структура (в частности отношения между классами) не совсем точно соответствует элементам *.hbm.xml — файлов.Будет обновлена...Удалим файл nhibernate.cfg.xml
+Изменим NHibernateHelper класс следующим образом
+	public class NHibernateHelper {
+		public static ISession OpenSession() {
+			var cfg = new Configuration()
+			.DataBaseIntegration(db =&gt; {
+				db.ConnectionString = @"Server=..\SQLENTERPRISE;initial catalog=NhibernateTutor;Integrated Security=SSPI;";
+				db.Dialect&lt;MsSql2008Dialect&gt;();
+			});
+			var mapper = new ModelMapper();
+			mapper.AddMappings(Assembly.GetExecutingAssembly().GetExportedTypes());
+			HbmMapping mapping = mapper.CompileMappingForAllExplicitlyAddedEntities();
+			cfg.AddMapping(mapping);
+			new SchemaUpdate(cfg).Execute(true, true);
+			ISessionFactory sessionFactory = cfg.BuildSessionFactory();
+			return sessionFactory.OpenSession();
+		}
+	}
+
+Заметили тенденцию? С каждым способом убирается один из файлов для Nhibernate. В xml-файлах были *.hbm.xml файлы и nhibernate.cfg.xml файл, в Attributes стали не нужны *.hbm.xml файлы, в Mapping byCode уже стал не нужен nhibernate.cfg.xml. Интересно, что будет уберут в новом способе (да и будет ли он вообще?).
+Класс Book и его маппинг должны выглядеть следующим образом.	public class Book {
+		public virtual int Id { get; set; }
+		public virtual string Name { get; set; }
+		public virtual string Description { get; set; }
+	}
+	public class BookMap : ClassMapping&lt;Book&gt; {
+		public BookMap() {
+			Id(x =&gt; x.Id, map =&gt;  map.Generator(Generators.Native));
+			Property(x=&gt;x.Name);
+			Property(x=&gt;x.Description);
+	} 
+3.1 Отношения (В таблицах)Многие-ко-многимBook.cs
+Author.cs
+private ISet&lt;Author&gt; _authors;
+public virtual ISet&lt;Author&gt; Authors { 
+    get { 
+        return _authors ?? (_authors = new HashSet&lt;Author&gt;()); 
+    } 
+    set { _author = value; }
+ }
+
+private ISet&lt;Book&gt; _books;
+public virtual ISet&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new HashSet&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+BookMap.cs
+AuthorMap.cs
+Set(a =&gt; a.Authors, 
+c =&gt; { c.Cascade(Cascade.Persist); 
+c.Key(k =&gt; k.Column("BookId")); 
+c.Table("Book_Author");},
+r=&gt;r.ManyToMany(m=&gt;m.Column("AuthorId")));
+
+Set(a =&gt; a.Books, 
+c =&gt; { c.Cascade(Cascade.All); 
+c.Key(k =&gt; k.Column("AuthorId")); 
+c.Table("Book_Author"); c.Inverse(true); },
+r =&gt; r.ManyToMany(m =&gt; m.Column("BookId")));
+
+Многие-к-одному, один-ко-многимBook.cs
+Series.cs
+public virtual Series Series { get; set; }
+
+private IList&lt;Book&gt; _books;
+public virtual IList&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new List&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+BookMap.cs
+SeriesMap.cs
+ManyToOne(x =&gt; x.Series, 
+c =&gt; { c.Cascade(Cascade.Persist); 
+c.Column("Series_Id"); });
+
+Bag(x =&gt; x.Books, 
+c =&gt; { c.Key(k =&gt; k.Column("Series_Id")); c.Inverse(true); }, 
+r =&gt;  r.OneToMany());
+
+Один-к-одномуBook.cs
+Mind.cs
+private Mind _mind;
+public virtual Mind Mind { 
+get { return _mind ?? (_mind = new Mind()); } 
+set { _mind = value; } 
+}
+
+public virtual Book Book { get; set; }
+
+BookMap.cs
+MindMap.cs
+OneToOne(x=&gt;x.Mind, c=&gt;{c.Cascade(Cascade.All); 
+c.Constrained(true);});
+
+OneToOne(x=&gt;x.Book,
+c=&gt;c.Cascade(Cascade.None));
+
+
+Подробная информация здесь StackOverflow Mapping-By-Code4. FLUENT
+Он предлагает альтернативу стандартным отображения XML- файлов NHibernate. Вместо того, чтобы писать XML-файлы, вы пишете маппинги в строго типизированных C# коде (через лямбда-выражения). Благодаря этому есть рефакторинг, улучшается читаемость и легкость написания кода.
+Плюсы:
++ 100% поддержка intellisense!
++ Великолепная документация Fluent-Nhibernate
++ Валидация во время компиляции
++ Не нужно создавать файл Nhibernate.cfg.xml, все настройки, включая строку подключения, можно прописать в NhibernateHelper.
+Минусы:
+ — По сравнению с другими версиями NHibernate немного непривычный синтаксис маппинга.
+Так как FluentNhibernate и Nhibernate немного различаются, давайте я напишу так, будто заново создаю приложение? Итак начнем, создаем новое приложение. В Package Manager Console пропишем install-package fluentnhibernate 
+В папке «Models» создадим класс «Book.cs» (Models-&gt;Book.cs)
+Добавим в Models папку NHibernate и создадим класс NHibernateHelper.cs (Models-&gt;NHibernate-&gt;NHibernateHelper.cs)
+public class NHibernateHelper {
+    public static ISession OpenSession() {
+       ISessionFactory sessionFactory = Fluently.Configure()
+.Database(MsSqlConfiguration.MsSql2008.ConnectionString(@"Server=..\SQLENTERPRISE; initial catalog= Biblioteca; Integrated Security=SSPI;").ShowSql()
+       ) 
+       .Mappings(m =&gt;m.FluentMappings.AddFromAssemblyOf&lt;Book&gt;()) 
+       .ExposeConfiguration(cfg =&gt; new SchemaUpdate(cfg).Execute(false, true)) 
+       .BuildSessionFactory(); 
+       return sessionFactory.OpenSession();
+    }
+}
+
+В этом NhibernateHelper.cs следует отметить, что теперь строку подключения к БД мы прописываем здесь. И да, тут присутсвеют лямбда-выражения. 
+Заполним класс Book.cs public class Book {
+        public virtual int Id { get; set; }
+        public virtual string Name { get; set; }
+        public virtual string Description { get; set; }
+}
+
+и создадим к нему маппинг-класс       public class BookMap : ClassMap&lt;Book&gt; {
+             public BookMap() {
+                    Id(x =&gt; x.Id);
+                    Map(x =&gt; x.Name);
+                    Map(x =&gt; x.Description);
+             }
+       }
+
+Далее создадите в папке Controllers класс HomeController и напишем следующий код.public ActionResult Index()
+{
+     var session = NHibernateHelper.OpenSession();
+     return View();
+}
+
+Создайте любую View, и после запуска приложения в SQL Server будет создана таблица Book.4.1 Отношения (В таблицах)Многие-ко-многимBook.cs
+Author.cs
+private ISet&lt;Author&gt; _authors;
+public virtual ISet&lt;Author&gt; Authors { 
+    get { 
+        return _authors ?? (_authors = new HashSet&lt;Author&gt;()); 
+    } 
+    set { _author = value; }
+ }
+
+private ISet&lt;Book&gt; _books;
+public virtual ISet&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new HashSet&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+BookMap.cs
+AuthorMap.cs
+HasManyToMany(x =&gt; x.Authors)
+	.Cascade.SaveUpdate()
+	.Table("Book_Author");
+
+HasManyToMany(x =&gt; x.Books)
+	.Cascade.All()
+	.Inverse().Table("Book_Author");
+
+Многие-к-одному, один-ко-многимBook.cs
+Series.cs
+public virtual Series Series { get; set; }
+
+private IList&lt;Book&gt; _books;
+public virtual IList&lt;Book&gt; Books{
+    get { 
+        return _books?? (_books= new List&lt;Book&gt;()); 
+    } 
+    set { _books= value; }
+}
+
+BookMap.cs
+SeriesMap.cs
+References(x =&gt; x.Series).Cascade.SaveUpdate();
+
+HasMany(x =&gt; x.Books)
+	.Inverse();
+
+
+Метод References применяется на стороне «Многие-к-одному», на другой стороне «Один-ко-многим» будет метод HasMany.Один-к-одномуBook.cs
+Mind.cs
+private Mind _mind;
+public virtual Mind Mind { 
+get { return _mind ?? (_mind = new Mind()); } 
+set { _mind = value; } 
+}
+
+public virtual Book Book { get; set; }
+
+BookMap.cs
+MindMap.cs
+HasOne(x =&gt; x.Mind).Cascade.All().Constrained();
+
+HasOne(x =&gt; x.Book);
+
+
+Метод .Constrained() говорит NHibernate, что для записи из таблицы Book должна соответствовать запись из таблицы Mind (id таблицы Mind должен быть равен id таблицы Book)Варианты запросов (NHibernate Queries)
+NHibernate обладает мощными инструментами для создания запросов, такие как.Методы session.Get и session.Load. Получение (списка) объекта(ов) по первичному ключу. 
+SQL (метод CreateSQLQuery) — в основном используется для преобразования SQL-скрипта к определенному классу
+HQL — это SQL-подобный язык, хорошо подходит для статических запросов. 
+LINQ to NHibernate — В NHibernate 2x linq-запросы задавались интерфейсом ISession.Linq&lt;T&gt;, который хорошо работал для простых запросов. C выходом Nhibernate 3 (интерфейс изменился на ISession.Query&lt;T&gt;) получил более широкие возможности, хотя и не получил широкое распространение среди программистов
+Criteria (Часто используемый) — хорошо подходит для построения динамических запросов, свойства задаются в виде строки.
+QueryOver (Часто используемый) — Впервые появился в версии NHibernate 3. Также хорошо подходит для построения динамический запросов, поддерживается intellisense
+Запрос по идентификатору//Выбор объекта по иденитфикатору, (методы Get и Load)
+var book = session.Get&lt;Book&gt;(1);
+Метод SQLCreateQuery//SQl-запрос
+var queryBook = string.Format(@"select Id, Name, Description from Book");
+//Вывод списка всех книг
+var books = session.CreateSQLQuery(queryBook)
+//SQl-запрос ассоциирует с классом
+.SetResultTransformer(Transformers.AliasToBean(typeof(Book)))
+.List&lt;Book&gt;().ToList();
+Lists with restrictions//hql
+var hqlQuery = session.CreateQuery("from Book b where b.Series.Id = ? order by p.Id")
+	//Указывает 0 параметру значение int=2
+	.SetInt32(0,2);
+var books = hqlQuery.List&lt;Book&gt;();
+
+//NHibernate.Linq (session.Linq in NH 2/session.Query in NH3)
+var linq = (from book in session.Query&lt;Book&gt;()
+			where book.Series.Id == 2
+			orderby book.Id
+			select book);
+var books = linq.ToList();
+return View(books);
+
+//criteria
+var criteria = session.CreateCriteria&lt;Book&gt;()
+	//"Restrictions" используется как "Expression"
+	.Add(Restrictions.Eq("Series.Id", 3))
+	//Order
+	.AddOrder(Order.Asc("Id"));
+var books = criteria.List&lt;Book&gt;();
+
+//query over
+var queryOver = session.QueryOver&lt;Book&gt;()
+	.Where(x =&gt; x.Series.Id == 2)
+	.OrderBy(x =&gt; x.Id).Asc;
+var books = queryOver.List();
+return View(books);
+
+Я хотел сделать аналогичные запросы по NHibernate Query, такие как Joinы, Projecting и другие, но оказалось, что про это уже есть превосходнейшие статьи NHibernate Queries и NHibernate More Queries
+Если вам интересен QueryOver, то виды его запросов можно посмотреть тут QueryOver in NH3
+Статья подходит к концу, и мне хотелось завершить её следующим материалом.Lazy и eager-loading («Ленивые» и «Жадные» загрузки) 
+Lazy loading и eager loading — это методы, которыми пользуется NHibernate для загрузки необходимых данных в navigation properties сущности
+ -&gt;Lazyloading — ленивая загрузка. При первом обращении к сущности (Book), соответствующие связанные данные не загружаются. Однако, при первом обращении к navigation property (Book.Genres), связанные данные загружаются автоматически. При этом к базе совершается множество запросов: один для сущности и по одному каждый раз при загрузке данных. //Код в представлении (View)
+@foreach (var item in Model) { //Загружены ТОЛЬКО все записи таблицы Book
+        @foreach (var genre in item.Genres) { //Теперь загрузились поля Genres, связанные с таблицей Book 
+		@Html.DisplayFor(modelItem =&gt; genre.Name) &lt;br /&gt;
+	}
+}
+
+-&gt; Eagerloading — жадная загрузка. Данные загружаются при обращении к сущности. Обычно это сопровождается запросом join, который возвращает все данные. //Код в представлении (View)
+@foreach (var item in Model) { //Загружены ВСЕ записи таблицы Book и связанных с ним таблиц.
+        @foreach (var genre in item.Genres) { 
+		@Html.DisplayFor(modelItem =&gt; genre.Name) &lt;br /&gt;
+	}
+}
+
+Для «жадной» загрузки NHibernate использует Fetch strategies.
+Давайте рассмотрим EagerLoading и LazyLoading загрузки, на примере Query Over.
+---Query Over — код Lazyloading загрузки---    using (ISession session = NHibernateHelper.OpenSession()) {
+       Genre genreAl = null; Author authorAl = null; Series seriesAl = null;
+	    var books = session.QueryOver&lt;Book&gt;()
+                        //Left Join с таблицей Genres 
+			.JoinAlias(p =&gt; p.Authors, () =&gt; authorAl, JoinType.LeftOuterJoin)
+			.JoinAlias(p =&gt; p.Series, () =&gt; seriesAl, JoinType.LeftOuterJoin)
+                        //Убирает повторяющиеся id номера таблицы Book.
+			.TransformUsing(Transformers.DistinctRootEntity).List();
+	  return View(books);
+    }
+
+---Query Over — код EagerLoading загрузки---using (ISession session = NHibernateHelper.OpenSession()) {
+var books = session.QueryOver&lt;Book&gt;()
+.Fetch(a =&gt; a.Authors).Eager.Fetch(s =&gt; s.Series).Eager
+.TransformUsing(Transformers.DistinctRootEntity).List();
+return View(books);
+
+как вы видете, мы не использовали LeftJoin как в предыдущем примере, потому что Fetch сразу привязывает к объекту Book все данные.
+Про Fecth — стратегию вы можете почитать здесь Nhibernate Fetch strategy а про маппингы с использованием lazy или eager loading — здесь Аттрибуты lazy, fetch и batch-size. Также есть статья на NhibernateInfo — lazy-eager loading
+Статья подошла к концу, спасибо за внимание.
+
+      
+      
+    

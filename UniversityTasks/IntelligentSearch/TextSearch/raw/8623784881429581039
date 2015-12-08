@@ -1,0 +1,319 @@
+﻿#TITLE:Фурье-обработка цифровых изображений
+
+      Предисловие
+Цифровая фотография или иное растровое изображение представляет собой массив чисел, зафиксированных сенсорами уровней яркости, в двумерной плоскости. Зная что с математической точки зрения тонкая линза выполняет преобразование Фурье изображений, размещённых в фокальных плоскостях, можно создать алгоритмы обработки изображений, являющихся аналогами обработки изображений классической оптической системой.
+Формула таких алгоритмов будет выглядеть следующим образом:Z=FFT(X) – прямое двухмерное преобразование Фурье
+Z′=T(Z) – применение функции или транспаранта к Фурье-образу изображения
+Y=BFT(Z′) – обратное двухмерное преобразование Фурье
+
+Для вычисления преобразований Фурье используются алгоритмы быстрого дискретного преобразования Фурье. Хотя оптическая система линз осуществляет преобразование Фурье на непрерывном диапазоне аргумента и для непрерывного спектра, но при переходе к цифровой обработке данных формулы преобразования Фурье могут быть заменены на формулы дискретного преобразования Фурье.Примеры реализацииАлгоритм размытия изображения
+Алгоритм повышения резкости изображения
+Алгоритм масштабирования изображения
+
+Реализованные алгоритмы являются частью библиотеки с открытым исходным кодом FFTTools. Интернет-адрес: github.com/dprotopopov/FFTToolsАлгоритм размытия изображения
+В оптических системах диафрагма, размещённая в фокальной плоскости, представляет собой простое отверстие в экране. В результате прохождения светового потока через диафрагму, волны высоких частот (с более короткими длинами волн) проходят через препятствие, а волны низких частот (с более длинными длинами волн) отсекаются экраном. Таким образом повышается резкость получаемого изображения. Если заменить отверстие в экране на препятствие в экране, то в результате будет получено размытое изображение, поскольку оно будет сформировано из частот волн больших длин.
+Алгоритм:Пусть X(N1,N2) – массив яркостей пикселей изображения.
+Вычислить Px = средняя (среднеквадратичная) яркость пикселей в массиве X
+Вычислить массив Z=FT(X) – прямое двухмерное дискретное преобразование Фурье
+Вычислить массив Z′=T(Z), где T – обнуление строк и столбцов, находящихся в заданных внутренних областях матрицы-аргумента соответствующих высоким 5. частотам (то есть обнуление коэффициентов Фурье-разложения, соответствующих высоким частотам)
+Вычислить массив Y=RFT(Z′) – обратное двухмерное дискретное преобразование Фурье
+Вычислить Py = средняя (среднеквадратичная) яркость пикселей в массиве Y
+Нормировать массив Y(N1,N2) по среднему уровню яркости Px/Py
+Алгоритм повышения резкости изображения
+В оптических системах диафрагма, размещённая в фокальной плоскости, представляет собой простое отверстие в экране. В результате прохождения светового потока через диафрагму, волны высоких частот (с более короткими длинами волн) проходят через препятствие, а волны низких частот (с более длинными длинами волн) отсекаются экраном. Таким образом повышается резкость получаемого изображения.
+Алгоритм:Пусть X(N1,N2) – массив яркостей пикселей изображения.
+Вычислить Px = средняя (среднеквадратичная) яркость пикселей в массиве X
+Вычислить массив Z=FT(X) – прямое двухмерное дискретное преобразование Фурье
+Сохранить значение L=Z(0,0) – соответствующее средней яркости пикселей исходного изображения
+Вычислить массив Z′=T(Z), где T – обнуление строк и столбцов, находящихся в заданных внешних областях матрицы-аргумента, соответствующих низким 6. частотам (то есть обнуление коэффициентов Фурье-разложения, соответствующих низким частотам)
+Восстановить значение Z’(0,0)=L – соответствующее средней яркости пикселей исходного изображения
+Вычислить массив Y=RFT(Z′) – обратное двухмерное дискретное преобразование Фурье
+Вычислить Py = средняя (среднеквадратичная) яркость пикселей в массиве Y
+Нормировать массив Y(N1,N2) по среднему уровню яркости Px/Py
+Алгоритм масштабирования изображения
+В оптических системах световой поток в фокальной плоскости системы представляет собой Фурье-преобразование исходного изображения. Размер получаемого на выходе оптической системы изображения определяется соотношением фокальных расстояний объектива и окуляра.
+Алгоритм:Пусть X(N1,N2) – массив яркостей пикселей изображения.
+Вычислить Px = средняя (среднеквадратичная) яркость пикселей в массиве X
+Вычислить массив Z=FT(X) – прямое двухмерное дискретное преобразование Фурье
+Вычислить массив Z′=T(Z), где T – либо добавление нулевых строк и столбцов матрицы соответствующих высоким частотам, либо удаление строк и столбцов матрицы соответствующих высоким частотам для получения требуемого размера итогового изображения
+Вычислить массив Y=RFT(Z′) – обратное двухмерное дискретное преобразование Фурье
+Вычислить Py = средняя (среднеквадратичная) яркость пикселей в массиве Y
+Нормировать массив Y(M1,M2) по среднему уровню яркости Px/Py
+Используемое программное обеспечениеMicrosoft Visual Studio 2013 C# — среда и язык программирования
+EmguCV/OpenCV – C++ библиотека структур и алгоритмов для обработки изображений
+FFTWSharp/FFTW – C++ библиотека реализующая алгоритмы быстрого дискретного преобразования Фурье
+Алгоритм размытия изображенияКод алгоритма        /// &lt;summary&gt;
+        ///     Clear internal region of array
+        /// &lt;/summary&gt;
+        /// &lt;param name="data"&gt;Array of values&lt;/param&gt;
+        /// &lt;param name="size"&gt;Internal blind region size&lt;/param&gt;
+        private static void Blind(Complex[,,] data, Size size)
+        {
+            int n0 = data.GetLength(0);
+            int n1 = data.GetLength(1);
+            int n2 = data.GetLength(2);
+            int s0 = Math.Max(0, (n0 - size.Height)/2);
+            int s1 = Math.Max(0, (n1 - size.Width)/2);
+            int e0 = Math.Min((n0 + size.Height)/2, n0);
+            int e1 = Math.Min((n1 + size.Width)/2, n1);
+            for (int i = s0; i &lt; e0; i++)
+            {
+                Array.Clear(data, i*n1*n2, n1*n2);
+            }
+            for (int i = 0; i &lt; s0; i++)
+            {
+                Array.Clear(data, i*n1*n2 + s1*n2, (e1 - s1)*n2);
+            }
+            for (int i = e0; i &lt; n0; i++)
+            {
+                Array.Clear(data, i*n1*n2 + s1*n2, (e1 - s1)*n2);
+            }
+        }
+        /// &lt;summary&gt;
+        ///     Blur bitmap with the Fastest Fourier Transform
+        /// &lt;/summary&gt;
+        /// &lt;returns&gt;Blured bitmap&lt;/returns&gt;
+        public Bitmap Blur(Bitmap bitmap)
+        {
+            using (var image = new Image&lt;Bgr, double&gt;(bitmap))
+            {
+                int length = image.Data.Length;
+                int n0 = image.Data.GetLength(0);
+                int n1 = image.Data.GetLength(1);
+                int n2 = image.Data.GetLength(2);
+
+                var doubles = new double[length];
+                Buffer.BlockCopy(image.Data, 0, doubles, 0, length*sizeof (double));
+                double power = Math.Sqrt(doubles.Average(x =&gt; x*x));
+
+                var input = new fftw_complexarray(doubles.Select(x =&gt; new Complex(x, 0)).ToArray());
+                var output = new fftw_complexarray(length);
+                fftw_plan.dft_3d(n0, n1, n2, input, output,
+                    fftw_direction.Forward,
+                    fftw_flags.Estimate).Execute();
+                Complex[] complex = output.GetData_Complex();
+
+                var data = new Complex[n0, n1, n2];
+                var buffer = new double[length*2];
+
+                GCHandle complexHandle = GCHandle.Alloc(complex, GCHandleType.Pinned);
+                GCHandle dataHandle = GCHandle.Alloc(data, GCHandleType.Pinned);
+                IntPtr complexPtr = complexHandle.AddrOfPinnedObject();
+                IntPtr dataPtr = dataHandle.AddrOfPinnedObject();
+
+                Marshal.Copy(complexPtr, buffer, 0, buffer.Length);
+                Marshal.Copy(buffer, 0, dataPtr, buffer.Length);
+                Blind(data, _blinderSize);
+                Marshal.Copy(dataPtr, buffer, 0, buffer.Length);
+                Marshal.Copy(buffer, 0, complexPtr, buffer.Length);
+
+                complexHandle.Free();
+                dataHandle.Free();
+
+                input.SetData(complex);
+
+                fftw_plan.dft_3d(n0, n1, n2, input, output,
+                    fftw_direction.Backward,
+                    fftw_flags.Estimate).Execute();
+                double[] array2 = output.GetData_Complex().Select(x =&gt; x.Magnitude).ToArray();
+                double power2 = Math.Sqrt(array2.Average(x =&gt; x*x));
+                doubles = array2.Select(x =&gt; x*power/power2).ToArray();
+                Buffer.BlockCopy(doubles, 0, image.Data, 0, length*sizeof (double));
+                return image.Bitmap;
+            }
+        }
+Алгоритм повышения резкости изображенияКод алгоритма        /// &lt;summary&gt;
+        ///     Clear external region of array
+        /// &lt;/summary&gt;
+        /// &lt;param name="data"&gt;Array of values&lt;/param&gt;
+        /// &lt;param name="size"&gt;External blind region size&lt;/param&gt;
+        private static void Blind(Complex[,,] data, Size size)
+        {
+            int n0 = data.GetLength(0);
+            int n1 = data.GetLength(1);
+            int n2 = data.GetLength(2);
+            int s0 = Math.Max(0, (n0 - size.Height)/2);
+            int s1 = Math.Max(0, (n1 - size.Width)/2);
+            int e0 = Math.Min((n0 + size.Height)/2, n0);
+            int e1 = Math.Min((n1 + size.Width)/2, n1);
+            for (int i = 0; i &lt; s0; i++)
+            {
+                Array.Clear(data, i*n1*n2, s1*n2);
+                Array.Clear(data, i*n1*n2 + e1*n2, (n1 - e1)*n2);
+            }
+            for (int i = e0; i &lt; n0; i++)
+            {
+                Array.Clear(data, i*n1*n2, s1*n2);
+                Array.Clear(data, i*n1*n2 + e1*n2, (n1 - e1)*n2);
+            }
+        }
+        /// &lt;summary&gt;
+        ///     Sharp bitmap with the Fastest Fourier Transform
+        /// &lt;/summary&gt;
+        /// &lt;returns&gt;Sharped bitmap&lt;/returns&gt;
+        public Bitmap Sharp(Bitmap bitmap)
+        {
+            using (var image = new Image&lt;Bgr, double&gt;(bitmap))
+            {
+                int length = image.Data.Length;
+                int n0 = image.Data.GetLength(0);
+                int n1 = image.Data.GetLength(1);
+                int n2 = image.Data.GetLength(2);
+
+                var doubles = new double[length];
+                Buffer.BlockCopy(image.Data, 0, doubles, 0, length*sizeof (double));
+                double power = Math.Sqrt(doubles.Average(x =&gt; x*x));
+
+                var input = new fftw_complexarray(doubles.Select(x =&gt; new Complex(x, 0)).ToArray());
+                var output = new fftw_complexarray(length);
+                fftw_plan.dft_3d(n0, n1, n2, input, output,
+                    fftw_direction.Forward,
+                    fftw_flags.Estimate).Execute();
+                Complex[] complex = output.GetData_Complex();
+
+                Complex level = complex[0];
+
+                var data = new Complex[n0, n1, n2];
+                var buffer = new double[length*2];
+
+                GCHandle complexHandle = GCHandle.Alloc(complex, GCHandleType.Pinned);
+                GCHandle dataHandle = GCHandle.Alloc(data, GCHandleType.Pinned);
+                IntPtr complexPtr = complexHandle.AddrOfPinnedObject();
+                IntPtr dataPtr = dataHandle.AddrOfPinnedObject();
+
+                Marshal.Copy(complexPtr, buffer, 0, buffer.Length);
+                Marshal.Copy(buffer, 0, dataPtr, buffer.Length);
+                Blind(data, _blinderSize);
+                Marshal.Copy(dataPtr, buffer, 0, buffer.Length);
+                Marshal.Copy(buffer, 0, complexPtr, buffer.Length);
+
+                complexHandle.Free();
+                dataHandle.Free();
+
+                complex[0] = level;
+
+                input.SetData(complex);
+
+                fftw_plan.dft_3d(n0, n1, n2, input, output,
+                    fftw_direction.Backward,
+                    fftw_flags.Estimate).Execute();
+                double[] array2 = output.GetData_Complex().Select(x =&gt; x.Magnitude).ToArray();
+                double power2 = Math.Sqrt(array2.Average(x =&gt; x*x));
+                doubles = array2.Select(x =&gt; x*power/power2).ToArray();
+                Buffer.BlockCopy(doubles, 0, image.Data, 0, length*sizeof (double));
+                return image.Bitmap;
+            }
+        }
+Алгоритм масштабирования изображенияКод алгоритма         /// &lt;summary&gt;
+        ///     Copy arrays
+        /// &lt;/summary&gt;
+        /// &lt;param name="input"&gt;Input array&lt;/param&gt;
+        /// &lt;param name="output"&gt;Output array&lt;/param&gt;
+        private static void Copy(Complex[,,] input, Complex[,,] output)
+        {
+            int n0 = input.GetLength(0);
+            int n1 = input.GetLength(1);
+            int n2 = input.GetLength(2);
+            int m0 = output.GetLength(0);
+            int m1 = output.GetLength(1);
+            int m2 = output.GetLength(2);
+            int ex0 = Math.Min(n0, m0)/2;
+            int ex1 = Math.Min(n1, m1)/2;
+            int ex2 = Math.Min(n2, m2);
+            Debug.Assert(n2 == m2);
+            for (int k = 0; k &lt; ex2; k++)
+            {
+                for (int i = 0; i &lt;= ex0; i++)
+                {
+                    for (int j = 0; j &lt;= ex1; j++)
+                    {
+                        int ni = n0 - i - 1;
+                        int nj = n1 - j - 1;
+                        int mi = m0 - i - 1;
+                        int mj = m1 - j - 1;
+                        output[i, j, k] = input[i, j, k];
+                        output[mi, j, k] = input[ni, j, k];
+                        output[i, mj, k] = input[i, nj, k];
+                        output[mi, mj, k] = input[ni, nj, k];
+                    }
+                }
+            }
+        }
+        /// &lt;summary&gt;
+        ///     Resize bitmap with the Fastest Fourier Transform
+        /// &lt;/summary&gt;
+        /// &lt;returns&gt;Resized bitmap&lt;/returns&gt;
+        public Bitmap Stretch(Bitmap bitmap)
+        {
+            using (var image = new Image&lt;Bgr, double&gt;(bitmap))
+            {
+                int length = image.Data.Length;
+                int n0 = image.Data.GetLength(0);
+                int n1 = image.Data.GetLength(1);
+                int n2 = image.Data.GetLength(2);
+                var doubles = new double[length];
+                Buffer.BlockCopy(image.Data, 0, doubles, 0, length*sizeof (double));
+                double power = Math.Sqrt(doubles.Average(x =&gt; x*x));
+
+                var input = new fftw_complexarray(doubles.Select(x =&gt; new Complex(x, 0)).ToArray());
+                var output = new fftw_complexarray(length);
+                fftw_plan.dft_3d(n0, n1, n2, input, output,
+                    fftw_direction.Forward,
+                    fftw_flags.Estimate).Execute();
+                Complex[] complex = output.GetData_Complex();
+
+                using (var image2 = new Image&lt;Bgr, double&gt;(_newSize))
+                {
+                    int length2 = image2.Data.Length;
+                    int m0 = image2.Data.GetLength(0);
+                    int m1 = image2.Data.GetLength(1);
+                    int m2 = image2.Data.GetLength(2);
+                    var complex2 = new Complex[length2];
+
+                    var data = new Complex[n0, n1, n2];
+                    var data2 = new Complex[m0, m1, m2];
+
+                    var buffer = new double[length*2];
+                    GCHandle complexHandle = GCHandle.Alloc(complex, GCHandleType.Pinned);
+                    GCHandle dataHandle = GCHandle.Alloc(data, GCHandleType.Pinned);
+                    IntPtr complexPtr = complexHandle.AddrOfPinnedObject();
+                    IntPtr dataPtr = dataHandle.AddrOfPinnedObject();
+
+                    Marshal.Copy(complexPtr, buffer, 0, buffer.Length);
+                    Marshal.Copy(buffer, 0, dataPtr, buffer.Length);
+
+                    complexHandle.Free();
+                    dataHandle.Free();
+
+                    Copy(data, data2);
+
+                    buffer = new double[length2*2];
+                    complexHandle = GCHandle.Alloc(complex2, GCHandleType.Pinned);
+                    dataHandle = GCHandle.Alloc(data2, GCHandleType.Pinned);
+                    complexPtr = complexHandle.AddrOfPinnedObject();
+                    dataPtr = dataHandle.AddrOfPinnedObject();
+
+                    Marshal.Copy(dataPtr, buffer, 0, buffer.Length);
+                    Marshal.Copy(buffer, 0, complexPtr, buffer.Length);
+
+                    complexHandle.Free();
+                    dataHandle.Free();
+
+                    var input2 = new fftw_complexarray(complex2);
+                    var output2 = new fftw_complexarray(length2);
+                    fftw_plan.dft_3d(m0, m1, m2, input2, output2,
+                        fftw_direction.Backward,
+                        fftw_flags.Estimate).Execute();
+                    double[] array2 = output2.GetData_Complex().Select(x =&gt; x.Magnitude).ToArray();
+                    double power2 = Math.Sqrt(array2.Average(x =&gt; x*x));
+                    double[] doubles2 = array2.Select(x =&gt; x*power/power2).ToArray();
+                    Buffer.BlockCopy(doubles2, 0, image2.Data, 0, length2*sizeof (double));
+                    return image2.Bitmap;
+                }
+            }
+        }
+Скриншоты программРазмытие изображенияМасштабирование изображенияЛитератураА.Л. Дмитриев. Оптические методы обработки информации. Учебное пособие. СПб. СПюГУИТМО 2005. 46 с. 
+А.А.Акаев, С.А.Майоров «Оптические методы обработки информации» М.:1988 
+Дж.Гудмен «Введение в Фурье-оптику» М.: Мир 1970
+
+    

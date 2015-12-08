@@ -1,0 +1,104 @@
+﻿#TITLE:Игры на CSS. Часть 2: StarCraft
+
+      Доброго дня, хабровцы.
+По результатам прошлой статьи я понял, что тема интересна общественности, поэтому подготовил еще один материал, чуть сложнее.
+По прежнему нет скриптов, только HTML/CSS.
+Смотрите видео и под кат.
+Разумеется, речь (пока) не идет о полноценной игре, но концепцию покажу.
+Игру я назвал «помоги пробке найти друзей».
+Сделать она это может построив нексус и «натренировав» себе друзей. Поэтому цель игры — помочь пробке обрести друзей.
+Итак, поехали.
+Во-первых, в CSS у нас вся игра завязана на чекбоксах и radio кнопках и слеекторе "~". А потому изменяемые элементы должны находиться сверху страницы.
+Назовем их «состояния»&lt;!-- Состояние --&gt;
+	&lt;!-- Дефолтные состояния --&gt;
+	&lt;input type="radio" name="button-level-2" id="default-state-level-2"&gt;
+	&lt;input type="radio" name="button-level-1" id="default-state-level-1"&gt;
+	&lt;input type="radio" name="unit" id="default-state-unit"&gt;
+
+	&lt;!-- Кнопки --&gt;
+		&lt;!-- Нажата кнопка выбора построек --&gt;
+		&lt;input class="state build-button probe" type="radio" name="button-level-1" id="build-button"&gt;
+		&lt;!-- Для постройки выбран нексус --&gt;
+		&lt;input class="state build-nexus start-build" type="radio" name="button-level-2" id="build-nexus"&gt;
+		&lt;!-- Постройка пробок --&gt;
+		&lt;input class="state build-probe-1" type="checkbox" id="build-probe-1"&gt;
+		&lt;input class="state build-probe-2" type="checkbox" id="build-probe-2"&gt;
+		&lt;input class="state build-probe-3" type="checkbox" id="build-probe-3"&gt;
+		&lt;input class="state build-probe-4" type="checkbox" id="build-probe-4"&gt;
+		&lt;input class="state build-probe-5" type="checkbox" id="build-probe-5"&gt;
+	&lt;!-- /Кнопки --&gt;
+
+
+	&lt;!-- Юниты --&gt;
+		&lt;input class="state unit probe" type="radio" name="unit" id="start-probe"&gt;
+		&lt;input class="state unit nexus" type="radio" name="unit" id="nexus-select"&gt;
+	&lt;!-- /Юниты --&gt;
+
+&lt;!-- /Состояние --&gt;
+
+Кроме того, что они должны быть вверху, они еще не должны находиться внутри блоков, тк селектор "~" выбирает элементы того же уровня.
+То есть, имея разметку&lt;input type="radio" name="unit" id="default-state-unit"&gt;
+&lt;div id="map"&gt;
+	&lt;div class="some"&gt;Hiho&lt;/div&gt;
+&lt;/div&gt;
+
+Этот селектор не выберет ничего#default-state-unit:checked ~ .some
+
+Это происходит потому, что .some вложен в #map, то есть находится на другом уровне вложенности.
+В этом случае селектор необходимо начинать с ближайшего элемента того же уровня#default-state-unit:checked ~ #map .some
+Сетка
+Как мы все знаем, здания в старкрафте располагаются по сетке. Соответственно, нам надо сделать такую же сетку.
+Состоять она будет из блоков, содержащих некие состояния, которые может принимать эта ячейка — например, на ней построен нексус:&lt;!-- Ячейка --&gt;
+&lt;div class="cell-label"&gt;
+	&lt;!-- Нексус --&gt;
+	&lt;label for="cell_6_nexus" class="nexus status unit"&gt;
+		&lt;span class="inner"&gt;&lt;/span&gt;
+	&lt;/label&gt;
+	&lt;input type="checkbox" id="cell_6_nexus" class="cell-state"&gt;
+	&lt;label class="view nexus unit" for="nexus-select"&gt;
+		&lt;div class="probes"&gt;
+			&lt;div class="probe"&gt;&lt;/div&gt;
+			&lt;div class="probe"&gt;&lt;/div&gt;
+			&lt;div class="probe"&gt;&lt;/div&gt;
+			&lt;div class="probe"&gt;&lt;/div&gt;
+			&lt;div class="probe"&gt;&lt;/div&gt;
+		&lt;/div&gt;
+	&lt;/label&gt;
+&lt;/div&gt;
+&lt;!-- /Ячейка --&gt;
+
+За конечное отображение у нас отвечает блок .view (их может быть множество для разных состояний).
+Включается состояние при нажатии на соответствующий label: включаем чекбокс — .view виден:#map .cell-label .cell-state:checked + .view{
+	display: block;
+}
+
+Сам же лейбл виден тоже при определенных условиях. Например, когда мы собираемся строить нексус, у нас «виден» (display:block) label, отвечающий за это состояние:.state.build-nexus:checked ~ #map .cell-label:hover label.status.nexus{
+	display: block;
+}
+
+При наведении курсора на ячейку мы хотим видеть предварительно, как будет стоять наше здание. Для этого просто стилизуем вложенный в label span (span больше label'а, лейбл размером с ячейку).
+Итак, мы видим предварительное расположение постройки, но блок и изображением закрывает соседние ячейки, так что на них трудно обыграть состояние :hover (которое как раз и инициирует показ предварительной постройки).
+Слава богам, мы уже можем использовать CSS4 свойствоpointer-events: none;
+
+Это свойство позволяет отключить реагирование блока на события мыши, как бы сделать его прозрачным для мыши.
+Ни клик, ни наведение элементом не воспринимаются. Даже выделить элемент с помощью лупы из панели разработчика нельзя. При этом он вполне себе виден ровно на том z-уровне, на котором и должен.Юниты
+Юнитов и зданий у нас несколько, и выделяя каждый из этих элементов, мы хотим видеть разные кнопки на панели заданий.
+Достигается это переключением радио-кнопок, ведь каждый раз мы можем выделить только одно здание/юнита (в оригинале не так).Заключение
+Хотел сделать некоторый сброс к дефолтным состояниям некоторых радио-кнопок, отвечающих за состояния панели при выделении юнита/здания.
+Вложил лейбл в лейбл в лейбл рассчитывая, что клик по содержимому лейбла вызовет клик по контейнеру. Но на мое удивление это не сработало, кликается только внутренний лейбл.&lt;!-- Дефолтные состояния --&gt;
+&lt;input type="radio" name="button-level-2" id="default-state-level-2"&gt;
+&lt;input type="radio" name="button-level-1" id="default-state-level-1"&gt;
+&lt;input type="radio" name="unit" id="default-state-unit"&gt;
+
+&lt;!-- Сброс --&gt;
+&lt;label for="default-state-level-2" class="reset"&gt;
+	&lt;label for="default-state-level-1" class="reset"&gt;
+		&lt;label for="default-state-unit" class="reset"&gt;&lt;/label&gt;
+	&lt;/label&gt;
+&lt;/label&gt;
+&lt;!-- /Сброс --&gt;
+
+Разумеется, это всего лишь Proof-of-Concept и доделать-переделать тут можно много чего, я лишь указал направление для размышлений.РесурсыGitHub
+Демо
+
+    

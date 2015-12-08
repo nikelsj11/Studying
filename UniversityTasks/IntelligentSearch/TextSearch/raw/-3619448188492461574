@@ -1,0 +1,182 @@
+﻿#TITLE:Настройка SCST Target на CentOS 7 с использованием FC QLogic адаптера
+
+      Предыстория
+В моей инфраструктуре в числе прочего работают три ESXi 5.5 сервера, подключенных к SAN HP MSA1000 (железяке уже в районе 10 лет) по оптике через свитч HP StorageWorks 2/8q, с использованием адаптеров QLogic QLA200. Разумеется, хранилище очень производительное, но также и очень скромное по объему. Так как виртуализация нынче — тренд, возникло непреодолимое желание получить реально большое хранилище, также подключенное по оптике с блочным доступом. Не буду обьяснять, почему именно блочным – холивары на эту тему начались еще на Ноевом Ковчеге, и это не относится к предмету данной статьи. Ну и как это всегда бывает, бюджет даже близко не позволяет прикупить некое брендовое решение, поэтому остается только становиться героем программы «Очумелые ручки». 
+В результате не очень продолжительного исследования был выбран таргет SCST по следующим причинам:Высокая производительность
+Стабильность
+Возможность установки на Centos (наш стандарт для Linux серверов)
+Поддержка FC адаптеров QLogic
+Поддержка VAAI
+
+Далее нужно было подобрать аппаратную часть. В закромах был найден 2U сервер c 6ю корзинами, 4 диска по 3ТБ (плохонькие правда, два из них – WD Green), FC адаптер QLogic 2460 (SCST поддерживает QLogic 22xx/23xx/24xx/25xx/26xx адаптеры).
+Поиски готовых мануалов по связке Centos 7 + FC SCST ни к чему не привели, так что пришлось довольно долго собирать информацию по кусочкам. В результате все получилось и я доволен, готов закупать новые диски. Пока наивно жду денег, пишу данный howto для таких же озадаченных людей, как я. И так поехали! Экшн
+Осуществляем установку и базовую настройку Centos 7 в сборке Minimal (это мое предпочтение, можно ставить любую сборку). «Базовая настройка» у каждого своя, поэтому не буду вдаваться в подробности. Не забываем обновиться:[root@localhost ~]# yum update -y
+[root@localhost ~]# reboot
+
+Узнаем название нашего FC адаптера, а также его RISC ID:[root@localhost ~]# dmesg | grep -E 'qla2xxx .* QLogic | Found an ISP'
+
+Получаем что-то вроде этого:[    1.881084] qla2xxx [0000:05:04.0]-001d: Found an ISP2422 irq 24 iobase 0xffffc90001e06000.
+[    2.901460] qla2xxx [0000:05:04.0]-00fb:1: QLogic QLA2460 - PCI-X 2.0 Single Channel 4Gb Fibre Channel HBA.
+
+Где RISC ID — ISP2422, а модель — QLogic QLA2460.
+Далее нужно скачать и установить утилиту QConvergeConsoleCLI и последнюю прошивку для нашего адаптера отсюда. Извлекаем .BIN файл прошивки, переименовываем его в соответствии с RISC ID (см. таблицу ниже), и помещаем его в /lib/firmware на сервере. Скорее всего там уже будет такой файл, поэтому просто следует заменить имеющийся.RISC ID — Firmware
+ISP 21XX — ql2100_fw.bin
+ISP 22XX — ql2200_fw.bin
+ISP 2300 — ql2300_fw.bin
+ISP 2322 — ql2322_fw.bin
+ISP 24XX — ql2400_fw.bin
+ISP 25XX — ql2500_fw.bin
+ISP 2031 — ql2600_fw.bin
+ISP 27XX — ql2700_fw.bin
+В моем случае — ql2400_fw.bin
+Обновляем прошивку нашего адаптера:[root@localhost ~]# /opt/QLogic_Corporation/QConvergeConsoleCLI/qaucli -fc -b all /lib/firmware/ql2400_fw.bin
+
+Качаем актуальный драйвер QLogic SCST:[root@localhost ~]# yum install git -y
+[root@localhost ~]# git clone git://git.QLogic.com/scst-qla2xxx.git
+
+Устанавливаем необходимые пакеты для последующей сборки ядра, а также svn:[root@localhost ~]#yum install gcc ncurses-devel kernel-devel lsscsi patch subversion bc bison net-tools -y
+
+Качаем исходники SCST:[root@localhost ~]# cd /
+[root@localhost /]# svn co https://svn.code.sf.net/p/scst/svn/trunk scst
+
+В директории SCST делаем софт линк на драйвер QLogic SCST:[root@localhost /]# cd scst
+[root@localhost scst]# ln -s ../scst-qla2xxx/drivers/scsi/qla2xxx qla2x00t_git
+
+Далее, в соответствии с рекомендациями разработчиков SCST, следует пропатчить ядро.
+Собирать новое ядро будем в среде нового пользователя:[root@localhost /]# useradd builder
+
+Даем права на использование yum и yum-builddep без пароля:[root@localhost /]# echo 'builder ALL=(ALL) NOPASSWD: /usr/bin/yum, /usr/bin/yum-builddep' &gt;&gt;/etc/sudoers
+[root@localhost /]# visudo –sc
+
+Переходим в среду нового пользователя:[root@centos-test /]# su builder 
+
+Запускаем скрипт, любезно подготовленный для нас разработчиками:[builder@localhost /]# ./scst/scripts/rebuild-rhel-kernel-rpm
+
+Устанавливаем новое ядро:[builder@localhost /]$ su -c 'rpm -ivh --force /home/builder/rpmbuild/RPMS/x86_64/kernel-*.rpm'
+
+Перезагружаемся:[builder@localhost /]$ su –c reboot
+
+Проверяем текущее ядро:[root@localhost ~]# uname -r
+3.10.0-229.el7.centos.scst.x86_64
+
+Если все ок, идем дальше. Выгрузим и добавим в черный список дефолтовый модуль ядра qla2xxx:[root@localhost /]# echo blacklist qla2xxx &gt;/etc/modprobe.d/blacklist-qla2xxx.conf
+[root@localhost /]# rmmod qla2xxx
+
+Установим режим сборки SCST на release:[root@localhost /]# cd /scst
+[root@localhost scst]# make 2release
+
+Соберем необходимые модули ядра:[root@localhost scst]# BUILD_2X_MODULE=y CONFIG_SCSI_QLA_FC=y CONFIG_SCSI_QLA2XXX_TARGET=y make all install
+
+Проверяем, что все прошло успешно:[root@localhost ~]# ls -l /lib/modules/`uname -r`/extra/qla2*
+-rw-r--r-- 1 root root  1511833 Sep 10 11:10 /lib/modules/3.10.0-229.11.1.el7.centos.scst.x86_64/extra/qla2x00tgt.ko
+-rw-r--r-- 1 root root 10699423 Sep 10 11:10 /lib/modules/3.10.0-229.11.1.el7.centos.scst.x86_64/extra/qla2xxx_scst.ko
+
+Можно проверить полный список установленных модулей:[root@localhost ~]# ls -l /lib/modules/`uname -r`/extra
+total 25128
+drwxr-xr-x 2 root root     4096 Sep 10 11:10 dev_handlers
+-rw-r--r-- 1 root root  4309043 Sep 10 11:10 iscsi-scst.ko
+-rw-r--r-- 1 root root  3100544 Sep 10 11:10 isert-scst.ko
+-rw-r--r-- 1 root root  1511833 Sep 10 11:10 qla2x00tgt.ko
+-rw-r--r-- 1 root root 10699423 Sep 10 11:10 qla2xxx_scst.ko
+-rw-r--r-- 1 root root  5619115 Sep 10 11:10 scst.ko
+-rw-r--r-- 1 root root   474173 Sep 10 11:10 scst_local.ko
+[root@localhost ~]# ls -l /lib/modules/`uname -r`/extra/dev_handlers
+total 3960
+-rw-r--r-- 1 root root  305582 Sep 10 11:10 scst_cdrom.ko
+-rw-r--r-- 1 root root  292948 Sep 10 11:10 scst_changer.ko
+-rw-r--r-- 1 root root  328092 Sep 10 11:10 scst_disk.ko
+-rw-r--r-- 1 root root  308934 Sep 10 11:10 scst_modisk.ko
+-rw-r--r-- 1 root root  292972 Sep 10 11:10 scst_processor.ko
+-rw-r--r-- 1 root root  292876 Sep 10 11:10 scst_raid.ko
+-rw-r--r-- 1 root root  312024 Sep 10 11:10 scst_tape.ko
+-rw-r--r-- 1 root root  704076 Sep 10 11:10 scst_user.ko
+-rw-r--r-- 1 root root 1199482 Sep 10 11:10 scst_vdisk.ko
+
+Добавляем их все в ядро:[root@localhost ~]# for m in scst qla2xxx_scst qla2x00tgt scst_vdisk scst_user scst_disk ...; do modprobe $m; done
+
+В dmesg должно появиться нечто вроде (привожу пример из своего варианта):[10753.981044] [21513]: scst: SCST version 3.1.0-pre1 loaded successfully (max mem for commands 709MB, per device 283MB)
+[10753.981051] [21513]: scst: Enabled features: TRACING
+[10753.982152] [21519]: scst: Management thread started
+[10754.024379] qla2xxx [0000:00:00.0]-0005: QLogic Fibre Channel HBA Driver: 8.04.00.05.2.2-SCST.03-k-p.
+[10754.030864] [21527]: qla2x00t: Initializing QLogic Fibre Channel HBA Driver target mode addon version 3.1.0-pre1
+[10754.032397] [21527]: qla2x00t: Target mode driver for QLogic 2x00 controller registered successfully
+[10754.032409] [21527]: scst: Target template qla2x00t registered successfully
+[10754.038638] [21528]: scst: Virtual device handler vdisk_fileio for type 0 registered successfully
+[10754.038647] [21528]: scst: Virtual device handler vdisk_blockio for type 0 registered successfully
+[10754.038653] [21528]: scst: Virtual device handler vdisk_nullio for type 0 registered successfully
+[10754.038658] [21528]: scst: Virtual device handler vcdrom for type 5 registered successfully
+[10754.044786] [21529]: scst: Virtual device handler "scst_user" registered successfully
+[10754.048905] [21530]: scst_user: Cleanup thread started
+[10754.052682] [21531]: scst: Device handler "dev_disk" for type 0 registered successfully
+[10754.052691] [21531]: scst: Device handler "dev_disk_perf" for type 0 registered successfully
+
+Перестроим ram-диск для начальной инициализации (initrd) так, чтобы модуль ядра qla2xxx был заменен на qla2xxx_scst:[root@localhost ~]# mkinitrd -f /boot/initramfs-`uname -r`.img `uname -r`
+
+Установим scstadmin:[root@localhost /]# cd scst
+[root@localhost scst]# make -C scstadmin -s install
+
+Далее нужно создать файл /etc/scst.conf, я приведу пример своего:HANDLER vdisk_blockio {
+        DEVICE disk1 {
+            filename /dev/sdb
+        }
+}
+
+TARGET_DRIVER qla2x00t {
+        TARGET ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ {
+                enabled 1
+
+                LUN 0 disk1
+        }
+}
+
+Пояснение:
+HANDLER vdisk_blockio – выбор хендлера, в моем случае я хотел блочный доступ, если вы желаете файловый, то будет vdisk_fileio.
+Filename /dev/sdb – диск для вашего таргета
+TARGET ХХ: ХХ: ХХ: ХХ: ХХ: ХХ: ХХ: ХХ – вместо иксов впишете WWN вашего FC адаптера
+Пример команды, с помощью которой можно узнать WWN: cat /sys/class/scsi_host/host*/device/fc_host/host*/node_name
+
+Применяем наш конфигурационный файл:[root@localhost scst]# scstadmin -config /etc/scst.conf
+Collecting current configuration: done.
+
+-&gt; Checking configuration file '/etc/scst.conf ' for errors.
+	-&gt; Done, 0 warnings found.
+	
+	-&gt; Opening device 'disk1' using handler 'vdisk_blockio': done.
+	-&gt; Adding device 'disk1' at LUN 0 to driver/target 'qla2x00t/ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ': done.
+	-&gt; Enabling driver/target 'qla2x00t/ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ:ХХ': done.
+	
+	All done.
+
+Ну и наверно мы хотим, чтобы все это дело запускалось автоматом в случае перезагрузки таргета.
+Включаем автозагрузку самого SCST:[root@localhost /]# systemctl enable scst.service
+
+Добавляем в автозагрузку модули ядра:[root@localhost /]# vi /etc/modules-load.d/scst_modules.conf
+scst_disk
+scst_user
+scst_vdisk
+scst
+libcrc32c
+crc_t10dif
+qla2x00tgt
+
+Ну и напоследок добавим в rc.local применение конфига:[root@localhost /]# chmod +x /etc/rc.d/rc.local
+[root@localhost /]# vi /etc/rc.d/rc.local
+scstadmin –config /etc/scst.conf
+
+Если все сделано правильно, то если после перезагрузки сервера запустить: [root@localhost ~]# scstadmin -config /etc/scst.conf
+
+Выйдет следующее:Collecting current configuration: done.
+
+-&gt; Checking configuration file '/etc/scst.conf' for errors.
+        -&gt; Done, 0 warnings found.
+
+-&gt; Applying configuration.
+        -&gt; Done, 0 change(s) made.
+
+All done.
+
+На этом настройка таргета завершена. Ниже приведу пару полезных заметок.Важно! Не забудьте настроить Zoning на вашем FC свитче, если таковой используется, иначе инициаторы не увидят новый таргет.
+Также в случае с ESXi после настройки таргета, а также в случае его перезагрузки, нужно перезагружать все хосты-инициаторы, иначе диск не подцепится.
+Еще такая маленькая заметка о производительности. На виртуалке Centos 7 с помощью fio я замерил 84 iops и avg latency 12 msec на запись при iodepth=1. Что на самом деле неплохо для WD Green.
+      
+    

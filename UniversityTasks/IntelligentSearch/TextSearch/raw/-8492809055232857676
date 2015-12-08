@@ -1,0 +1,213 @@
+﻿#TITLE:Functional C#: Non-nullable reference types (ненулевые ссылочные типы)
+
+      Третья статья в серии «Функциональный C#».Functional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+Ненулевые ссылочные типы в C# — текущее состояние дел
+Давайте рассмотрим такой пример:Customer customer = _repository.GetById(id);
+Console.WriteLine(customer.Name);
+
+Смотрится знакомо, не так ли? Какие проблемы можно найти в этом коде?
+Проблема здесь в том, что мы не знаем может или нет метод GetById вернуть null. Если метод возвращает null для каких-то id, мы рискуем получить NullReferenceException в рантайме. Даже хуже, между тем, как customer-у будет присвоен null, и тем, как мы используем этот объект, может пройти значительное количество времени. Такой код сложно отлаживать, т.к. будет непросто узнать где именно объекту был присвоен null.
+Чем быстрее мы получаем фидбек, тем меньше времени требуется для фикса проблем в коде. Конечно, наиболее быстрый фидбек мог бы дать компилятор. Как здорово было бы написать следующий код и дать возможность компилятору сделать все проверки за нас?Customer! customer = _repository.GetById(id);
+Console.WriteLine(customer.Name);
+
+Здесь тип Customer! означает ненулевой тип, т.е. тип, объекты которого не могут быть null ни при каких обстоятельствах. Или еще лучше:Customer customer = _repository.GetById(id);
+Console.WriteLine(customer.Name);
+
+Т.е. сделать все ссылочные типы ненулевыми по умолчанию (ровно так же как value-типы сейчас) и есть нам нужен именно нулевой тип, то указывать это явно, вот так:Customer? customer = _repository.GetById(id);
+Console.WriteLine(customer.Name);
+
+К сожалению, ненулевые ссылочные типы не могут быть добавлены в C# на уровне языка. Подобные решения необходимо принимать с самого начала, иначе они ломают почти весь имеющийся код. Ссылки на эту тему: раз, два. В новых версиях C# ненулевые ссылочные типы возможно будут добавлены на уровне warning-ов, но с этим нововведением пока тоже не все гладко.
+И хотя мы не можем заставить компилятор выявлять ошибки связанные с неверным использованием null, мы можем решить проблему с помощью workaround-а. Давайте посмотрим на код класса Customer, которым мы закончили предыдущую статью:public class Customer
+{
+    public CustomerName Name { get; private set; }
+    public Email Email { get; private set; }
+ 
+    public Customer(CustomerName name, Email email)
+    {
+        if (name == null)
+            throw new ArgumentNullException(“name”);
+        if (email == null)
+            throw new ArgumentNullException(“email”);
+ 
+        Name = name;
+        Email = email;
+    }
+ 
+    public void ChangeName(CustomerName name)
+    {
+        if (name == null)
+            throw new ArgumentNullException(“name”);
+ 
+        Name = name;
+    }
+ 
+    public void ChangeEmail(Email email)
+    {
+        if (email == null)
+            throw new ArgumentNullException(“email”);
+ 
+        Email = email;
+    }
+}
+
+Мы переместили всю валидацию, связанную с имейлами и кастомерами в отдельные классы, но мы не смогли ничего сделать с проверками на нал. Как можно видеть, это единственные оставшиеся проверки.Убираем проверки на null
+Итак, как мы можем избавиться от них?
+С помощью IL rewriter-а. Мы можем использовать NuGet пакет NullGuard.Fody, который был создан специально для этой цели: он добавляет проверки на null в ваш код, заставляя ваши классы кидать исключения в случае если null приходит в виде входящего параметра, либо возвращается как результат работы метода.
+Для того, чтобы начать использовать его, установите пакет NullGuard.Fody и пометьте свою сборку атрибутом [assembly: NullGuard(ValidationFlags.All)]
+
+С этого момент все методы и свойства в пределах сборки автоматически получат валидацию на null для всех входящих и выходящих параметров. Наш класс Customer теперь может быть написан следующим образом:public class Customer
+{
+    public CustomerName Name { get; private set; }
+    public Email Email { get; private set; }
+ 
+    public Customer(CustomerName name, Email email)
+    {
+        Name = name;
+        Email = email;
+    }
+ 
+    public void ChangeName(CustomerName name)
+    {
+        Name = name;
+    }
+ 
+    public void ChangeEmail(Email email)
+    {
+        Email = email;
+    }
+}
+
+И даже еще проще:public class Customer
+{
+    public CustomerName Name { get; set; }
+    public Email Email { get; set; }
+ 
+    public Customer(CustomerName name, Email email)
+    {
+        Name = name;
+        Email = email;
+    }
+}
+
+Вот что у нас получается на выходе благодаря IL rewriter-у:public class Customer
+{
+    private CustomerName _name;
+    public CustomerName Name
+    {
+        get
+        {
+            CustomerName customerName = _name;
+ 
+            if (customerName == null)
+                throw new InvalidOperationException();
+ 
+            return customerName;
+        }
+        set
+        {
+            if (value == null)
+                throw new ArgumentNullException();
+ 
+            _name = value;
+        }
+    }
+ 
+    private Email _email;
+    public Email Email
+    {
+        get
+        {
+            Email email = _email;
+ 
+            if (email == null)
+                throw new InvalidOperationException();
+ 
+            return email;
+        }
+        set
+        {
+            if (value == null)
+                throw new ArgumentNullException();
+ 
+            _email = value;
+        }
+    }
+ 
+    public Customer(CustomerName name, Email email)
+    {
+        if (name == null)
+            throw new ArgumentNullException(“name”, “[NullGuard] name is null.”);
+        if (email == null)
+            throw new ArgumentNullException(“email”, “[NullGuard] email is null.”);
+ 
+        Name = name;
+        Email = email;
+    }
+}
+
+Как можно видеть, валидации эквивалентны тем, что мы писали вручную, за исключением того, что тут также добавлена валидация для возвращаемых значений, что тоже очень полезно.Как теперь быть с null?
+Как быть если нам необходим null? Мы можем использовать структуру Maybe:public struct Maybe&lt;T&gt;
+{
+    private readonly T _value;
+ 
+    public T Value
+    {
+        get
+        {
+            Contracts.Require(HasValue);
+ 
+            return _value;
+        }
+    }
+ 
+    public bool HasValue
+    {
+        get { return _value != null; }
+    }
+ 
+    public bool HasNoValue
+    {
+        get { return !HasValue; }
+    }
+ 
+    private Maybe([AllowNull] T value)
+    {
+        _value = value;
+    }
+ 
+    public static implicit operator Maybe&lt;T&gt;([AllowNull] T value)
+    {
+        return new Maybe&lt;T&gt;(value);
+    }
+}
+
+Входящие значения в Maybe помечены атрибутом AllowNull. Это указывает rewriter-у, что он не должен добавлять проверки на null для этих конкретных параметров.
+Используя Maybe, мы можем писать следующий код:Maybe&lt;Customer&gt; customer = _repository.GetById(id);
+
+И теперь при чтении кода становится очевидно, что метод GetById может вернуть null. Нет необходимости смотреть код метода чтобы понять его семантику.
+Более того, теперь мы не можем случайно перепутать нулевой тип с ненулевым, такой код приведет к ошибке компилятора:Maybe&lt;Customer&gt; customer = _repository.GetById(id);
+ProcessCustomer(customer); // Compiler error
+
+private void ProcessCustomer(Customer customer)
+{
+    // Method body
+}
+
+Безусловно, не все сборки есть смысл изменять с помощью rewriter-а. К примеру, применять подобные правила в сборке с WFP пожалуй будет не лучшей идеей, так как слишком много системных компонент в ней nullable по своей природе. В подобных условиях, проверки на null не имеют смысл, т.к. вы все равно ничего не сможете поделать с большинством из этих наллов.
+Что касается доменных сборок, их определенно стоит усовершенствовать подобным образом. Более того, именно доменные классы получат наибольшую выгоду от этого подхода.Заключение
+Преимущества описанного подхода:Он помогает уменьшить количество багов путем обеспечения быстрого фидбека в случае если null неожиданно протиснулся там, где его не ждали.
+Существенно улучшает читаемость кода. Нет необходимости углубляться в метод чтобы понять может ли он вернуть null.
+Теперь проверки на null существуют в коде по умолчанию. Методы и свойства классов защищены от нулевых значений, нет необходимости писать шаблонный код по проверке на нал.
+Остальные статьи в циклеFunctional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+
+Английская версия статьи: Functional C#: Non-nullable reference types
+
+      
+      
+    

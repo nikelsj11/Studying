@@ -1,0 +1,228 @@
+﻿#TITLE:Локальная инет радиостанция при помощи icecast +ices
+
+      Рылся в своих старых записях и решил поделится с Вами инструкцией как просто и быстро поднять нормальный сервер для он лайн транслирования своего радио (mp3 файлы) и для ретрансляции внешних радиостанций. 
+Кому интересно прошу под кат.
+Я использовал сервер под управлением FreeBSD. Считаем, что у нас есть свежее дерево портов. Начнем установки icecast:#cd /usr/ports/audio/icecast2
+#make install clean
+
+Далее создаем пользователя для инет радио radio и группу radio и создаем каталог где это все будет лежать.#mkdir /var/icecast 
+#pw group add radio
+# adduser
+Username:radio
+Full name: Radio user
+Uid (Leave empty for default):
+Login group [radio]:
+Login group is radio. Invite jru into other groups? []: 
+Login class [default]:
+Shell (sh csh tcsh zsh nologin) [sh]: nologin
+Home directory [/home/radio]:
+Home directory permissions (Leave empty for default):
+Use password-based authentication? [yes]:
+Use an empty password? (yes/no) [no]:
+Use a random password? (yes/no) [no]:
+Enter password:
+Enter password again:
+Lock out the account after creation? [no]:
+Username   : radio
+Password   : ****
+Full Name  : Radio user
+Uid        : 1001
+Class      :
+Groups     : radio
+Home       : /home/radio
+Locked     : no
+OK? (yes/no): yes
+adduser: INFO: Successfully added (radio) to the user database.
+Add another user? (yes/no): no
+Goodbye!
+
+После копируем все файлы для веб интерфейса:cp /usr/local/share/icecast /var/icecast
+Cоздаем каталог для лога:mkdir /var/icecast/log
+Cоздаем файлы для логов:cd /var/icecast/log
+touch access.log
+touch error.log
+
+Меняем права:chown -R radio:radio /var/icecast
+Далее идем смотреть файл конфига:cd /usr/local/etc
+cp icecast.xml.sample icecast.xml
+
+Конфигурим файл. Опишу только важные параметры
+Аутентификация. Первое — это пароль на подключение для трансляции через ваш сервер icecast.Второе — это логин пароль на веб интерфейс по адресу icecast_ip:8000&lt;authentication&gt;
+        &lt;!-- Sources log in with username 'source' --&gt;
+        &lt;source-password&gt;123&lt;/source-password&gt;
+        &lt;!-- Relays log in username 'relay' --&gt;
+        &lt;relay-password&gt;123&lt;/relay-password&gt;
+
+        &lt;!-- Admin logs in with the username given below --&gt;
+        &lt;admin-user&gt;admin&lt;/admin-user&gt;
+        &lt;admin-password&gt;12345678&lt;/admin-password&gt;
+    &lt;/authentication&gt;
+
+Далее выбираем IP сервера и порт так же точку монитрования потока с ices но это позже:&lt;listen-socket&gt;
+        &lt;port&gt;8000&lt;/port&gt;
+        &lt;bind-address&gt;192.168.1.7&lt;/bind-address&gt;.
+        &lt;shoutcast-mount&gt;/ices&lt;/shoutcast-mount&gt;.
+
+    &lt;/listen-socket&gt;
+
+Так же я собираюсь рестранслировать радиостанции украины Киссфм (+ Киссфм в АСС), наше радио, люкс фм, и хит фм:&lt;relay&gt;
+        &lt;server&gt;91.201.37.42&lt;/server&gt;
+        &lt;port&gt;8000&lt;/port&gt;
+        &lt;mount&gt;/kiss&lt;/mount&gt;
+        &lt;local-mount&gt;/kiss&lt;/local-mount&gt;
+        &lt;on-demand&gt;1&lt;/on-demand&gt;
+        &lt;relay-shoutcast-metadata&gt;0&lt;/relay-shoutcast-metadata&gt;
+&lt;/relay&gt;
+
+&lt;relay&gt;
+        &lt;server&gt;91.201.37.42&lt;/server&gt;
+        &lt;port&gt;8000&lt;/port&gt;
+        &lt;mount&gt;/kissACC&lt;/mount&gt;
+        &lt;local-mount&gt;/kissACC&lt;/local-mount&gt;
+        &lt;on-demand&gt;1&lt;/on-demand&gt;
+        &lt;relay-shoutcast-metadata&gt;0&lt;/relay-shoutcast-metadata&gt;
+&lt;/relay&gt;
+....
+&lt;relay&gt;........
+        &lt;server&gt;195.95.206.12&lt;/server&gt;
+        &lt;port&gt;8000&lt;/port&gt;
+        &lt;mount&gt;/HitFM&lt;/mount&gt;
+        &lt;local-mount&gt;/hitfm&lt;/local-mount&gt;
+        &lt;on-demand&gt;1&lt;/on-demand&gt;
+        &lt;relay-shoutcast-metadata&gt;0&lt;/relay-shoutcast-metadata&gt;
+&lt;/relay&gt;
+
+&lt;relay&gt;
+        &lt;server&gt;77.120.104.251&lt;/server&gt;
+        &lt;port&gt;8000&lt;/port&gt;
+        &lt;mount&gt;/&lt;/mount&gt;
+        &lt;local-mount&gt;/luxfm&lt;/local-mount&gt;
+        &lt;on-demand&gt;1&lt;/on-demand&gt;
+        &lt;relay-shoutcast-metadata&gt;0&lt;/relay-shoutcast-metadata&gt;
+&lt;/relay&gt;
+
+&lt;relay&gt;
+        &lt;server&gt;212.26.129.222&lt;/server&gt;
+        &lt;port&gt;8001&lt;/port&gt;
+        &lt;mount&gt;/&lt;/mount&gt;
+        &lt;local-mount&gt;/nashe&lt;/local-mount&gt;
+        &lt;on-demand&gt;1&lt;/on-demand&gt;
+        &lt;relay-shoutcast-metadata&gt;0&lt;/relay-shoutcast-metadata&gt;
+&lt;/relay&gt;
+
+
+Далее меняем параметры нахождения каталогов в разделе  &lt;basedir&gt;/var/icecast&lt;/basedir&gt;
+
+        &lt;logdir&gt;/log&lt;/logdir&gt;
+        &lt;webroot&gt;/web&lt;/webroot&gt;
+        &lt;adminroot&gt;/admin&lt;/adminroot&gt;
+         &lt;pidfile&gt;/var/run/icecast.pid&lt;/pidfile&gt;
+
+
+И последнее, но не последнее по значению. Icecast не работает от root вот и мы меняем разрешения на ранее созданого юзера и группу&lt;security&gt;
+        &lt;chroot&gt;1&lt;/chroot&gt;
+
+        &lt;changeowner&gt;
+            &lt;user&gt;radio&lt;/user&gt;
+            &lt;group&gt;radio&lt;/group&gt;
+        &lt;/changeowner&gt;
+
+    &lt;/security&gt;
+
+Далее пробуем взлететь, смотрим что он ругается:#/usr/local/bin/icecast -c /usr/local/etc/icecast.xml
+Если все хорошо прерываем через Ctrl+c и идем дальше:
+Я использовал iсes0 ибо мне нужно было воспроизводить mp3 а для ogg по идее нужно использовать ices2, вроде он тоже воспроизводить mp3, но я не проверял:#cd /usr/ports/audio/ices
+#make install clean
+
+Тут что бы не мучатся с правами делаем проще (можете сами создавать каталог где хотите):mkdir /tmp/radio  
+Складываем сюда файлы mp3 и создаем плейлист:find /tmp/radio -name *.mp3 &gt; /tmp/radio/playlist.txt
+Должен получится файл playlist.txt с таким содержимым:/tmp/radio/Far East Movement ft. The Cataracs &amp; Dev - Like A G6.mp3
+/tmp/radio/The_Prodigy_-_Voodoo_People_(Pendulum_Remix).mp3
+/tmp/radio/1.mp3
+
+Меняем права #chmod -R 777 /tmp/radio и идем ломать файл ices.confcd /usr/local/etc/
+cp ices.conf.dist ices.conf
+
+Редактируем. У меня вышел такой вид (коменты Афтора):&lt;?xml version="1.0"?&gt;
+&lt;ices:Configuration xmlns:ices="http://www.icecast.org/projects/ices"&gt;
+  &lt;Playlist&gt;
+    &lt;!-- Показываем где лежит плейлист --&gt;
+    &lt;File&gt;/tmp/radio/playlist.txt&lt;/File&gt;
+    &lt;!-- хотим что бы играло случайно ставим 1. . --&gt;
+    &lt;Randomize&gt;0&lt;/Randomize&gt;
+    &lt;!-- тип плей листа, менять не нужно --&gt;
+    &lt;Type&gt;builtin&lt;/Type&gt;
+    &lt;!-- нужно только для плейлиста на Perl И pyton, для нашего случая не нужно--&gt;
+    &lt;Module&gt;ices0&lt;/Module&gt;
+    &lt;!-- если нужно что бы между песнями было затухание то разремируем и выставляем в секундах. по умочанию выключено т.е. 0
+    &lt;Crossfade&gt;5&lt;/Crossfade&gt;
+    --&gt;
+  &lt;/Playlist&gt;
+
+  &lt;Execution&gt;
+    &lt;!-- запускать демоном ставьте 1 --&gt;
+    &lt;Background&gt;1&lt;/Background&gt;
+    &lt;!-- хотите видеть все логи в файле ставим 1 --&gt;
+    &lt;Verbose&gt;1&lt;/Verbose&gt;
+    &lt;!-- Каталог где будет находится лог и pid файлы --&gt;
+    &lt;BaseDirectory&gt;/tmp&lt;/BaseDirectory&gt;
+  &lt;/Execution&gt;
+
+  &lt;Stream&gt;
+    &lt;Server&gt;
+      &lt;!-- ip  icecast сервера куда хотим прицепится --&gt;
+      &lt;Hostname&gt;192.168.1.7&lt;/Hostname&gt;
+      &lt;!-- порт --&gt;
+      &lt;Port&gt;8000&lt;/Port&gt;
+      &lt;!-- пароль на конект что бы транслировать icecast server --&gt;
+      &lt;Password&gt;123&lt;/Password&gt;
+      &lt;!-- Если сервер  Shoutcast ставим "icy", icecast 1.x ставим "xaudiocast", а если icecast 2.x то "http". --&gt;
+      &lt;Protocol&gt;http&lt;/Protocol&gt;
+    &lt;/Server&gt;
+  &lt;!-- точка монтирования потока на айскаст сервера --&gt;
+    &lt;Mountpoint&gt;/ices&lt;/Mountpoint&gt;
+    &lt;!-- The name of the dumpfile on the server for your stream. DO NOT set
+         this unless you know what you're doing. не понял за чем не менял
+    &lt;Dumpfile&gt;ices.dump&lt;/Dumpfile&gt;
+    --&gt;
+    &lt;!-- Имя вашей трансляции, а не имя трека --&gt;
+    &lt;Name&gt;mp3 stream&lt;/Name&gt;
+    &lt;!-- Жанр, или стиль вашей трансляции --&gt;
+    &lt;Genre&gt;it&lt;/Genre&gt;
+    &lt;!-- большое описание вашей трансляции --&gt;
+    &lt;Description&gt;Local streaming&lt;/Description&gt;
+    &lt;!-- ссылока вашей трансляции --&gt;
+    &lt;URL&gt;http://gate.mydomain.com/&lt;/URL&gt;
+    &lt;!--0 если не хотите сделать ваш сервер публичным и 1 если хотите --&gt;
+    &lt;Public&gt;0&lt;/Public&gt;
+
+    &lt;!--качество трансляции, меняйте осторожно--&gt;
+    &lt;Bitrate&gt;128&lt;/Bitrate&gt;
+    &lt;!-- если поставить 1 то ices попробует на лету пережимать трансляцию при помози  liblame в нужное качество потока --&gt;
+    &lt;Reencode&gt;0&lt;/Reencode&gt;
+    &lt;!-- Number of channels to reencode to, 1 for mono or 2 for stereo --&gt;
+    &lt;!-- Sampe rate to reencode to in Hz. Leave out for LAME's best choice
+    &lt;Samplerate&gt;44100&lt;/Samplerate&gt;
+    --&gt;
+    &lt;Channels&gt;2&lt;/Channels&gt;
+  &lt;/Stream&gt;
+&lt;/ices:Configuration&gt;
+
+Далее добавляем в /etc/rc.conf строки:icecast_enable="YES"
+icecast_flags="-c /usr/local/etc/icecast.xml"
+ices0_enable="YES"
+ices0_flags="/usr/local/etc/ices.conf"
+
+И пробуем взлетать:cd /usr/local/etc/rc.d
+#./icecast2 start
+#./ices0 start
+
+Открываем в баузере ссылку:192.168.1.7:8000/status.xsl
+Скачиваем m3u нужного потока и вперед.
+Интернет-радио поставлено «конект по требованию», так что первый конект медленный. Кому не жалко инет трафика — поменяйте значение &lt;on-demand&gt;1&lt;/on-demand&gt; на &lt;on-demand&gt;0&lt;/on-demand&gt;.
+Так же ices как проиграет весь плейлист выключается. Как сделать по кругу не нашел пока что. Но, если запустить ices через рандом то его игрища никогда не заканчиваются smile.
+В файле ices.conf меняем параметр 0 на 1 и все.
+
+      
+      
+    

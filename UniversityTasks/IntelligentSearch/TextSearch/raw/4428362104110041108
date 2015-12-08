@@ -1,0 +1,360 @@
+﻿#TITLE:Построение графиков работы DHCP сервера
+
+      На работе очень часто стоит вопрос — у нас DHCP сервер хорошо работает? Я работаю в internet провайдере, DHCP обеспечивает работу клиентской сети. Исторически сложилась следующая схема работы: DHCP серверов два, конфигурация генерируется на биллинговом сервере и с помощью rsync разливается на сервера. Используем Centos в качестве рабочей системы и ISC DHCP в качестве сервера. Никакого failover не настроено и не настраивалось — нет необходимости. Вполне достаточно, что сервера работают по идентичному конфигу. Используется привязка абонента к мак адресу, в случае смены оборудования у абонента есть возможность зайти в личный кабинет и указать новый мак. Генерация конфига выполняется раз в 5 минут, если у нового конфига изменилась md5 сумма — то сервис перестартовывает. Схема работает несколько лет, проблем нет.
+Периодически возникали проблемы, что конфиг генерился синтаксически неправильным — и после рестарта сервис падал. Добавили в скрипт рестарта проверку синтаксиса (dhcpd -t), падения прекратились. Ну и со стороны билинга обвешано проверками — на наличие адреса, мака, и т.п.
+Пару раз столкнулись с ситуацией, когда из сети приходят запросы, а ответы в сеть не доходят. Оказался виноват агрегатор, полечили. Все это время не хватало простого графического анализа — как работает DHCP сервер. Как показал опыт разборок с проблемами — банальным просмотром логов и оценкой, сколько каких сообщений принимает и отсылает сервер — можно уже примерно оценить наличие проблемы в сети. Ну и в принципе график можно показать ночному оператору с инструкцией — если здесь резкое изменение показателей — звони админам.
+Итак, формулируем перед собой задачу. Согласно стандарту, в протоколе DHCP существуют следующие типы сообщений:
+DHCPDISCOVER — запрос клиента на наличие адресов
+DHCPOFFER — предложение сервера на получение адреса
+DHCPREQUEST — запрос клиента на получение адреса (предложенного сервером в DHCPOFFER)
+DHCPACK — подтверждение сервера о выдаче адреса
+DHCPDECLINE — отказ клиента в получении предложенного адреса
+DHCPNAK — отказ сервера в выдаче запрошенного адреса
+DHCPRELEASE — уведомление клиента об освобождении адреса
+DHCPINFORM — запрос клиента о дополнительных параметрах
+Мы хотим построить график к-ва каждого типа сообщений. 
+В качестве источника информации можно использовать log файл сервера. Другого источника я не нашел, да и его не может быть особо — если предположить, что dhcp умеет где то у себя накапливать эту информацию — то во первых были бы средства извлечения такой статистики, А во вторых — постоянные рестарты процесса сводят ее полезность к нулю.
+В нашей сети dhcp сервера — это отдельные виртуалки, машина, которая строит графики (называется mrtg) — тоже отдельная виртуалка. Т.е. нужен способ передачи информации между машинами.
+В результате я реализовал вот такую схему. На dhcp сервере добавляем в конфиг:
+log-facility local6
+
+В syslog (эти виртуалки до сих пор работают на centos 5, аптайм машин год, было бы больше, если бы в нашем городе год назад свет не выключали на месяц) добавляем следующее:*.info;mail.none;authpriv.none;cron.none;local6.none            /var/log/messages
+
+local6.*                                                /var/log/dhcpd.log
+local6.*                                                /var/log/dhcpd-stat.log
+
+
+Т.е. запрещаем local6 выводится в общий файл /var/log/messages, а выводим его в два файла одновременно.
+Следующим шагом учим mrtg ходить на dhcp по ключу без пароля. Ну и вот такой скриптик на mrtg:скрипт обновления статистики#!/bin/bash
+
+for HOST in dhcp1 dhcp2
+do
+TARGET=/srv/www/noc.lds.net.ua/dhcp/$HOST
+mkdir -p $TARGET
+cd $TARGET
+scp $HOST:/var/log/dhcpd-stat.log ./
+ssh $HOST "echo -n &gt; /var/log/dhcpd-stat.log"
+
+if [ ! -f dhcpqueries.rrd ]
+then
+ /usr/bin/rrdtool create dhcpqueries.rrd \
+    DS:request:GAUGE:600:0:10000000 \
+    DS:ack:GAUGE:600:0:10000000 \
+    DS:decline:GAUGE:600:0:10000000 \
+    DS:discover:GAUGE:600:0:10000000 \
+    DS:release:GAUGE:600:0:10000000 \
+    DS:nak:GAUGE:600:0:10000000 \
+    DS:info:GAUGE:600:0:10000000 \
+    DS:offer:GAUGE:600:0:10000000 \
+    RRA:AVERAGE:0.5:1:800 \
+    RRA:AVERAGE:0.5:6:800 \
+    RRA:AVERAGE:0.5:24:800 \
+    RRA:AVERAGE:0.5:288:800 \
+    RRA:MAX:0.5:1:800 \
+    RRA:MAX:0.5:6:800 \
+    RRA:MAX:0.5:24:800 \
+    RRA:MAX:0.5:288:800
+fi
+
+out=$(awk '
+    BEGIN       {request=0;ack=0;decline=0;discover=0;release=0;nak=0;info=0;offer=0}
+    {
+        if($6 == "DHCPREQUEST")     {request = request + 1}
+        if($6 == "DHCPACK") {ack = ack + 1}
+        if($6 == "DHCPDECLINE")    {decline = decline + 1}
+        if($6 == "DHCPDISCOVER")  {discover = discover + 1}
+        if($6 == "DHCPRELEASE")   {release = release + 1}
+        if($6 == "DHCPNAK")    {nak = nak + 1}
+        if($6 == "DHCPINFORM")   {info = info + 1}
+        if($6 == "DHCPOFFER")   {offer = offer + 1}
+    }
+    END         {print request ":" ack ":" decline ":" discover ":" release ":" nak ":" info ":" offer}
+' dhcpd-stat.log)
+
+/usr/bin/rrdtool update dhcpqueries.rrd --template \
+    request:ack:decline:discover:release:nak:info:offer \
+    N:$out
+
+/usr/bin/rrdtool graph dhcprequest.png \
+    -v "Requests/Minute" \
+    --rigid \
+    -l 0 \
+    --start -86400 \
+    DEF:a=dhcpqueries.rrd:request:AVERAGE \
+    DEF:b=dhcpqueries.rrd:ack:AVERAGE \
+    DEF:c=dhcpqueries.rrd:decline:AVERAGE \
+    DEF:d=dhcpqueries.rrd:discover:AVERAGE \
+    DEF:e=dhcpqueries.rrd:release:AVERAGE \
+    DEF:f=dhcpqueries.rrd:nak:AVERAGE \
+    DEF:g=dhcpqueries.rrd:info:AVERAGE \
+    DEF:h=dhcpqueries.rrd:offer:AVERAGE \
+    CDEF:cdefa=a,5,/ \
+    CDEF:cdefb=b,5,/ \
+    CDEF:cdefc=c,5,/ \
+    CDEF:cdefd=d,5,/ \
+    CDEF:cdefe=e,5,/ \
+    CDEF:cdeff=f,5,/ \
+    CDEF:cdefg=g,5,/ \
+    CDEF:cdefh=h,5,/ \
+    LINE1:cdefa#9C7BBD:DHCPREQUEST \
+    GPRINT:cdefa:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefa:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefa:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefb#3152A5:DHCPACK \
+    GPRINT:cdefb:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdefb:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefb:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefc#750F7D:DHCPDECLINE \
+    GPRINT:cdefc:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefc:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefc:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefd#157419:DHCPDISCOVER \
+    GPRINT:cdefd:LAST:"  Cur\:%8.1lf" \
+    GPRINT:cdefd:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefd:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefe#6DC8FE:DHCPRELEASE \
+    GPRINT:cdefe:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefe:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefe:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdeff#FFAB00:DHCPNAK \
+    GPRINT:cdeff:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdeff:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdeff:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefg#FF0000:DHCPINFORM \
+    GPRINT:cdefg:LAST:"    Cur\:%8.1lf" \
+    GPRINT:cdefg:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefg:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefh#00FF00:DHCPOFFER \
+    GPRINT:cdefh:LAST:"     Cur\:%8.1lf" \
+    GPRINT:cdefh:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefh:MAX:"Max\:%8.1lf\n" \
+
+/usr/bin/rrdtool graph dhcprequest-weekly.png \
+    -v "Requests/Minute" \
+    --rigid \
+    -l 0 \
+    --start -604800 \
+    DEF:a=dhcpqueries.rrd:request:AVERAGE \
+    DEF:b=dhcpqueries.rrd:ack:AVERAGE \
+    DEF:c=dhcpqueries.rrd:decline:AVERAGE \
+    DEF:d=dhcpqueries.rrd:discover:AVERAGE \
+    DEF:e=dhcpqueries.rrd:release:AVERAGE \
+    DEF:f=dhcpqueries.rrd:nak:AVERAGE \
+    DEF:g=dhcpqueries.rrd:info:AVERAGE \
+    DEF:h=dhcpqueries.rrd:offer:AVERAGE \
+    CDEF:cdefa=a,5,/ \
+    CDEF:cdefb=b,5,/ \
+    CDEF:cdefc=c,5,/ \
+    CDEF:cdefd=d,5,/ \
+    CDEF:cdefe=e,5,/ \
+    CDEF:cdeff=f,5,/ \
+    CDEF:cdefg=g,5,/ \
+    CDEF:cdefh=h,5,/ \
+    LINE1:cdefa#9C7BBD:DHCPREQUEST \
+    GPRINT:cdefa:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefa:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefa:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefb#3152A5:DHCPACK \
+    GPRINT:cdefb:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdefb:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefb:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefc#750F7D:DHCPDECLINE \
+    GPRINT:cdefc:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefc:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefc:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefd#157419:DHCPDISCOVER \
+    GPRINT:cdefd:LAST:"  Cur\:%8.1lf" \
+    GPRINT:cdefd:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefd:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefe#6DC8FE:DHCPRELEASE \
+    GPRINT:cdefe:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefe:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefe:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdeff#FFAB00:DHCPNAK \
+    GPRINT:cdeff:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdeff:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdeff:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefg#FF0000:DHCPINFORM \
+    GPRINT:cdefg:LAST:"    Cur\:%8.1lf" \
+    GPRINT:cdefg:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefg:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefh#00FF00:DHCPOFFER \
+    GPRINT:cdefh:LAST:"     Cur\:%8.1lf" \
+    GPRINT:cdefh:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefh:MAX:"Max\:%8.1lf\n" \
+
+/usr/bin/rrdtool graph dhcprequest-monthly.png \
+    -v "Requests/Minute" \
+    --rigid \
+    -l 0 \
+    --start -2592000 \
+    DEF:a=dhcpqueries.rrd:request:AVERAGE \
+    DEF:b=dhcpqueries.rrd:ack:AVERAGE \
+    DEF:c=dhcpqueries.rrd:decline:AVERAGE \
+    DEF:d=dhcpqueries.rrd:discover:AVERAGE \
+    DEF:e=dhcpqueries.rrd:release:AVERAGE \
+    DEF:f=dhcpqueries.rrd:nak:AVERAGE \
+    DEF:g=dhcpqueries.rrd:info:AVERAGE \
+    DEF:h=dhcpqueries.rrd:offer:AVERAGE \
+    CDEF:cdefa=a,5,/ \
+    CDEF:cdefb=b,5,/ \
+    CDEF:cdefc=c,5,/ \
+    CDEF:cdefd=d,5,/ \
+    CDEF:cdefe=e,5,/ \
+    CDEF:cdeff=f,5,/ \
+    CDEF:cdefg=g,5,/ \
+    CDEF:cdefh=h,5,/ \
+    LINE1:cdefa#9C7BBD:DHCPREQUEST \
+    GPRINT:cdefa:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefa:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefa:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefb#3152A5:DHCPACK \
+    GPRINT:cdefb:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdefb:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefb:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefc#750F7D:DHCPDECLINE \
+    GPRINT:cdefc:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefc:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefc:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefd#157419:DHCPDISCOVER \
+    GPRINT:cdefd:LAST:"  Cur\:%8.1lf" \
+    GPRINT:cdefd:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefd:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefe#6DC8FE:DHCPRELEASE \
+    GPRINT:cdefe:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefe:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefe:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdeff#FFAB00:DHCPNAK \
+    GPRINT:cdeff:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdeff:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdeff:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefg#FF0000:DHCPINFORM \
+    GPRINT:cdefg:LAST:"    Cur\:%8.1lf" \
+    GPRINT:cdefg:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefg:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefh#00FF00:DHCPOFFER \
+    GPRINT:cdefh:LAST:"     Cur\:%8.1lf" \
+    GPRINT:cdefh:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefh:MAX:"Max\:%8.1lf\n" \
+
+/usr/bin/rrdtool graph dhcprequest-yearly.png \
+    -v "Requests/Minute" \
+    --rigid \
+    -l 0 \
+    --start -31536000 \
+    DEF:a=dhcpqueries.rrd:request:AVERAGE \
+    DEF:b=dhcpqueries.rrd:ack:AVERAGE \
+    DEF:c=dhcpqueries.rrd:decline:AVERAGE \
+    DEF:d=dhcpqueries.rrd:discover:AVERAGE \
+    DEF:e=dhcpqueries.rrd:release:AVERAGE \
+    DEF:f=dhcpqueries.rrd:nak:AVERAGE \
+    DEF:g=dhcpqueries.rrd:info:AVERAGE \
+    DEF:h=dhcpqueries.rrd:offer:AVERAGE \
+    CDEF:cdefa=a,5,/ \
+    CDEF:cdefb=b,5,/ \
+    CDEF:cdefc=c,5,/ \
+    CDEF:cdefd=d,5,/ \
+    CDEF:cdefe=e,5,/ \
+    CDEF:cdeff=f,5,/ \
+    CDEF:cdefg=g,5,/ \
+    CDEF:cdefh=h,5,/ \
+    LINE1:cdefa#9C7BBD:DHCPREQUEST \
+   GPRINT:cdefa:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefa:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefa:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefb#3152A5:DHCPACK \
+    GPRINT:cdefb:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdefb:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefb:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefc#750F7D:DHCPDECLINE \
+    GPRINT:cdefc:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefc:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefc:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefd#157419:DHCPDISCOVER \
+    GPRINT:cdefd:LAST:"  Cur\:%8.1lf" \
+    GPRINT:cdefd:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefd:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefe#6DC8FE:DHCPRELEASE \
+    GPRINT:cdefe:LAST:"   Cur\:%8.1lf" \
+    GPRINT:cdefe:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefe:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdeff#FFAB00:DHCPNAK \
+    GPRINT:cdeff:LAST:"       Cur\:%8.1lf" \
+    GPRINT:cdeff:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdeff:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefg#FF0000:DHCPINFORM \
+    GPRINT:cdefg:LAST:"    Cur\:%8.1lf" \
+    GPRINT:cdefg:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefg:MAX:"Max\:%8.1lf\n" \
+    LINE1:cdefh#00FF00:DHCPOFFER \
+    GPRINT:cdefh:LAST:"     Cur\:%8.1lf" \
+    GPRINT:cdefh:AVERAGE:"Ave\:%8.1lf" \
+    GPRINT:cdefh:MAX:"Max\:%8.1lf\n" \
+
+if [ ! -f index.shtml ]
+then
+
+cat &gt; ./index.shtml &lt;&lt; END
+&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd"&gt;
+&lt;HTML&gt;
+&lt;HEAD&gt;
+    &lt;TITLE&gt;$HOST&lt;/TITLE&gt;
+    &lt;META HTTP-EQUIV="Refresh" CONTENT="300"&gt;
+    &lt;META HTTP-EQUIV="Cache-Control" content="no-cache"&gt;
+    &lt;META HTTP-EQUIV="Pragma" CONTENT="no-cache"&gt;
+    &lt;META HTTP-EQUIV="Expires" CONTENT="Mon, 04 Feb 2008 16:28:46 GMT"&gt;
+
+&lt;style type="text/css"&gt;
+&lt;/style&gt;
+&lt;/HEAD&gt;
+
+&lt;BODY bgcolor="#ffffff" text="#000000" link="#000000" vlink="#000000" alink="#000000"&gt;
+&lt;!--#include virtual="/menu.shtml" --&gt;
+&lt;CENTER&gt;&lt;H1&gt;&lt;B&gt;$HOST&lt;/B&gt;&lt;/H1&gt;&lt;/CENTER&gt;
+
+&lt;TABLE BORDER=0 CELLPADDING=0 CELLSPACING=0 align="center"&gt;
+  &lt;tbody&gt;
+   &lt;tr&gt;&lt;td align="center"&gt;&lt;b&gt;&lt;h2&gt;Query types&lt;/h2&gt;&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td align="center"&gt;
+       &lt;b&gt;daily&lt;/B&gt;&lt;br&gt;
+       &lt;IMG BORDER=0 SRC="dhcprequest.png"&gt;&lt;br&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td align="center"&gt;
+       &lt;b&gt;weekly&lt;/B&gt;&lt;br&gt;
+       &lt;IMG BORDER=0 SRC="dhcprequest-weekly.png"&gt;&lt;br&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td align="center"&gt;
+       &lt;b&gt;monthly&lt;/B&gt;&lt;br&gt;
+       &lt;IMG BORDER=0 SRC="dhcprequest-monthly.png"&gt;&lt;br&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td align="center"&gt;
+       &lt;b&gt;yearly&lt;/B&gt;&lt;br&gt;
+       &lt;IMG BORDER=0 SRC="dhcprequest-yearly.png"&gt;&lt;br&gt;
+      &lt;/td&gt;
+    &lt;/tr&gt;
+
+ &lt;/tbody&gt;
+ &lt;/table&gt;
+&lt;/BODY&gt;
+&lt;/HTML&gt;
+END
+
+fi
+
+done
+
+
+Расскажу, как этот скрипт работает.
+Для каждого dhcp сервера создается отдельный каталог на веб сервере. Затем, мы по scp забираем текущий dhcpd-stat.log с сервера, и следующей командой его очищаем. Для того, чтобы в следующий раз забрать лог файл за прошедшее время работы. Так как скрипт вызывается из крона каждые 5 минут, то наша статистика обрабатывает логи за 5 минут работы. Я более чем уверен, что за то время, которое проходит между командами копирования и очистки — в лог попадают какие то данные, которые я теряю. Но думаю, что несколько строк погоды не делают.
+Заодно отвечу на вопрос — почему логи dhcp выводятся в два файла. Первый — это обычный лог, он ротейтится стандартным logrotate, не переписывается постоянно, предназначен для человека — если надо будет его почитать. Второй — для скрипта, каждые 5 минут очищается.
+Ну а дальше в скрипте в принципе все должно быть понятно: инициализируем rrd базу, при ее отсуствии, с помощью awk считаем количество каждого типа сообщений, заносим в rrd базу, затем строим стандартную 4-ку картинок — дневной график, недельный график, месячный график, годовой график. Ну и создаем index.shtml, если его нету.
+Скриптик начал работать, графики рисуются. Теперь видно сразу — работает dhcp, или нет…
+Вот как выглядит график:
+    

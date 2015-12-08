@@ -1,0 +1,796 @@
+﻿#TITLE:Бесплатный реалтайм список онлайн юзеров (Parse.com + Pubnub)
+
+      Как-то раз написал мне знакомый задачу для практики: напиши приложение, где есть одна кнопка логина/разлогина и список онлайн пользователь. При этом, пользователи должны «жить» только 30 секунд. Как это всегда бывает, при первичном рассмотрении задачи я подумал: ха, что тут делать то? Используем облачное хранилище и сервер для юзеров, а дальше дело за малым… но не тут то было.
+Под катом я расскажу, с какими проблемами при разработке бэкэнда на Parse.com мне пришлось столкнуться, почему пришлось использовать его в связке с Pubnub, и как это всё связать при разработке под Android.
+То, что вышло в итоге:
+Строго говоря, темой связки Parse.com и Pubnub уже занимались на Хабре. Однако в отличие от той статьи, здесь я хочу более подробно остановить на облачном коде Parse.com, да и целевое приложение разрабатывает под Android, а не IOS.Parse.comParse.com предоставляет обширный облачный функционал: тут и БД в красивой графической обертке, и серверный код, и аналитика, и даже пуш-уведомления! И всё бесплатно до тех пор, пока ты не перейдешь порог в 30 запросов в секунду, 20ГБ используемого объема хранилища и т.д.. Меня данные требования полностью устраивали (it's free!), поэтому выбор пал именно на данный сервис.Проблемы
+Тщательно проштрудировав гид, всплыло несколько проблем, связанных именно с реалтаймом списка онлайн юзеров и их временем жизни:отсутствуют поля типа Timer для кастомных объектов
+сервис не предоставляет возможности лонг-пуллинга (либо я такого не обнаружил)
+стандартный класс User/Session не подходят для этой задачи
+Решения
+Поясню, почему это именно проблемы.
+Тип Timer (или что-то типа того) планировалось использовать как поле expireAt, чтобы получать оповещения (в идеале, автоматически удалять) о том, когда юзер «умирает».
+За отсутствием данного типа придётся использовать обычный тип Date и самому следить, когда юзера нужно «убить».
+Планировалось использова лонг-пуллинг для отслеживания входящих/уходящих юзеров, однако сервис не предоставляет такой возможности из коробки. 
+Было принято решение использовать инсталляции. Вкратце, это глобальные каналы для передачи данных между кем угодно (сервер-клиент, клиент-клиент и т.д.). Таким образом, после логина/разлогина сервер должен посылать сообщение на канал, что такой-то пользователь вошел/вышел. Это обеспечивает реалтайм список пользователей. (однако это не совсем так, но об этом позже).
+В SDK Parse.com встроены методы логина/разлогина, поэтому было бы крайне приятно использовать их при разработке. Однако, это оказалось невозможным.
+Как было сказано выше, при логине/разлогине должно посылаться сообщение в канал о том, «жив» ли пользователь (или «мертв», если он разлогинился). Сервис предоставляет возможность создавать триггеры, например, AfterSave, beforeDelete и т.д. Проблема в том, что нет таких событий для Session. Это означает, что при каждом разлогине необходимо в прямом смысле удалять юзера с его сессией, что сводит на нет всё приемущество встроенных в SDK методов.
+Поэтому было принято решение использовать кастомный класс IMH_Session, навесив на него триггеры afterDelete и afterSave, в которых происходит посылка оповещения в глобальный канал.Нюансы
+И тут бы пора праздновать и победно садиться за Android Studio, но… инсталляции основаны на дефолтных пуш-уведомлениях. Поясню для тех, кто, как и я, в танке. Пуш-уведомления не гарантируют ничего. Они работают по принципу Fire&amp;Forget, то есть, послав пуш-уведомление, нет никакой уверенности в том, что оно дошло до адресата. Более того, невозможно даже сказать когда это произошло!
+Так что ни о каком реалтайме говорить не приходится.
+Так же встает проблема с флудом в канале. Инсталляции равноправны, поэтому любой клиент можешь слать что угодно, а остальным придётся из этого мусора выбирать лишь серверные сообщения. И то не факт, что они от сервера. Встает проблема верификации. Как минимум, на каждое сообщение к серверу придётся слать запрос на подтверждение информации о юзере, что приведёт к хаосу и те самые бесплатные 30 запросов в секунду быстро кончатся.Pubnub
+Несмотря на всю плачевность ситуации выход был найден. Этим выходом оказался Pubnub. Вообще, этот сервис из коробки предоставляет SDK для онлайн-чата, но, к сожалению, оно платно и называется аддоном.
+Сам сервис предоставляет всё необходимое для реалтайм приложений. Но нас интересует лишь одно — широковещательные реалтайм каналы. Они бесплатны, просты в истопользовании и, что, пожалуй, самое главное, имеют разграничение доступа! Как раз то, что нам нужно, чтобы не заморачиваться с верификацией.
+Разграничение происходит благодаря двум отдельным ключам: publish_key и subscribe_key. Как вы уже наверное догадались, первый ключ уходит на сервер, а воторой на клиентское приложение. Если оставлять первым ключ в секрете, никто не заспамит канал и любому указанному в нём сообщению можно верить. Идеально!p.s. Я пишу Parse.com, но Pubnub (без `.com`) просто потому, что мне так привычнее. Надеюсь, это никому не режет глаз.Бэкэнд — Parse.com
+Теперь было необходимо приступить к организации API сервера и его реализации. Напомню, что идея пайплайна такова:кастомный (через API) login()
+Parse.com cloud code
+создание юзера в БД
+триггер afterSave(), оповещающий Pubnub канал о логине юзера
+возвращение текущего пользователя в ответ на login()
+
+Для этого были созданы следующие API:Login
+Logout
+GetOnlineUsers
+GetNow
+
+Поясню насчет последнего. Я планировал использовать его для синхронизации клиентского времени с серверным. Сам API я реализовал, но вот до использования в клиенте так руки и не дошли. Однако само API я решил оставить.
+Заранее прошу прощения за запах кода. Ни разу не js-разработчик. Учту любые пожелания по его организации:Серверный код/*global Parse:false, $:false, jQuery:false */
+
+// Importas
+var _ = require('underscore'); // jshint ignore:line
+var moment = require('moment'); // jshint ignore:line
+
+// Constants
+var sessionObjName = "IMH_Session";
+var sessionLifetimeSec = 13;
+
+var channelName = "events";
+var publishKey = "pub-c-6271f363-519a-432d-9059-e65a7203ce0e",
+    subscribeKey = "sub-c-a3d06db8-410b-11e5-8bf2-0619f8945a4f",
+    httpRequestUrl = 'http://pubsub.pubnub.com/publish/' + publishKey + '/' + subscribeKey + '/0/' + channelName + '/0/';
+
+
+// Utils
+function Log(obj, tag) {
+    "use strict";
+
+    var loggingString = "Cloud_code: ";
+    if (tag != null) { // jshint ignore:line
+        loggingString += "[" + tag + "] ";
+    }
+    loggingString += JSON.stringify(obj) + "\n";
+
+    console.log(loggingString); // jshint ignore:line
+}
+
+function GetNow() {
+    "use strict";
+    return moment.utc();
+}
+
+// Supporting
+var baseSession = {udid: "", loginedAt: GetNow(), aliveTo: GetNow()};
+
+var errorHandler = function(error) {
+    "use strict";
+    Log(error.message, "error");
+};
+
+function DeleteSession(obj) {
+	obj.set("loginedAt", obj.get("aliveTo"));
+	SendEvent(obj); 
+    obj.destroy();
+}
+
+function DeleteDeadSessions() {
+    "use strict";
+
+    var query = new Parse.Query(sessionObjName); // jshint ignore:line
+    var promise = query.lessThanOrEqualTo("aliveTo", GetNow().toDate())
+        .each(function(obj)
+         {
+             Log(obj, "Delete dead session");
+			 DeleteSession(obj);
+         }
+    );
+	return promise;
+}
+
+function NewSession(udid) {
+    "use strict";
+
+    var session = _.clone(baseSession);
+    session.udid = udid;
+    session.loginedAt = GetNow();
+    session.aliveTo = GetNow().add({seconds: sessionLifetimeSec});
+
+    return session;
+}
+
+function GetSessionQuery() {
+    "use strict";
+    var objConstructor = Parse.Object.extend(sessionObjName); // jshint ignore:line
+	var query = new Parse.Query(objConstructor);
+    //query.select("udid", "loginedAt", "aliveTo"); //not work for some reason
+	return query;
+}
+
+function IsUserOnline(udid, onUserOnlineHanlder, onUserOfflineHanlder, onError) {
+	"use strict";
+
+	var userAlive = false;
+	var query = GetSessionQuery();
+	query.equalTo("udid", udid).greaterThanOrEqualTo("aliveTo", GetNow().toDate());
+	query.find({
+		success: function(result)
+		{
+			if (result.length == 0) {
+				onUserOfflineHanlder();
+			}
+			else {
+				onUserOnlineHanlder(result);
+			}
+		},
+		error: onError
+	});
+}
+
+function NewParseSession(session) {
+    "use strict";
+
+    var objConstructor = Parse.Object.extend(sessionObjName); // jshint ignore:line
+    var obj = new objConstructor();
+
+    obj.set({
+        udid: session.udid,
+        loginedAt: session.loginedAt.toDate(),
+        aliveTo: session.aliveTo.toDate()
+        }
+    );
+
+    return obj;
+}
+
+function SendEvent(session) {
+    "use strict";
+
+    Parse.Cloud.httpRequest({ // jshint ignore:line
+        url: httpRequestUrl + JSON.stringify(session),
+
+        success: function(httpResponse) {},
+        error: function(httpResponse) {
+            Log('Request failed with response code ' + httpResponse.status);
+        }
+    });
+}
+
+// API functions
+var API_GetNow = function(request, response) {
+    "use strict";
+
+	var onUserOnline = function(result) {
+		response.success( GetNow().toDate() );
+	};
+
+	var onUserOffline = function(error) {
+		response.error(error);
+	};
+
+	var onError = function(error) {
+		response.error(error);
+	};
+
+	IsUserOnline(request.params.udid, onUserOnline, onUserOffline, onError);
+};
+
+var API_GetOnlineUsers = function(request, response) {
+    "use strict";
+
+	var onUserOnline = function(result) {
+		var query = GetSessionQuery()
+		    .addDescending("aliveTo");
+		query.find({
+			success: function(result)
+			{
+				response.success( JSON.stringify(result) );
+			},
+			error: errorHandler
+		});
+	};
+
+	var onUserOffline = function(error) {
+		response.error(error);
+	};
+
+	var onError = function(error) {
+		response.error(error);
+	};
+
+    DeleteDeadSessions().always( function() {
+	    IsUserOnline(request.params.udid, onUserOnline, onUserOffline, onError);
+    });
+};
+
+var API_Login = function(request, response) {
+    "use strict";
+
+    var userUdid = request.params.udid;
+    var session = NewSession(userUdid);
+    var parseObject = NewParseSession(session);
+
+	Parse.Cloud.run("Logout", {udid: userUdid}).always( function() {
+		parseObject.save(null, {
+			success: function(obj) {
+				Log(obj, "Login:save");
+				response.success( JSON.stringify(parseObject) );
+			},
+			error: function(error) {
+				errorHandler(error);
+				response.error(error);
+			}
+		});
+	});
+};
+
+var API_Logout = function(request, response) {
+    "use strict";
+
+    var userUdid = request.params.udid;
+    var query = GetSessionQuery()
+        .equalTo("udid", userUdid);
+
+    query.each( function(obj) {
+        Log(obj, "Logout:destroy");
+		DeleteSession(obj);
+    }).done( function() {response.success();} );
+};
+
+
+// Bindings
+Parse.Cloud.afterSave(sessionObjName, function(request) { // jshint ignore:line
+    "use strict";
+
+	SendEvent(request.object);
+});
+
+// API definitions
+Parse.Cloud.define("GetNow", API_GetNow); // jshint ignore:line
+
+Parse.Cloud.define("GetOnlineUsers", API_GetOnlineUsers); // jshint ignore:line
+
+Parse.Cloud.define("Login", API_Login); // jshint ignore:line
+Parse.Cloud.define("Logout", API_Logout); // jshint ignore:line
+
+Как можно заметить, я обошелся без afterDelete() триггера. Причина в том, что с afterDelete() у меня возникали гонки. С одной стороны, только что вышедший пользователь сейчас удаляется и скоро пошлет оповещение в канал. С другой стороны он в ту же секунду пытается залогиниться снова. 
+В итоге, в канале будет видно нечто вроде «Х зашел», «Х зашел», «Х вышел». Последние два сообщения не на своих местах. Из-за подобного на клиенте бывали ситуации, когда вроде бы юзер ещё «жив» и вообще только-только зашел, но в онлайн списке не отображается, ведь если верить каналу, то он «мертв».Больше нюансов!
+Как отмечалось ранее, Parse.com вынуждает использовать Date, вместо какого-нибудь Timer'а для организации expireAt (в нашем случае, aliveTo). Но вот вопрос — а когда же проверять всех юзеров на то, «живы» ли они или уже «мертвы»?
+Одно из решений — использовать Job и удалять неактивных пользователей каждые 5-10 секунд. Но строго говоря, это уже не совсем реалтайм. Я хотел, чтобы пользователи «умирали» мгновенно, вне зависимости от какой-то бэкграуд-Job'ы (кстати, у неё ограничение на максимальное время выполнения — 15 минут. Так что её пришлось бы пересоздавать постоянно). Поэтому был реализован иной подход.
+Как выглядит обычная жизнь юзера:
+Login -&gt; GetOnlineUsers -&gt; Logout 
+или
+Login -&gt; GetOnlineUsers -&gt; свернул приложение, то есть, пропустил сообщения в канале -&gt; GetOnlineUsers -&gt; Logout
+Было решено удалять «мертвых» юзеров в тот момент, когда кто-нибудь запрашивает GetOnlineUsers. Это означает, что, по факту, в БД могут храниться «мертвые» юзеры хоть сколько долго до тех пор, пока кто-нибудь не запросит список «живых». В этот момент удалятся все мертвые пользователи (в лучших традициях ленивых вычислений).
+Таким образом, за «жизнью» юзеров придётся следить локально на клиенте. Оповещение в канале о смерти юзера придёт только в том случае, если он разлогинился сам. В противном случае, юзер считается живым вечно.AndroidPubnub
+Pubnub SDK, а точнее его бесплатную часть, очень легко использовать. Для начала была сделана обёртка над Pubnub, чтобы, если что, можно было использовать любой другой сервис:Обертка над Pubnub - Channelpublic class PubnubChannel extends Channel {
+	static private final String CHANNEL_NAME = "events";
+	static private final String SUBSCRIBE_KEY = "sub-c-a3d06db8-410b-11e5-8bf2-0619f8945a4f";
+
+	Pubnub pubnub = new Pubnub("", SUBSCRIBE_KEY);
+	Callback pubnubCallback = new Callback() {
+		@Override
+		public void connectCallback(String channel, Object message) {
+			if (listener != null) {
+				listener.onConnect(channel, "Connected: " + message.toString());
+			}
+		}
+
+		@Override
+		public void disconnectCallback(String channel, Object message) {
+			if (listener != null) {
+				listener.onDisconnect(channel, "Disconnected: " + message.toString());
+			}
+		}
+
+		@Override
+		public void reconnectCallback(String channel, Object message) {
+			if (listener != null) {
+				listener.onReconnect(channel, "Reconnected: " + message.toString());
+			}
+		}
+
+		@Override
+		public void successCallback(String channel, Object message, String timetoken) {
+			if (listener != null) {
+				listener.onMessageRecieve(channel, message.toString(), timetoken);
+			}
+		}
+
+		@Override
+		public void errorCallback(String channel, PubnubError error) {
+			if (listener != null) {
+				listener.onErrorOccur(channel, "Error occured: " + error.toString());
+			}
+		}
+	};
+
+	public PubnubChannel() {
+		setName(CHANNEL_NAME);
+	}
+
+	@Override
+	public void subscribe() throws ChannelException {
+		try {
+			pubnub.subscribe(CHANNEL_NAME, pubnubCallback);
+		} catch (PubnubException e) {
+			e.printStackTrace();
+			throw new ChannelException(ChannelException.CONNECT_ERROR, e);
+		}
+	}
+
+	@Override
+	public void unsubscribe() {
+		pubnub.unsubscribeAll();
+	}
+}
+
+Затем была сделана обёртка над обёреткой (да-да), чтобы отслеживать не какие-то сообщения в канале, а контретных юзеров:Обертка на Channel - ServerChannelpublic class ServerChannel {
+	Logger l = LoggerFactory.getLogger(ServerChannel.class);
+
+	JsonParser jsonParser;
+	Channel serverChannel;
+
+	ServerChannel.EventListener listener;
+	private final Channel.EventListener listenerAdapter = new Channel.EventListener() {
+		@Override
+		public void onConnect(String channel, String greeting) {
+
+		}
+
+		@Override
+		public void onDisconnect(String channel, String reason) {
+			if (listener != null) {
+				listener.onDisconnect(reason);
+			}
+		}
+
+		@Override
+		public void onReconnect(String channel, String reason) {
+
+		}
+
+		@Override
+		public void onMessageRecieve(String channel, String message, String timetoken) {
+			if (listener != null) {
+				ServerChannel.this.onMessageRecieve(message, timetoken);
+			}
+		}
+
+		@Override
+		public void onErrorOccur(String channel, String error) {
+			l.warn(String.format("%s : [error] %s", channel, error));
+			if (listener != null) {
+				ServerChannel.this.unsubscribe();
+			}
+		}
+	};
+
+	public ServerChannel(Channel serverChannel, JsonParser jsonParser) {
+		this.serverChannel = serverChannel;
+		this.jsonParser = jsonParser;
+	}
+
+	public final void setListener(@NonNull ServerChannel.EventListener listener) {
+		this.listener = listener;
+	}
+
+	public final void clearListener() {
+		listener = null;
+	}
+
+	public final void subscribe() throws ChannelException {
+		try {
+			serverChannel.setListener(listenerAdapter);
+			serverChannel.subscribe();
+		} catch (ChannelException e) {
+			e.printStackTrace();
+			serverChannel.clearListener();
+			throw e;
+		}
+	}
+	public final void unsubscribe() {
+		serverChannel.unsubscribe();
+		serverChannel.clearListener();
+	}
+
+	public void onMessageRecieve(String userJson, String timetoken) {
+		DyingUser dyingUser = jsonParser.fromJson(userJson, DyingUser.class);
+		if (dyingUser != null) {
+			if (dyingUser.isAlive()) {
+				listener.onUserLogin(dyingUser);
+			} else {
+				listener.onUserLogout(dyingUser);
+			}
+		}
+	}
+
+	public interface EventListener {
+		void onDisconnect(String reason);
+		void onUserLogin(DyingUser dyingUser);
+		void onUserLogout(DyingUser dyingUser);
+	}
+}
+Parse.com
+Опять же, ничего сложного. Вся логика хранится на сервере. Всё, что нам нужно — использовать API и парсить json в объекты.AuthApipublic class AuthApi extends Api {
+	static final String
+			API_Login = "Login",
+			API_Logout = "Logout";
+
+	@Inject
+	public AuthApi(JsonParser parser) {
+		super(parser);
+	}
+
+	public DyingUser login(@NonNull final String udid) throws ApiException {
+		DyingUser dyingUser;
+		try {
+			String jsonObject = ParseCloud.callFunction(API_Login, constructRequestForUser(udid));
+			dyingUser = parser.fromJson(jsonObject, DyingUser.class);
+		} catch (ParseException e) {
+			e.printStackTrace();
+			throw new ApiException(ApiException.LOGIN_ERROR, e);
+		}
+		return dyingUser;
+	}
+
+	public void logout(@NonNull final DyingUser dyingUser) {
+		try {
+			ParseCloud.callFunction(API_Logout, constructRequestForUser(dyingUser.getUdid()));
+		} catch (ParseException e) {
+			e.printStackTrace();
+		}
+	}
+}
+UserApipublic class UserApi extends Api {
+	static final String
+			API_GetOnlineUsers = "GetOnlineUsers";
+
+	@Inject
+	public UserApi(JsonParser parser) {
+		super(parser);
+	}
+
+	public final ArrayList&lt;DyingUser&gt; getOnlineUsers(@NonNull final DyingUser dyingUser) throws ApiException {
+		ArrayList&lt;DyingUser&gt; users;
+		try {
+			String jsonUsers = ParseCloud.callFunction(API_GetOnlineUsers, constructRequestForUser(dyingUser.getUdid()));
+			users = parser.fromJson(jsonUsers, new TypeToken&lt;List&lt;DyingUser&gt;&gt;(){}.getType());
+		} catch (ParseException e) {
+			e.printStackTrace();
+			throw new ApiException(ApiException.GET_USERS_ERROR, e);
+		}
+		return users;
+	}
+}
+
+Ну и базовый класс:Apiabstract class Api {
+	final JsonParser parser;
+
+	Api(JsonParser parser) {
+		this.parser = parser;
+	}
+
+	protected Map&lt;String, ?&gt; constructRequestForUser(@NonNull final String udid)
+	{
+		Map&lt;String, String&gt; result = new HashMap&lt;&gt;();
+		result.put("udid", udid);
+		return result;
+	}
+}
+
+Используя приведенные классы и их методы мы получаем доступ к логину, разлогину и получению онлайн списка пользователя.РеалтаймОбновление UI
+Так как юзеры «умирают» и довольно быстро, было решено выводить их оставшееся время жизни. Так как время жизни измеряется в секундах да и цель задачи в обеспечении реалтайма, то и обновляться UI должно не реже, чем раз в секунду. Для этого был сделан класс TimeTicker, объект которого хранится в Activity. Фрагменты Activity во время onAttach() получают от Activity() объект TimeTicker (для этого служит интерфейс TimeTicker.Owner) и подписываются на его события.TimeTickerpublic class TimeTicker extends Listenable&lt;TimeTicker.EventListener&gt; {
+	private static final long TICKING_PERIOD_MS_DEFAULT = 1000;
+	private static final boolean DO_INSTANT_TICK_ON_START_DEFAULT = true;
+	long tickingPeriodMs;
+	boolean doInstantTickOnStart;
+
+	final Handler uiHandler = new Handler(Looper.getMainLooper());
+	final Timer tickingTimer = new Timer();
+	TimerTask tickingTask;
+
+	public TimeTicker() {
+		this(DO_INSTANT_TICK_ON_START_DEFAULT);
+	}
+
+	public TimeTicker(boolean doInstantTickOnStart) {
+		this.doInstantTickOnStart = doInstantTickOnStart;
+		setTickingPeriodMs(TICKING_PERIOD_MS_DEFAULT);
+	}
+
+	public void setTickingPeriodMs(final long tickingPeriodMs) {
+		this.tickingPeriodMs = tickingPeriodMs;
+	}
+
+	public synchronized void start() {
+		if (tickingTask != null) {
+			stop();
+		}
+
+		tickingTask = new TimerTask() {
+			@Override
+			public void run() {
+				uiHandler.post(new Runnable() {
+					@Override
+					public void run() {
+						forEachListener(new ListenerExecutor&lt;TimeTicker.EventListener&gt;() {
+							@Override
+							public void run() {
+								getListener().onSecondTick();
+							}
+						});
+					}
+				});
+			}
+		};
+
+		long delay = (doInstantTickOnStart) ? 0 : tickingPeriodMs;
+		tickingTimer.scheduleAtFixedRate(tickingTask, delay, tickingPeriodMs);
+	}
+
+	public synchronized void stop() {
+		if (tickingTask != null) {
+			tickingTask.cancel();
+		}
+		tickingTask = null;
+		tickingTimer.purge();
+	}
+
+	public interface EventListener extends Listenable.EventListener {
+		void onSecondTick();
+	}
+
+	public interface Owner {
+		TimeTicker getTimeTicker();
+	}
+}
+
+Таким образом обеспечивается обновление UI раз в секунду, а значит, всё выглядит будто юзеры действительно постепенно умирают.Список «умирающих» юзеров
+Эта проблема мне показалась наиболее интересной из всех, связанных с данной задачей: у нас есть список юзеров, которые «умирают». Их время приближается к нулю, и когда это случается, юзер должен быть удален из списка.
+Самая простая реализация — привязать таймер к каждому юзеру и удалять его при достижении «смерти». Однако это не особо интересное решение. Давайте извращаться! Вот такая реализация вышла у меня с применением одного таймера и возможностью pause/resume (если приложение свернуто, например, это очень пригождается).Этот код я ни разу не рефакторил с тех пор, как написал его в первый раз, так что он может быть не особо хорошим:TemporarySetpublic class TemporarySet&lt;TItem&gt; extends Listenable&lt;TemporarySet.EventListener&gt; implements Resumable {
+	protected final SortedSet&lt;TemporaryElement&lt;TItem&gt;&gt; sortedElementsSet = new TreeSet&lt;&gt;();
+	protected final List&lt;TItem&gt; list = new ArrayList&lt;&gt;();
+
+	protected final Timer timer = new Timer();
+	protected TimerTask timerTask = null;
+	protected TemporaryElement&lt;TItem&gt; nextElementToDie = null;
+
+	boolean isResumed = false;
+
+	public TemporarySet() {
+		notifier = new TemporarySet.EventListener() {
+			@Override
+			public void onCleared() {
+				for (TemporarySet.EventListener listener : getListenersSet()) {
+					listener.onCleared();
+				}
+			}
+
+			@Override
+			public void onAdded(Object item) {
+				for (TemporarySet.EventListener listener : getListenersSet()) {
+					listener.onAdded(item);
+				}
+			}
+
+			@Override
+			public void onRemoved(Object item) {
+				for (TemporarySet.EventListener listener : getListenersSet()) {
+					listener.onRemoved(item);
+				}
+			}
+		};
+	}
+
+	public boolean add(TItem object, DateTime deathTime) {
+		TemporaryElement&lt;TItem&gt; element = new TemporaryElement&lt;&gt;(object, deathTime);
+		return _add(element);
+	}
+
+	public boolean remove(TItem object) {
+		TemporaryElement&lt;TItem&gt; element = new TemporaryElement&lt;&gt;(object);
+		return _remove(element);
+	}
+
+	public void clear() {
+		_clear();
+	}
+
+	public final List&lt;TItem&gt; asReadonlyList() {
+		return Collections.unmodifiableList(list);
+	}
+
+	private synchronized void _clear() {
+		cancelNextDeath();
+		list.clear();
+		sortedElementsSet.clear();
+
+		notifier.onCleared();
+	}
+
+
+	private synchronized boolean _add(TemporaryElement&lt;TItem&gt; insertingElement) {
+		boolean wasInserted = _insertElementUnique(insertingElement);
+
+		if (wasInserted) {
+			if (nextElementToDie != null &amp;&amp;
+					nextElementToDie.deathTime.isAfter(insertingElement.deathTime)) {
+				cancelNextDeath();
+			}
+
+			if (nextElementToDie == null) {
+				openNextDeath();
+			}
+
+			notifier.onAdded(insertingElement.object);
+		}
+
+		return wasInserted;
+	}
+
+	private synchronized boolean _remove(TemporaryElement&lt;TItem&gt; deletingElement) {
+		boolean wasDeleted = _deleteElementByObject(deletingElement);
+
+		if (wasDeleted) {
+			if (nextElementToDie.equals(deletingElement)) {
+				cancelNextDeath();
+				openNextDeath();
+			}
+
+			notifier.onRemoved(deletingElement.object);
+		}
+
+		return wasDeleted;
+	}
+
+	private synchronized void openNextDeath() {
+		cancelNextDeath();
+		if (sortedElementsSet.size() != 0) {
+			nextElementToDie = sortedElementsSet.first();
+			timerTask = new TimerTask() {
+				@Override
+				public void run() {
+					_remove(nextElementToDie);
+				}
+			};
+
+			DateTime now = new DateTime();
+			Duration duration = TimeUtils.GetNonNegativeDuration(now, nextElementToDie.deathTime);
+
+			timer.schedule(timerTask, duration.getMillis());
+		}
+	}
+
+	private synchronized void cancelNextDeath() {
+		if (timerTask != null) {
+			timerTask.cancel();
+		}
+		timer.purge();
+		nextElementToDie = null;
+		timerTask = null;
+	}
+
+	private synchronized Iterator&lt;TemporaryElement&lt;TItem&gt;&gt; findElement(TemporaryElement&lt;TItem&gt; searchingElement) {
+		Iterator&lt;TemporaryElement&lt;TItem&gt;&gt; resultIterator = null;
+		for (Iterator&lt;TemporaryElement&lt;TItem&gt;&gt; iterator = sortedElementsSet.iterator(); iterator.hasNext() &amp;&amp; resultIterator == null;) {
+			if (iterator.next().equals(searchingElement)) {
+				resultIterator = iterator;
+			}
+		}
+		return resultIterator;
+	}
+
+	private synchronized boolean _insertElementUnique(TemporaryElement&lt;TItem&gt; element) {
+		boolean wasInserted = false;
+
+		Iterator&lt;TemporaryElement&lt;TItem&gt;&gt; iterator = findElement(element);
+		if (iterator == null) {
+			wasInserted = true;
+			sortedElementsSet.add(element);
+			list.add(element.object);
+		}
+
+		return wasInserted;
+	}
+
+	private synchronized boolean _deleteElementByObject(TemporaryElement&lt;TItem&gt; element) {
+		boolean wasDeleted = false;
+
+		Iterator&lt;TemporaryElement&lt;TItem&gt;&gt; iterator = findElement(element);
+		if (iterator != null) {
+			wasDeleted = true;
+			iterator.remove();
+			list.remove(element.object);
+		}
+
+		return wasDeleted;
+	}
+
+	@Override
+	public void resume() {
+		isResumed = true;
+		openNextDeath();
+	}
+
+	@Override
+	public void pause() {
+		cancelNextDeath();
+		isResumed = false;
+	}
+
+	@Override
+	public boolean isResumed() {
+		return isResumed;
+	}
+
+	public interface EventListener extends Listenable.EventListener {
+		void onCleared();
+		void onAdded(Object item);
+		void onRemoved(Object item);
+	}
+}
+
+Хочу заметить, что здесь есть неиспользуемый мною метод asReadonlyList. Раньше он применялся в качестве аргумента Adapter для ListFragment, что позволяло и вовсе не использовать никаких EventListener. Но позднее я решил отойти от этой затеи, а вот код решил оставить (для будущего себя, чтобы видеть, как делать не стоит).
+Самая большая вакханалия в этом списке творится в методах findElement, _insertElementUnique и _deleteElementByObject. Причина в том, что SortedSet хранит объекты, отсортированные по дате и, соответственно, поиск происходит тоже по дате. Однако когда юзер «умирает», сервер посылает сообщение, в котором loginedAt == deathAt, что приводит к сумасшествию SortedSet и всего TemporarySet.
+Так как в Java нет нормальных Pair&lt;A,B&gt; (upd: как верно указал  Bringoff, всё же есть), была реализована обёртка:TemporaryElementclass TemporaryElement&lt;T&gt; implements Comparable {
+	protected final T object;
+	protected final DateTime deathTime;
+
+	public TemporaryElement(@NonNull T object, @NonNull DateTime deathTime) {
+		this.deathTime = deathTime;
+		this.object = object;
+	}
+
+	public TemporaryElement(@NonNull T object) {
+		this(object, new DateTime(0));
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+
+		TemporaryElement&lt;?&gt; that = (TemporaryElement&lt;?&gt;) o;
+
+		return object.equals(that.object);
+	}
+
+	@Override
+	public int hashCode() {
+		return object.hashCode();
+	}
+
+	@Override
+	public int compareTo(@NonNull Object another) {
+		TemporaryElement a = this,
+				b = (TemporaryElement) another;
+
+		int datesComparisionResult = a.deathTime.compareTo(b.deathTime);
+		int objectsComparisionResult = a.hashCode() - b.hashCode();
+		return (datesComparisionResult != 0) ? datesComparisionResult : objectsComparisionResult;
+	}
+}
+
+В итоге, реализованный TemporarySet позволяет добавлять/удалять юзеров со временем жизни, после чего останется лишь реализовать интерфейс TemporarySet.EventListener и ждать.Заключение
+Задачка оказалась сложнее, чем изначально планировалась. Я потратил тучу времени на разбор Parse.com Guide. Вот например один из ньюансов:afterSaveParse.Cloud.afterSave("Foo", function(request) {}); // custom Foo object
+Parse.Cloud.afterSave("User", function(request) {}); // custom(!) User object
+Parse.Cloud.afterSave(Parse.User, function(request) {}); // Parse.com User object
+Parse.Cloud.afterSave(Parse.Session, function(request) {}); // error! can't bind to Parse.Session
+
+Ещё много времени было потрачено на анимацию градиента. Точнее, не столько на анимацию, сколько на поиск готового решения. К сожалению, так и не нашел пригодный для меня способ, поэтому написал своё решение. Подробно я расписал на stackoverflow на ломаном английском.
+Весь мой код можно посмотреть здесь.
+Справедливости ради, хочется отметить, что было бы неплохо добавить к API что-то вроде GetUsersChangesAfterDate(), который позволял бы получить изменения в списке пользователей после указанной даты (то бишь, свернул приложение -&gt; развернул -&gt; GetUsersChangesAfterDate).
+И в конце я бы хотел задать несколько вопросов читателю:Можно ли было это сделать проще, но так же бесплатно?
+Есть ли более простой способ обновления UI каждые N секунд?
+Что делать со временем жизни «0:0» у юзера? Следует ли искусственно добавить 1 секунду ко времени жизни, чтобы юзер «умирал» после «0:1»? Или это решается как-то иначе? Или оставить «0:0» — это нормально?
+
+    

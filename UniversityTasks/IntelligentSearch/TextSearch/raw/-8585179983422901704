@@ -1,0 +1,107 @@
+﻿#TITLE:Настраиваем сочетания клавиш в Linux наподобие Mac OS X
+
+      
+Раньше, у меня довольно часто возникала такая ситуация, когда одновременно работаешь в терминале и, например, в браузере.
+После нескольких часов работы начинаешь путаться и в терминале вместо [Ctrl]+[Shift]+[C] нажимаешь [Ctrl]+[C], а в браузере наоборот. В итоге в терминале вы получаете прерывание а в браузере вместо ожидаемого эффекта у вас медленно прогружается дебаггер.
+В один прекрасный момент меня это достало и я решил, что пора что-то менять...
+До того как я переустановил на своей рабочей машине OSX на Linux, я успел привыкнуть к довольно приятной реализации сочетаний клавиш. А точнее к тому, что все основные операции, такие как «Вырезать», «Копировать» и «Вставить», все они используют кнопку [Cmd] (аналог кнопки [Win] на PC), а не [Ctrl], как это сделано по умолчанию в Linux и Windows. Это очень удобно, так как, повторюсь, если вы часто работаете в терминале, вы имеете единые сочетания клавиш для копирования и вставки как и во всех других приложениях, а прерывание всегда остается на своем месте [Ctrl]+[C].
+Вы так же олучите профит от такого способа, если вы используете тайловый оконный менеджер, т.к. в большинстве случаев для использования стандартных операций и переключений между тэгами/окнами вам не придется снимать палец с вашего modkey
+Конечно настраивать сочетания клавиш можно в конфигах каждого определенного приложения, но это слишком не удобно, к тому же не каждое приложение поддерживает такую настройку. По этому я решил просто забиндить стандартные сочетания клавиш на те, что нужны мне.
+Т.е. нажимая [Win]+[C], ваш терминал будет думать, что вы нажимаете [Ctrl]+[Shift]+[C], а все остальные приложения, что [Ctrl]+[C].
+Для реализации задуманного нам понадобятся программа, которая будет отслеживать наши нажатия, например xbindkeys или же можно воспользоваться штатными возможностями вашего оконного менеджера, и эмулятор нажатий на клавиши, их несколько: xdotool, xte и xvkbd.Правда с первыми двумя у меня возникал один преинтереснийший глюк: если например вы нажимете [Win]+[A], эмулятор покорно передаст [Ctrl]+[A] в приложение, а приложение увидит что нажаты все три клавиши [Win]+[Ctrl]+[A] и не обработает такое сочетание. Этот весьма неприятный баг было не просто обнаружить, так как не помогала даже опция --clearmodifiers для xdotool, которая, казалось бы, специально для такого случая и создана. В xkdbb подобного поведения замечено не было.
+Начнем, пожалуй с xbindkeys. Отключем все CapsLock, NumLock и прочие модификаторы, запускаем:$ xbindkeys -k
+
+Открывается окошко, в окошке нажимаем сочетание [Win]+[A], в терминале получаем такой вывод:"(Scheme function)"
+    m:0x40 + c:38
+    Mod4 + a
+
+где Mod4 — это наша клавиша [Win]. Это же можно использовать для написания конфига xbindkeys:
+Открываем ~/.xbindkeysrc и пишем:"xvkbd -xsendevent -text '\[Control_L]a'"
+    Mod4 + a
+Вариант для xdotool и xtexdotool"xdotool key --delay 0 --clearmodifiers ctrl+a"
+    Mod4 + a
+
+xte"xte 'keydown Control_L' 'key A' 'keyup Control_L'"
+    Mod4 + a
+
+Теперь запустим xbindkeys:$ xbindkeys
+
+И попробуем нажать [Win]+[A], эффект будет такой-же как и если бы вы нажали [Ctrl]+[A]
+После того что вы убедитесь, что все работает, можно продолжить править кофиг, но перед следующим запуском нужно с начала завершить предыдущий процесс xbindkeys:$ pkill xbindkeys
+
+Ок, с этим разобрались, но как нам передавать различные сочетания клавиш, при нажатии одних и тех же кнопок, в зависимости от программы с которой мы работем?
+На помощь приходит все тот же xdotool и xprop, с помощью которых мы определяем является ли активное окно терминалом.
+Давайте напишем простенький скрипт и положим его в /bin/copypaste.sh:#!/bin/bash
+W=`xdotool getactivewindow`
+S1=`xprop -id ${W} |awk '/WM_CLASS/{print $4}'`
+S2='"URxvt"'                                               #Мой любимый терминал
+S3='"XTerm"'                                               #Мой второй терминал
+
+if [ $1 = "copy" ]; then                                   # Проверяем аргумент на copy                                    
+    if [ $S1 = $S2 ] || [ $S1 = $S3 ]; then                # Если это терминал
+    xvkbd -xsendevent -text '\[Control_L]\[Shift_L]\[C]'   # Отправляем [Ctrl]+[Shift]+[C]
+    else                                                   # Если нет 
+    xvkbd -xsendevent -text '\[Control_L]c'                # Отправляем [Ctrl]+[C]
+    fi  
+fi
+
+if [ $1 = "paste" ]; then                                  # Тоже самое для аргумента paste
+    if [ $S1 = $S2 ] || [ $S1 = $S3 ]; then
+    xvkbd -xsendevent -text '\[Control_L]\[Shift_L]\[V]'
+    else
+    xvkbd -xsendevent -text '\[Control_L]v'
+    fi  
+fi
+
+Используйте xprop, если вы не знаете какой класс использует ваша программа:xprop
+и клик на окне
+Не забываем сделать скрипт исполняемым:# chmod +x /bin/copypaste.sh
+
+Работает он вот так:$ copypaste.sh copy
+$ copypaste.sh paste
+
+Это же и допишем в наш конфиг ~/.xbindkeysrc:"xvkbd -xsendevent -text '\[Control_L]a'"
+    Mod4 + a
+"copypaste.sh copy"
+    Mod4 + c
+"copypaste.sh paste"
+    Mod4 + v
+
+Подобным образом настраиваем сочетания для остальных клавиш. 
+Готовый конфиг:для xbindkeys~/.xbindkeysrc"copypaste.sh copy"
+    Mod4 + c 
+"copypaste.sh paste"
+    Mod4 + v 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]x'"
+    Mod4 + x 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]z'"
+    Mod4 + z 
+"xvkbd -xsendevent -text '\\[Control_L]\\[Shift_L]\\[Z]'"
+    Shift+Mod4 + z 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]q'"
+    Mod4 + q 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]y'"
+    Mod4 + y 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]a'"
+    Mod4 + a 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]s'"
+    Mod4 + s 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]o'"
+    Mod4 + o 
+"/usr/bin/xvkbd -xsendevent -text '\[Control_L]f'"
+    Mod4 + f 
+для awesome 3.5awful.key({ modkey,           }, "c",     function () awful.util.spawn("copypaste.sh copy") end),
+awful.key({ modkey,           }, "v",     function () awful.util.spawn("copypaste.sh paste") end),
+awful.key({ modkey,           }, "x",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]x") end),
+awful.key({ modkey,           }, "z",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]z'") end),
+awful.key({ modkey, "Shift"   }, "z",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]\\[Shift_L]\\[Z]'") end),
+awful.key({ modkey,           }, "y",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]y'") end),
+awful.key({ modkey,           }, "a",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]a'") end),
+awful.key({ modkey,           }, "s",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]s'") end),
+awful.key({ modkey,           }, "o",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]o'") end),
+awful.key({ modkey,           }, "f",     function () awful.util.spawn("xvkbd -xsendevent -text '\\[Control_L]f'") end),
+
+
+      
+      
+    

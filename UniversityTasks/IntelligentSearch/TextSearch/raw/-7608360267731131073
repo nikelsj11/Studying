@@ -1,0 +1,103 @@
+﻿#TITLE:Firebase-queue: стероиды для firebase
+
+      Про Firebase уже не раз писали на хабре. Ключевым преимуществом этой системы является то, что в некоторых случаях на ней можно построить завершенное веб-приложение работающее с данными в реальном времени. Располагая возможностью редактирования правил доступа к базе данных и тем что эти правила можно устроить на основе пользователей (которых сюда тоже завезли), в принципе можно обойтись и без какого-либо backend'a. Но обычно возникают такие проблемы, которые лучше решить «со стороны» чем плодить велосипеды в правилах (например).
+В середине мая разработчики объявили о выходе firebase-queue. Это javascript-библиотека с помощью которой можно организовать работу с данными в базе, как с задачами. Работает это следующим образом: определяем ячейку задач, используя Queue() на сервере устанавливаем связь. Теперь, когда в этой ячейке появится новый элемент, сервер сделает необходимые действия, если нужно оповестит о прогрессе и ошибках, и по завершению удалит задачу. В итоге мы получаем возможность покрыть много проблем возникающих в разработке с Firebase — согласовать данные, провести их дополнительную валидацию (например проверить на спам и мат) отправить их в другое место (например загрузить картинку на хостинг) и другое.
+В качестве примера возьмем вышеупомянутый вопрос из stackoverflow. Имеем объект с n-ым количеством элементов. Хотим после добавления/удаления элемента обновлять счетчик общего количества. В базе определим два объекта: elements и length. Также в правилах укажем ячейки задач addnode и rmnode. В них с клиента будем отправлять тот объект, который хотим получить и удалить соответственно из elements.var ref = new Firebase('https://***.firebaseio.com');
+
+var addNode = function(text) {
+  // используем kriskowal/q для промисов
+  var deferred = Q.defer();
+  var task = ref.child('addnode').push({ new: text }, function(e) { if (e) {
+    deferred.reject(e);
+  } else {
+    /* Следим за изменениями в нашей задаче. Вызов progress() с сервера
+       изменит значение _progress, resolve() - удалит задачу.
+    */     
+    ref.child('addnode/'+task.key()).on('value', function(d) {
+      var v = d.val();
+      if(v == null) {
+        deferred.resolve();
+      } else {
+        deferred.notify(v._progress);
+      }
+    })
+  }});
+  return deferred.promise;
+}
+
+var rmNode = function(k) {
+  var deferred = Q.defer();
+  var task = ref.child('rmnode').push({ key: k }, function(e) { if (e) {
+    deferred.reject(e);
+  } else {
+    ref.child('addnode/'+task.key()).on('value', function(d) {
+      var v = d.val();
+      if(v == null) {
+        deferred.resolve();
+      } else {
+        deferred.notify(v._progress);
+      }
+    })
+  }});
+  return deferred.promise;
+}
+
+Firebase-queue прицепляем на ячейки задач. Как только появляется новая задача, уже на сервере производим необходимые манипуляции:var ref = new Firebase('https://***.firebaseio.com');
+
+var length;
+
+ref.child('length').once('value', function(d) {
+  length = d.val();
+});
+
+var addNodeQueue = new Queue(ref.child('addnode'), {}, function(data, progress, resolve, reject) {
+  ref.child('elements').push(data.new, function(e) { if (e) {
+    reject(e);
+  } else {
+    progress(50);
+    length++;
+    ref.child('length').set(length, function(e) { if (e) {
+      reject(e.message);
+    } else {
+      resolve();
+    }});
+  }});
+});
+
+var rmNodeQueue = new Queue(ref.child('rmnode'), {}, function(data, progress, resolve, reject) {
+  ref.child('elements/'+data.key).remove(function(e) { if (e) {
+    reject(e);
+  } else {
+    progress(50);
+    length--;
+    ref.child('length').set(length, function(e) { if (e) {
+      reject(e);
+    } else {
+      resolve();
+    }});
+  }});
+});
+
+Правила будут следующие:{
+  "rules": { 
+    "addnode": {
+      "$taskId": { 
+        "new": {
+          ".validate": "newData.isString()"
+        }
+      }
+    },
+    "rmnode": {
+      "$taskId": { 
+        "key": {
+          ".validate": "root.child('elements/'+newData.val()).exists()"
+          // элемент с этим ключом должен находится в бд
+        }
+      }
+    }
+  }
+}
+
+Дабы не перегружать и сохранить обзорный характер статьи, решил опустить рассказ о правилах безопасности для задач, спецификациях задач и опциях, которые можно указать для Queue(). Это все прекрасно (как и вся их документация) описано на странице проекта на github'е.
+      
+    

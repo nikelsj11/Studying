@@ -1,0 +1,225 @@
+﻿#TITLE:Android Data Binding in RecyclerView
+
+      
+На Google IO 2015 анонсировали новую библиотеку Data Binding Library. Основная ее задача — вынесения взаимодействия модели и View в xml-файлы. Она значительно упрощает написание кода и избавляет от необходимости использования методов findByViewId(), добавления ссылок на view-элементы внутри Activity/Fragment’ов. Также она позволяет использовать кастомные атрибуты, привязывая их к статическим методам. Поскольку статьей просто по Data Binding уже достаточно, но по его использованию в RecycleView всего ничего, восполним этот пробел.Настройка
+Для начала заходим в файл build.gradle, который лежит в корневом каталоге проекта. В блоке dependencies выставляем:buildscript {
+   repositories {
+       jcenter()
+   }
+   dependencies {
+       classpath "com.android.tools.build:gradle:1.3.0"
+       classpath "com.android.databinding:dataBinder:1.0-rc1"
+   }
+}
+
+allprojects {
+   repositories {
+       jcenter()
+   }
+}
+
+Далее подключим Data Binding плагин к проекту. Для этого в build.gradle добавляем строчку с плагином. Также проверяем, чтобы compileSdkVersion была 23.apply plugin: 'com.android.application'
+apply plugin: 'com.android.databinding'
+Биндинг
+Перейдем к созданию xml-файла. Он, как обычно, создается в паке res/layoyt. В качестве корневого тега используем layout. Android Studio может подсвечивать его красным или предлагать выставить ширину и высоту, но мы ее игнорируем. &lt;layout xmlns:android="http://schemas.android.com/apk/res/android" 
+   xmlns:app="http://schemas.android.com/apk/res-auto"&gt; 
+
+   &lt;data&gt; 
+   &lt;/data&gt; 
+
+   &lt;!-- Сюда добавляем свой layout --&gt; 
+
+&lt;/layout&gt;
+
+Чтобы создался биндер-класс, который и будет привязывать модель к view, нужно привязать xml к модели. Для этого внутри тега  указываем имя и путь к нашей модели. В качестве примера будет отображатьcя список фильмов.public class Movie {
+   public boolean isWatched;
+   public String image;
+   public String description;
+   public String title;
+
+   public Movie(boolean isWatched, String image, String description, String title) {
+       this.isWatched = isWatched;
+       this.image = image;
+       this.description = description;
+       this.title = title;
+   }
+}
+&lt;layout xmlns:android="http://schemas.android.com/apk/res/android" 
+   xmlns:app="http://schemas.android.com/apk/res-auto"&gt; 
+
+  &lt;data&gt;
+   &lt;variable
+       name="movie"
+       type="com.example.databinding.Movie" /&gt;
+  &lt;/data&gt;
+
+ &lt;!-- Сюда добавляем свой layout --&gt; 
+
+&lt;/layout&gt;
+
+Осталось добавить свой layout и привязать к нему модель. Пусть у каждого фильма будет картинка, заголовок и краткое описание. Чтобы указать, что поле будет считываться из модели используем “@{*какое поле из модели использовать*}”.&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;layout xmlns:android="http://schemas.android.com/apk/res/android"
+   xmlns:app="http://schemas.android.com/apk/res-auto"&gt;
+
+   &lt;data&gt;
+       &lt;variable
+           name="movie"
+           type="com.example.databinding.Movie" /&gt;
+   &lt;/data&gt;
+
+   &lt;android.support.v7.widget.CardView
+       android:layout_width="match_parent"
+       android:layout_height="match_parent"
+       android:orientation="vertical"
+       android:layout_margin="8dp"&gt;
+
+       &lt;RelativeLayout
+           android:id="@+id/relativeLayout"
+           android:layout_width="match_parent"
+           android:layout_height="wrap_content"&gt;
+
+           &lt;ImageView
+               android:id="@+id/imageView"
+               ...              
+               app:imageUrl="@{movie.image}"/&gt;
+           &lt;TextView
+               android:id="@+id/textView"
+               ...
+               android:text="@{movie.title}"
+               android:textAppearance="?android:attr/textAppearanceLarge" /&gt;
+
+           &lt;TextView
+               android:id="@+id/textView2"
+               ...
+               android:text="@{movie.description}"
+               android:textAppearance="?android:attr/textAppearanceSmall" /&gt;
+
+       &lt;/RelativeLayout&gt;
+
+   &lt;/android.support.v7.widget.CardView&gt;
+
+&lt;/layout&gt;
+
+С android:text="@{movie.title}" и android:text="@{movie.description}" все понятно — просто в качестве текста будет показано соответствующее поле, но что на счет app:imageUrl="@{movie.image}"? Тут начинается реальная магия Data Binding. Вы можете добавлять сколько угодно кастомных атрибутов и даже не прописывать их в atts.xml, а аннотация  @BindingAdapter() поможет вам их обработать. Ниже будет показано, как обрабатывать такие аннотации.
+Перейдем к адаптеру. Напишем простой RecyclerView.Adapter. Начнем с ViewHolder. Как он выглядел раньше:public static class MovieItemViewHolder extends RecyclerView.ViewHolder {
+   private TextView title, description;
+   private ImageView image;
+
+   public ViewHolder(View v) {
+       super(v);
+       title = (TextView) v.findViewById(R.id.textView);
+       description = (TextView) v.findViewById(R.id.textView2);
+       image = (ImageView) v.findViewById(R.id.imageView);
+   }
+}
+
+Как он выглядел после Butter Knife:public static class MovieItemViewHolder extends RecyclerView.ViewHolder {
+   @Bind(R.id.textView) TextView title;
+   @Bind(R.id.textView2) TextView description;
+   @Bind(R.id.imageView) ImageView image;
+
+   public ViewHolder(View v) {
+       super(v);
+       ButterKnife.bind(v);
+   }
+}
+
+Как он выглядит после DataBinding:public class MovieItemViewHolder extends RecyclerView.ViewHolder {
+
+   MovieItemBinding binding;
+
+   public MovieItemViewHolder(View v) {
+       super(v);
+       binding = DataBindingUtil.bind(v);
+   }
+}
+
+Далее нас интересуют два основных метода адаптера: onCreateViewHolder и onBindViewHolder. Созданием и биндигом будет заниматься MovieItemBinding. Он генерируется по названию xml, который мы написали выше. В данном случае файл xml назывался movie_item.xml. @Override
+public MovieItemViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+   LayoutInflater inflater = LayoutInflater.from(parent.getContext());
+   MovieItemBinding binding = MovieItemBinding.inflate(inflater, parent, false);
+   return new MovieItemViewHolder(binding.getRoot());
+}
+
+Теперь перейдем к onBindViewHolder, как он выглядел раньше:@Override
+public void onBindViewHolder(MovieItemViewHolder holder, int position) {
+   Movie movie = Movie.ITEMS[position];
+   holder.title.setText(movie.title);
+   holder.description.setText(movie.description);
+   Picasso.with(holder.image.getContext()).load(movie.image).into(holder.image);
+}
+
+Как он выглядит теперь:@Override
+public void onBindViewHolder(MovieItemViewHolder holder, int position) {
+   Movie movie = Movie.ITEMS[position];
+   holder.binding.setMovie(movie);
+}
+
+Но это еще не всё, как на счет кастомного app:imageUrl="@{movie.image}"?.. Опять же все просто: внутри адаптера делаем статический метод с аннотацией  @BindingAdapter. Внутрь аннотации передаем наш аттрибут. В итоге получаем@BindingAdapter("bind:imageUrl")
+public static void loadImage(ImageView imageView, String v) {
+   Picasso.with(imageView.getContext()).load(v).into(imageView);
+}
+
+На вход поступит imageView и то, что передаст модель в качестве image. Теперь все заработает.Остальные полезности
+В модели Movie была переменная isWatched. Допустим, мы хотим, чтобы у просмотренных и новых фильмов были разные обработчики на клик. С DataBinding’ом теперь это проще простого. Напишем обработчик нажатия для фильма.public interface MovieClickHandler{
+   void onNewClick(View view);
+   void onWatchedClick(View view);
+}
+
+Добавим его в xml-файл в тег data....
+
+   &lt;data&gt;
+       ...
+       &lt;variable name="click" type="com.example.databinding.MovieClickHandler" /&gt;
+
+   &lt;/data&gt;
+...
+           &lt;ImageView
+            ...
+           android:onClick="@{movie.isWatched ? click.onWatchedClick : click.onNewClick}"/&gt;
+         
+...
+
+Теперь в методе адаптера onBindViewHolder можно засетить наш лисенер. Как и в случае с биндером, название метода генерируется соотвественному названию переменной в xml-файле.public void onBindViewHolder(MovieItemViewHolder holder, int position) {
+   Movie movie = Movie.ITEMS[position];
+   holder.binding.setMovie(movie);
+   holder.binding.setClick(new MovieClickHandler() {
+       @Override
+       public void onWatchedClick(View view) {
+
+       }
+
+       @Override
+       public void onOldClick(View view) {
+
+       }
+   });
+}
+
+Пусть по загрузке картинка у просмотренных фильмов будет черно-белая. Для преобразование картинки добавим новый атрибут. &lt;ImageView
+   ...
+   app:filter='@{movie.isWatched ? "grey" : null}'
+   .../&gt;
+
+В адаптере через  @BindingAdapter реализуем обработку@BindingAdapter("bind:filter")
+public static void applyFilter(ImageView imageView, String v) {
+   imageView.setColorFilter(null);
+   if("grey".equals(v)){
+       ColorMatrix matrix = new ColorMatrix();
+       matrix.setSaturation(0);
+       ColorMatrixColorFilter cf = new ColorMatrixColorFilter(matrix);
+       imageView.setColorFilter(cf);
+   }
+}
+
+Также очень удобно использовать стабовые значения, если одно из полей пустое.&lt;TextView
+   ...
+   android:text='@{movie.title ?? "unknown"}'
+   ... /&gt;
+
+Стоит также отметить, что внутри MovieItemBinding содержатся ссылки на все view, у которых есть ID в xml-файле. Итог
+Библиотека очень упрощает работу с RecycleView, количество кода при написании теперь уменьшается в разы, при этом никаких if/else для колбеков и данных. С JavaRX можно еще больше упростить обновление данных, пока правда оно работает только в одну сторону: при изменении данных обновляется UI, но не наоборот.Полезные ссылки:Тестовый проект.Официальная документация.Быстрый старт Data Binding в Android.
+
+      
+      
+    

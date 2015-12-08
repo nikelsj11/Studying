@@ -1,0 +1,228 @@
+﻿#TITLE:Логируем контекст исключений
+
+      В преддверии Дня программиста и по следам Дня тестировщика хочу рассказать о том как упростить жизнь и тем и другим в их общем деле — разработке и отладке ПО.
+А именно — расскажу о том как сделать исключения С++ более информативными, а логирование ошибок — более компактным.
+После полутора лет работы с Java я привык к исключениям содержащим в себе StackTrace наподобие
+Exception in thread "main" java.lang.IllegalStateException: A book has a null property
+        at com.example.myproject.Author.getBookIds(Author.java:38)
+        at com.example.myproject.Bootstrap.main(Bootstrap.java:14)
+Caused by: java.lang.NullPointerException
+        at com.example.myproject.Book.getId(Book.java:22)
+        at com.example.myproject.Author.getBookIds(Author.java:35)
+        ... 1 more
+
+Переключившись на С++ я через какое-то время был поражён неинформативностью исключений в плане выявления причин ошибки и дальнейшей отладки. Пришлось логировать прохождение всех важных точек программы, чтобы по логам понять где же именно что-то пошло не так и привело к исключению. 
+Далее я представлю упрощённую эволюцию логирования, через которую прошёл сам.Исходная программа, которую мы будем отлаживать и улучшатьvoid foo(int a)
+{
+	if (a == 0)
+	{
+		throw runtime_error("foo throw because zero argument");
+	}
+}
+
+void bar(int a)
+{
+	foo(a - 10);
+}
+
+int main()
+{
+	try
+	{
+		for (int i = 0; i &lt; 100; i++)
+		{
+			bar(i);
+		}
+	}
+	catch (const exception &amp;e)
+	{
+		cerr &lt;&lt; "Caught exception: " &lt;&lt; e.what() &lt;&lt; endl;
+	}
+	return 0;
+}
+
+В данном виде не зная ничего о пути вызова foo и функции bar очень сложно понять что делать с полученным исключениемCaught exception: foo throw because zero argumentДобавляем чуть-чуть логовvoid bar(int a)
+{
+	cerr &lt;&lt; "Calling foo(" &lt;&lt; a - 10 &lt;&lt; ")" &lt;&lt; endl;
+	foo(a - 10);
+}
+
+int main()
+{
+	try
+	{
+		for (int i = 0; i &lt; 100; i++)
+		{
+			cerr &lt;&lt; "Calling bar(" &lt;&lt; i &lt;&lt; ")" &lt;&lt; endl;
+			bar(i);
+		}
+	}
+	catch (const exception &amp;e)
+	{
+		cerr &lt;&lt; "Caught exception: " &lt;&lt; e.what() &lt;&lt; endl;
+	}
+	return 0;
+}
+Результат выполнения:Calling bar(0)
+Calling foo(-10)
+Calling bar(1)
+Calling foo(-9)
+Calling bar(2)
+Calling foo(-8)
+Calling bar(3)
+Calling foo(-7)
+Calling bar(4)
+Calling foo(-6)
+Calling bar(5)
+Calling foo(-5)
+Calling bar(6)
+Calling foo(-4)
+Calling bar(7)
+Calling foo(-3)
+Calling bar(8)
+Calling foo(-2)
+Calling bar(9)
+Calling foo(-1)
+Calling bar(10)
+Calling foo(0)
+Caught exception: foo throw because zero argument
+Теперь понятно что произошло, но лог оказался чересчур захламлённым. А представим кошмар, в который это превратиться, если программа должна обработать все файлы в директории, на каждый файл приходится 5 строчек лога и исключение возникло через 1000 файлов. Итого — 5000 строк лога о том, как всё хорошо, и 10 строк лога об ошибке.
+За время чтения этого лога проклятия коллег-разработчиков и тестировщиков, которые вместо праздника читают мой лог и пишут баг-репорт, загонят мою карму в минус бесконечность.
+Значит придётся логировать только «ошибочные» ветви исполнения.
+Очевидно что на момент вызова функции неизвестно завершится она нормально или выкинет исключение. Значит запись в лог придётся отложить до выхода из функции и анализировать ход выполнения программы.Например такvoid bar(int a)
+{
+	try
+	{
+		foo(a - 10);
+	}
+	catch (const exception &amp;e)
+	{
+		string msg = string("calling foo(") + to_string(a - 10) + ") failed";
+		throw runtime_error(string(e.what()) + "\n" + msg);
+	}
+}
+
+int main()
+{
+	try
+	{
+		int i;
+		try
+		{
+			for (i = 0; i &lt; 100; i++)
+			{
+				bar(i);
+			}
+		}
+		catch (const exception &amp;e)
+		{
+			string msg = string("calling bar(") + to_string(i) + ") failed";
+			throw runtime_error(string(e.what()) + "\n" + msg);
+		}
+	}
+	catch (const exception &amp;e)
+	{
+		cerr &lt;&lt; "Caught exception: " &lt;&lt; e.what() &lt;&lt; endl;
+	}
+	return 0;
+}
+Caught exception: foo throw because zero argument
+calling foo(0) failed
+calling bar(10) failed
+Теперь тестировщики легко напишут баг-репорт и приложат к нему красивый, информативный и чистый лог. А вот программа стала уродливой и потеряла всю прелесть исключений — возможность разнести рабочий код и обработку ошибок. Фактически мы вернулись чуть ли не к проверке кодов возврата функции и жестоким временам чистого C. А хочется красивого решения, которое позволит использовать создавать чистый лог и не уродовать программу. Т.е. кто-то должен за нас при выходе из функции проанализировать и залогировать происходящее. Тут нам на помощь приходит подход, уже описаный на Хабре, а именно — запись логов при вызове деструктора.
+Итак требования к классу логирования:Задание сообщения для лога
+Вывод сообщения, только в случае исключения
+
+Тут нам на помощь приходит функция bool uncaught_exception(), которая как раз и говорит есть ли необработанное исключение.Класс ExceptionContextclass ExceptionContext
+{
+public:
+	ExceptionContext(const std::string &amp;msg);
+	~ExceptionContext();
+
+private:
+	std::string message;
+};
+
+ExceptionContext::ExceptionContext(const std::string &amp;msg): message(msg)
+{}
+
+ExceptionContext::~ExceptionContext()
+{
+	if (std::uncaught_exception())
+	{
+		std::cerr &lt;&lt; message &lt;&lt; std::endl;
+	}
+}
+Пример использованияvoid bar(int a)
+{
+	ExceptionContext e(string("calling foo(") + to_string(a - 10) + ")");
+	foo(a - 10);
+}
+
+int main()
+{
+	try
+	{
+		for (int i = 0; i &lt; 100; i++)
+		{
+			ExceptionContext e(string("calling bar(") + to_string(i) + ")");
+			bar(i);
+		}
+	}
+	catch (const exception &amp;e)
+	{
+		cerr &lt;&lt; "Caught exception: " &lt;&lt; e.what() &lt;&lt; endl;http://habrahabr.ru/topic/edit/266729/#
+	}
+	return 0;
+}
+calling foo(0)
+calling bar(10)
+Caught exception: foo throw because zero argument
+Видно, что данный вариант сочетает компактность лога (логируем только упавшую ветку исполнения) с компактностью программы (основной код и обработка исключений разнесены, в основной код логирование вставляется одной строчкой). Теперь и разработчики, и тестировщики перестали меня проклинать.
+Вообще-то основная цель уже достигнута, но можно пойти по пути множества дальнейших улучшений, в том числе описанных в конце уже упомянутого поста.
+Я же рассмотрю всего два момента:Взаимодействие с другими логгерами
+Потокобезопасность
+
+Распечатывание лога напрямую в cerr может быть неудобно отсутствием возможности получить с таким трудом накопленый контекст для дублирования его ещё куда-нибудь (да хоть на почту разработчику, раз уж мы существенно сократили его объём!). Опять же, при наличии других инструментов логирования или многопоточного исполнения, возможны неприятные спецэффекты вроде строк лога вперемешку. Поэтому теперь класс ExceptionContext будет логи хранить внутри себя, а наружу выдавать по запросу, на манер printStackTrace из Java.Потокобезопасный вариант (с использованием С++11)class ExceptionContext
+{
+public:
+	ExceptionContext(const std::string &amp;msg);
+	~ExceptionContext();
+
+	static void Print(); //! Вывод контекста в cerr с последующей очисткой.
+private:
+	std::string message;
+	static thread_local std::string global_context; //! Хранилище контекста последнего исключения данного потока.
+};
+
+ExceptionContext::ExceptionContext(const std::string &amp;msg): message(msg)
+{}
+
+ExceptionContext::~ExceptionContext()
+{
+	if (std::uncaught_exception())
+	{
+		global_context += message + std::string("\n");
+	}
+}
+
+void ExceptionContext::Print()
+{
+	std::cerr &lt;&lt; global_context &lt;&lt; std::endl;
+	global_context.clear();
+}
+
+thread_local std::string ExceptionContext::global_context = std::string("");
+
+А catch-блок в основной программе теперь выглядит так:	catch (const exception &amp;e)
+	{
+		cerr &lt;&lt; "Caught exception: " &lt;&lt; e.what() &lt;&lt; endl;
+		ExceptionContext::Print();
+	}
+
+От С++11 здесь используется модификатор thread_local, который гарантирует что в каждом потоке исполнения объект global_context будет собственный, несмотря на то, что он является статическим членом класса и должен быть един для всех экземпляров.
+Хороших всем выходных, чистого кода, читаемых логов и остальных успехов в работе!
+
+      
+      
+    

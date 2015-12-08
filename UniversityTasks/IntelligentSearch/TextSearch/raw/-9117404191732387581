@@ -1,0 +1,129 @@
+﻿#TITLE:Использование ES6 в AngularJs 1.x со сборкой Browserify+Babel
+
+      В статье рассмотрим как написать на ES6 составляющие части AngularJs приложения, затем собрать с помощью Browserify и Babel на основе небольшого приложения, которое вы можете скачать с github и поиграться.Пишем Controller
+Контроллер в AngularJs это функция-конструктор, которая может расширять создаваемый scope либо с помощью инжектирования параметра $scope в конструктор контроллера, либо с помощью использования подхода «controller as». Сначала рассмотрим более распространенный подход через инжектирование $scope на примере контроллера регистрации:class SignupController {
+    constructor($scope, $state, accountService) {
+        this.init($scope, $state, accountService);
+    }
+    init($scope, $state, accountService) {
+        $scope.signup = function () {
+            accountService.signup().then(()=&gt; {
+                $state.go('main.list');
+            });
+        };
+    }
+}
+SignupController.$inject = ['$scope', '$state', 'accountService'];
+export {SignupController}
+
+Как видно контроллер представлен ES6 классом, который инжектирует зависимости $scope и двух сервисов в конструктор.
+Здесь хочу сразу отметить, что мы потеряли возможность перечислять зависимости используя inline array annotation, то есть так:someModule.controller('MyController', ['$scope', 'greeter', function($scope, greeter) {
+  // ...
+}]);
+ 
+Таким образом возможность указания зависимостей и их порядка инжектирования остается только через свойство $inject, определяемое в созданном классе SignupController.
+Второй способ определения контроллера с использованием подхода «controller as» выглядит более «волшебным» в сочетании с ES6 классом. И при написании контроллера я считаю является наиболее предпочтительным.var _state = new WeakMap();
+var _accountService = new WeakMap();
+
+class SigninController {
+    constructor($state, accountService) {
+        _state.set(this, $state);
+        _accountService.set(this, accountService);
+    }
+    login() {
+        _accountService.get(this).login().then(()=&gt; {
+            _state.get(this).go('main.list');
+        });
+    };
+}
+SigninController.$inject = ['$state', 'accountService'];
+export {SigninController}
+
+Как видно класс утратил явное упоминание scope, стал немного более независимым от AngularJs и даже зависимости инжектируются через конструктор. Но теперь в классе появляются приватные переменные и вместе с ними проблема их использования в рамках класса. Очень доступно об этом написано в статье "Реализация приватных полей с помощью WeakMap в JavaScript" и лучшим решением гарантирующим освобождение ресурсов и принадлежность переменных только данному классу будет использование WeakMap- из минусов — пишем чуть больше кода- плюсы- спим спокойно.
+Теперь осталось сделать последний шаг- объявить Controller в модуле Angular.
+Для этого я создал отдельный файл module.js, в котором происходит импортирование ES6 модулей и их регистрация в модулях Angular.import router from './router.js';
+import {SigninController} from './controllers/signin/signin.controller.js';
+ 
+angular.module('account').controller('SigninController', SigninController);
+Пишем Provider, Factory, Service
+Следующим шагом будет внедрение некоторого класса бизнес логики- в моем случае это будет класс AccountService.
+Выглядит он также волшебно как и предыдущий класс- безо всяких упоминаний об AngularJsimport api from './accountApi.factory.js';
+
+class AccountService {
+    login(){
+        return api.login();
+    }
+    signup(){
+        return api.signup();
+    }
+}
+export {AccountService}
+
+Обратите внимание, что класс AccountService зависит от модуля, объявленном в файле accountApi.factory.js, но зависимость импортирована, а не инжектирования с помощью механизма DI предоставляемым AngularJs. В принципе и в вышеописанный контроллер AccountService мог быть импортирован, а не инжектирован. Все зависит от того как вы хотите построить свое приложение.
+Итак класс сервиса описан, теперь осталось объявить сервис в модуле Angular.
+Сервис Angular'а объявить проще всего. С Factory и Provider все обстоит на несколько строк сложнее.
+Объявляем сервис в нашем файле module.js:........
+import {AccountService} from './services/accountService.factory.js';
+.........
+angular.module('account').service('accountService', AccountService);
+
+Здесь все просто — будет создан экземляр класса AccountService с помощью оператора new, так как метод service ожидает функцию конструктор.
+Как бы выглядел код, если бы нам нужно было объявить provider:angular.module('account').provider('accountService', providerBuilder(AccountService));
+
+function providerBuilder(obj) {
+    return function () {
+         this.$get = [function () {
+               return new obj();
+               }];
+             }
+           }
+
+И наконец, если бы нам нужен был factory:angular.module('account').factory('accountService', function(){return new AccountService()});
+
+А лучше объявить в классе AccountService статическую функцию, которая будет создавать экземпляр класса и тогда код будет выглядеть так:angular.module('account').factory('accountService', AccountService.createInstance); 	
+
+Пример с подобным поведением я приведу ниже.Пишем directive
+Директива будет выглядеть так:var _accountService = new WeakMap();
+
+class Copyright {
+    constructor($templateCache, accountService) {
+        _accountService.set(this, accountService);
+        this.restrict = 'E';
+        this.template = $templateCache.get('account/directives/copyright/copyright.directive.html');
+        this.scope = {};
+        this.controller = ['$scope', function ($scope) {
+            $scope.copyright = function () {
+                return 'Page © - 2015';
+            };
+        }];
+    }
+    link(scope) {
+        scope.doSomething = function () {
+            //какой-нибудь код
+            var accountService= _accountService.get(Copyright.instance);
+            //какой-нибудь код
+        }
+    }
+    static createInstance($templateCache, accountService) {
+        Copyright.instance = new Copyright($templateCache, accountService);
+        return Copyright.instance;
+    }
+}
+Copyright.createInstance.$inject = ['$templateCache', 'accountService'];
+export {Copyright}
+
+Моя директива ничего не делает, но имеет все основные части.
+В классе я определяю все стандартные поля директивы, которые необходимы и хочу заострить ваше внимание на том как объявляется директива.
+Директива объявляется в модуле Angular почти также как и factory, но есть одно небольшое отличие: this в функции constructor не будет равен this в функции link и поэтому я сохраняю ссылку на this в поле instance класса.
+Подобным образом можно объявить filter, constant и value.Сборка проекта
+Итак, мы написали некий код, который разбит на ES6 модули и теперь нам надо его собрать вместе. За поиск зависимостей модулей и сборку их в один файл отвечает Browserify. Для этого первым делом определим точку входа, с которой начнется сборка.
+Я предлагаю определять 2 точки входа- точку входя модуля — то есть это файл, который импортирует в себя модули/файлы только своего модуля и общую точку входа, которая объединит в себя точки входов модулей.
+Но у меня только 1 модуль и поэтому таких файлов тоже будет всего 2:Файл module.js, находящийся в корне папки account и имеющий относительные ссылки на все используемые файлы модуля 
+Файл app.js, находящийся в корне приложения и имеющий ссылки на все файлы module.js проекта
+
+Вторая задача- конвертировать код написанный на ES6 в ES5. Эту задачу будет исполнять Babel, подключенный к Browserify в качестве плагина c помощью опции transform. 
+Код сборщика, а также код проекта вы можете найти в репозитории github.Литература:Guide to AngularJS Documentation 
+Реализация приватных полей с помощью WeakMap в JavaScript 
+Fast browserify builds with watchify 
+
+    

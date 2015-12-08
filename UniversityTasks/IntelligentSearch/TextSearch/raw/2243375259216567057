@@ -1,0 +1,113 @@
+﻿#TITLE:Адаптивное видео как фон шапки сайта
+
+      Недавно столкнулся с интересной задачей: в шапку сайта установить видео в качестве фона. Шапка всегда занимает первый экран и установлена по принципу background-position: 50% 0. Суть в том, что на планшете мы видим видео полностью, а на телефоне оно обрезается по краям и снизу остается только центральная часть.
+Начнем с подготовки видео. Определим максимальные размеры нашей шапки и подгоним под них наше видео. Для примера возьмем размеры iPad в качестве максимальных значений шапки: 1024*768 (ну или 768 *1024, это как держать). 
+Приступим к разметке.HTML&lt;div class="header"&gt;
+    &lt;div class="header__video-wrapp"&gt;
+        &lt;div class="header__video-box"&gt;
+           &lt;video class="header__video"   loop autoplay&gt;
+               &lt;source src="https://s3-us-west-2.amazonaws.com/coverr/mp4/Winter-Grass.mp4" type="video/mp4"&gt;
+              &lt;source src="https://s3-us-west-2.amazonaws.com/coverr/mp4/Winter-Grass.mp4" type="video/webm"&gt;
+          &lt;/video&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class='header__video-play' onclick='document.getElementById("header__video").play();'&gt;play&lt;/div&gt;
+&lt;/div&gt;
+CSShtml,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+body {
+    min-height: 100%;
+}
+.header {
+    width:100%;
+    height: 100%;
+    max-height: 1024px;
+    background: #000;
+    overflow: hidden;
+    position: relative;
+}
+.header__video-wrapp  {
+    position:absolute;
+    top:0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    
+}
+.header__video-box {
+   position: absolute;
+   top:0;
+   left: 50%;
+   height: 100%;
+}
+.header__video {
+    display: inline-block;
+    height: 100%;
+    transform: translateX(-50%);
+    min-height: 768px;
+}
+.header__video-play{
+  width: 100px;
+  position: relative;
+  border-radius: 50%;
+  padding: 35px 0;
+  background: #fff;
+  top: 10px;
+  left: 25px;
+  box-shadow: 0 0 12px 1px #000;
+  font-size:22px;
+  text-align: center;
+}
+Пример на codepen
+Выставляем высоту html,body в 100 процентов после чего можем растянуть наш header на высоту экрана. Помещаем в него header__video-wrapp, растянув его позиционированием на весь блок header и задав ему overflow:hidden. Дальше создадим еще один блок header__video-box и в него помещаем наш элемент video. Абсолютно позиционируем блок header__video-box left:50% top:0 и переходим к блоку video, задаем ему transform: translateX(-50%) — это переместить его на 50% относительно своей ширины влево. А поскольку он начинается относительно центра блока, то его центр будет всегда находиться в центре блока. Теперь выставим высоту в 100% и минимальную высоту 768px. Таким образом, мы сможем полностью заполнить шапку на iPade в любом положении, а на iPhone скроем нижнею часть видео. 
+Есть и второй вариант как поместить видео по центру.
+В этом примере он позиционируется выравниванием текста по центру. HTML разметка не изменится, но изменится CSS в блоках header__video-box и header__video. CSShtml,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+body {
+    min-height: 100%;
+}
+.header {
+    width:100%;
+    height: 100%;
+    max-height: 1024px;
+    background: #000;
+    overflow: hidden;
+    position: relative;
+}
+.header__video-wrapp  {
+    position:absolute;
+    top:0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    
+}
+.header__video-box {
+    text-align: center;
+    margin: 0 -1000px;
+    height: 100%;
+}
+.header__video {
+    display: inline-block;
+    vertical-align: top;
+    height: 100%;
+    min-height: 768px;
+}
+Пример на codepen
+В блоке header__video-box задаем выравнивание текста по центру и отрицательными margin растягиваем блок за приделы родителя, так что бы он всегда был больше видео и располагался по центру. Блоку header__video мы выставляем display: inline-block и теперь он будет располагаться в центре. Добавим высоту, минимальную высоту и вертикальное выравнивание и теперь все готово.
+Я привел пример для планшетов и телефонов, но этот подход можно без труда использовать и для разных разрешений экрана.
+Не учел момент запрета autoplay… Ну что же, делаем большую красивую кнопку play для того чтобы можно было начать просмотр видео, когда захотим.
+      
+    

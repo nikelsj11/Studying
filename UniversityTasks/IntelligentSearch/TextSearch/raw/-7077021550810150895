@@ -1,0 +1,233 @@
+﻿#TITLE:Как подружить C++ и QML
+
+      
+Прислали мне как то тестовое задание. Надо написать шахматы на Qt с использованием C++ и QML. QML до этого не изучал, только слышал и читал про него, поэтому решил что напишу только с использованием C++ и библиотеки Qt. Написал, отправил, возвращают и просят графическую часть переписать на QML. Делать нечего, сел за изучения сего чуда и переписал графическую часть. Теперь хочу поделиться приобретённым опытом.
+Весь процесс написания шахмат описывать не буду, опишу только процесс постижения QML. Думаю эта статья будет в помощь начинающим в QML. Начнём
+Окно приложения разделено на 2 части: в левой доска с фигурами; в правой протокол ходов (необходим согласно заданию) и кнопки управления (Новая игра, Выход, Сохранить и т… д.)
+Нам надо, на QML, воссоздать шахматную доску и фигуры на ней. Вся математика ходов прописана на C++.
+Поскольку работаем с QML и Виджетами подключаем QT += qml quick declarative. Работать будем с QML 1.1, поскольку модуль Declarative не умеет работать с QML 2.0. Используем Declarative, потому что только он совместим с QWidget. Все остальные компоненты по работе с QML нет.
+Подготовим QDeclarativeView, переопределим этот класс:Файл decl.h#ifndef DECL_H
+#define DECL_H
+
+#include &lt;QtWidgets&gt;
+#include &lt;QtDeclarative&gt;
+
+class MyDecl : public QDeclarativeView
+{
+    Q_OBJECT
+
+protected:
+    virtual void mouseReleaseEvent(QMouseEvent *me);
+
+public:
+
+    MyDecl(QWidget *parent = 0);
+    ~MyDecl();
+
+signals:
+    void declMouseRelease(int x, int y);
+};
+#endif // DECL_HФайл decl.cpp#include "decl.h"
+
+MyDecl::MyDecl(QWidget *parent) : QDeclarativeView(parent) {
+
+}
+
+MyDecl::~MyDecl() {
+
+}
+
+void MyDecl::mouseReleaseEvent(QMouseEvent *me) {
+    emit declMouseRelease(me-&gt;x(), me-&gt;y());
+}
+Зачем это делать? Дело в том, что управление фигурами осуществляется мышкой. Получить сигнал из QML сложновато, поэтому будем посылать сигнал обработчику из этого виджета.
+Теперь создаём объект в основном классе программы:MyDecl *decl;
+Подключаем к нему наш будущий QML файл, задаём переменные и выводим на окно. Это делаем в конструкторе:    decl = new QDeclarativeView;
+
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1x", 0);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1y", 0);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1a", 0);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1c", 0);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1t", "texture.png");
+
+    decl-&gt;setSource(QUrl(QStringLiteral("qrc:/Images/main.qml")));
+    connect(decl, SIGNAL(declMouseRelease(int,int)), SLOT(getBoardMouse(int,int)));
+
+    QHBoxLayout *mainWindow = new QHBoxLayout;
+    QVBoxLayout *boardLayout = new QVBoxLayout;
+
+    boardLayout-&gt;addWidget(decl,0, Qt::AlignTop | Qt::AlignLeft);
+
+    mainWindow-&gt;addLayout(boardLayout, 4);
+Размещаем виджет, на котором рисуется QML часть, вверху-слева, что бы не делать вычислений для смещения мышки. Координаты доски (0;0) будут соответствовать координатам виджета (0;0).
+Зачем нужны переменные w1x, w1y, w1c, w1t, w1a будет описано ниже.
+Теперь создадим и подключим к проекту main.qmlimport QtQuick 1.1
+
+Rectangle {
+    width: 480
+    height: 480
+
+    Image {
+        x: 0
+        y: 0
+        source: "Textures/board.png"
+    }
+}
+Пока что мы только загружаем шахматную доску
+Теперь необходимо разместить на ней фигуры.import QtQuick 1.1
+Rectangle {
+    width: 480
+    height: 480
+
+    Image {
+        x: 0
+        y: 0
+        source: "Textures/board.png"
+
+        Rectangle {
+            x: w1x
+            y: w1y
+            width: 56
+            height: 56
+            color: w1c ? "#8000ff80" : "#00000000"
+
+            Image {
+                x: 0
+                y: 0
+                source: w1t
+                visible: w1a
+            }
+        }
+    }
+}
+Немного разберёмся, что здесь написано. 
+Внутри Image мы разместили Rectangle размером 56х56 (именно такой размер одного квадрата на доске, в данной реализации). Координаты будут зависеть от некоторых переменных w1x и w1y. Координаты указываются относительно родительского объекта, в данном случае Image (доска). Внутри ячейки создаём объект Image — это будет шахматная фигура. Ей задаём координаты (0;0), двигаться она будет вместе с родительским Rectangle. Текстура для фигурки будет указываться в переменной w1t. Переменная w1c необходима для определения выбрана ли данная фигура, если выбрана, то Rectangle заполняется салатовым цветом. Фигуру могут убить и нам не надо будет ее рисовать, за это и отвечает w1a.
+Переменные w1x, w1y, w1c, w1t, w1a задаются/изменяются из C++.    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1x", piece.x);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1y", piece.y);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1c", piece.choice);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1a", piece.active);
+    decl-&gt;engine()-&gt;rootContext()-&gt;setContextProperty("w1t", piece.source);
+В setContextProperty первым параметром передаётся имя параметра в QML, его можно задавать динамически при помощи QString. Вторым передаётся значение. И в соответствии от этих значений меняются значения в QML.
+Это был описан процесс для 1-й фигуры, а их всего 32. Для такого количества методика не очень удобная. Поэтому есть немного другое решение.
+Для начала изменим графическую часть на QML. Создадим новый объект:
+Файл PieceSprite.qmliimport QtQuick 1.1
+
+Rectangle {
+    property string texture: ""
+    property bool active: true
+
+    width: 56
+    height: 56
+
+	Image {
+        x: 0
+        y: 0
+        source: parent.texture
+        visible: parent.active
+    }
+    Behavior on x {
+        NumberAnimation {
+            duration: 500
+            easing.type: Easing.InOutQuad
+        }
+    }
+    Behavior on y {
+        NumberAnimation {
+            duration: 500
+            easing.type: Easing.InOutQuad
+        }
+    }
+}
+Добавили параметры texture и active. Для Image (фигура) отслеживаем изменение координат x и y, что бы фигуры двигались плавно(добавили анимацию передвижения).
+Изменим main.qml, добавив в него новый объект и создадим все фигуры используя JavaScriptimport QtQuick 1.1
+
+Rectangle {
+    id: appWindow
+    width: 480
+    height: 480
+
+    Image {
+        x: 0
+        y: 0
+        source: "Images/Textures/board.png"
+
+        Component.onCompleted: {
+            var component = Qt.createComponent("PieceSprite.qml");
+            var compName;
+            var sprite;
+
+            for (var i = 1; i &lt;= 16; i++) {
+                for (var c = 0; c &lt; 2; c++) {
+                    if (c == 1) {
+                        compName = "wp" + i;
+                    }
+                    else {
+                        compName = "bp" + i;
+                    }
+
+                    sprite = component.createObject(appWindow);
+                    if (sprite == null) {
+                        // Error Handling
+                        console.log("Error creating object");
+                    }
+                    else {
+                        sprite.x = 0;
+                        sprite.y = 0;
+                        sprite.active = false;
+                        sprite.objectName = compName;
+                    }
+                }
+            }
+        }
+    }
+}
+Задаём имена для объектов — wp для белых фигур и bp для чёрных, плюс порядковый номер от 1 до 16. По этим именам мы и будем обращаться к нашим фигурам.
+Теперь в C++, в конструкторе, убираем определение переменных:    decl = new QDeclarativeView;
+
+    decl-&gt;setSource(QUrl(QStringLiteral("qrc:/Images/main.qml")));
+    connect(decl, SIGNAL(declMouseRelease(int,int)), SLOT(getBoardMouse(int,int)));
+
+    QHBoxLayout *mainWindow = new QHBoxLayout;
+    QVBoxLayout *boardLayout = new QVBoxLayout;
+
+    boardLayout-&gt;addWidget(decl,0, Qt::AlignTop | Qt::AlignLeft);
+
+    mainWindow-&gt;addLayout(boardLayout, 4);
+Для изменения параметров объектов в QML создадим функцию:void Chess::setQmlPieceParametr(const piece &amp;p, bool setTexture) {
+    char pColor = p.white ? 'w' : 'b'; // Определяем цвет фигуры белый/черный
+    int x = offset_x + (p.cell.x() * piece_size); // Координата Х для фигуры
+    int y = offset_y + BOARD_SIZE - (p.cell.y() * piece_size); // Координата Y для фигуры
+
+    QString compColor = p.choise ? "#8000ff80" : "#00000000"; // Если фигура выбрана в данный момент, подсвечиваем салатовым
+
+    QString compName = QString("%1p%2").arg(pColor).arg(p.pId); // Генерируем имя объекта к которому нужно обратиться
+    QObject *pieceSprite = decl-&gt;rootObject()-&gt;findChild&lt;QObject*&gt;(compName); // Ищем объект по названию в QML
+
+    if (pieceSprite) { // Если объект найден, то устанавливаем параметы
+        pieceSprite-&gt;setProperty("x", x);
+        pieceSprite-&gt;setProperty("y", y);
+        pieceSprite-&gt;setProperty("active", p.active);
+        pieceSprite-&gt;setProperty("color", compColor);
+        if (setTexture) { // Текстуру устанавливаем только при начале новой игры и если пешка дошла до другого края доски
+            pieceSprite-&gt;setProperty("texture", QString("Images/Textures/%1").arg(pColor) + p.texture);
+        }
+    }
+}
+Функция позволяет установить параметры для одной фигуры. В связи с тем, что клетки на доске начинаются не с края, а высота считается снизу, необходимо пересчитывать координаты.
+Параметры фигуры хранятся в структуре piecestruct piece {
+    QPoint cell;
+    int type;
+    bool first_step;
+    QString texture;
+    bool white;
+    bool choise;
+    bool active;
+    int pId;
+};
+Вот, собственно говоря и всё. Ссылка на проект в ГугльДокс.
+Спасибо, если Вы это читали.
+P.S.: Так получилось, что мне пришлось использовать Declarative. Это не есть хорошо и в своих приложениях его использовать не рекомендую.
+
+      
+      
+    

@@ -1,0 +1,9 @@
+﻿#TITLE:Adobe обновила Flash Player
+
+      Adobe выпустила security-обновление APSB15-23 для Flash Player, закрыв в нем 23 уязвимости. Большинство из закрытых уязвимостей могут использоваться атакующими для удаленного исполнения кода в веб-браузере. Adobe также добавила очередные механизмы защиты от эксплуатации потенциальных уязвимостей в своем проигрывателе (further hardening to a mitigation to defend against vector length corruptions).
+Мы рекомендуем обновить используемый вами Flash Player. Такие браузеры как Internet Explorer 11 на Windows 8.1 / Win10 и Google Chrome, а также MS Edge обновляют свои версии Flash Player автоматически. Для IE см. обновляемое Security Advisory 2755801. Проверьте вашу версию Flash Player на актуальность здесь, ниже в таблице указаны эти версии для различных браузеров.
+be secure.
+
+      
+      
+    

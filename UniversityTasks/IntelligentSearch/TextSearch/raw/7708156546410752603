@@ -1,0 +1,311 @@
+﻿#TITLE:Ansible и Rails — гибкая замена Capistrano с сохранением знакомого комфорта
+
+      Capistrano — любимый многими rails-разработчиками инструмент, с помощью которого можно быстро и без заморочек автоматизировать развертывание вашего приложения. Capistrano — стандарт де-факто для системы развертывания RoR, must-know технология для любого уважающего себя рубиста, тот инструмент, которому в своё время завидовали разработчики на python и PHP.
+Несмотря на комфорт, от которого не хочется отказываться, чем более сложные задачи мне приходилось решать, тем чаще Capistrano показывал себя к ним не приспособленным.
+Я отметил следующие недостатки:Известные проблемы со скоростью. Вследствие своей универсальности, Capistrano деплоит медленно, выполняя лишние проверки и вызовы, которые вы не всегда можете контролировать.
+Последовательный деплой. Небыстрое время развертывания нужно умножить на количество целевых серверов (однако, можно настроить распараллеливание комманд явным образом).
+Сильная связанность с рельсами. Конфиги и зависимости Capistrano переплетаются с приложением, становясь его частью. Нельзя создать новое окружение-развертывания (например сервера для раннего выкатывания функционала) без создания нового rails-окружения. В сложных ситуациях Capistrano заставляет уходить от хорошей практики держать только development, test и production окружения.
+Плагины — палка о двух концах. Давая возможность быстро “прикрутить” развертывание той или иной зависимости приложения, плагины лишают вас контроля ситуации, заставляют действовать так, как действует разработчик плагина. О влиянии лишних “телодвижений” плагинов на скорость деплоя я написал выше.
+Сложный деплой гетерогенных приложений. Трендом последних лет в рельсах стало выделение самых тяжелых (бекграундных или сетевых) задач в отдельные сервисы, не обязательно написанные на ruby. В такой ситуации capistrano заставляет вас плодить зоопарк из разных систем развертывания для разных языков и технологий.
+
+Многие ruby-разработчики перешли на Mina или решают свои проблемы с помощью ещё более сложных систем управления конфигурациями вроде Chef и Puppet. Все они имеют свои особенности и недостатки и в разной степени решают описанные выше проблемы. Мне же удалось их решить их с помощью Ansible, не растеряв преимуществ Capistrano, к которым я привык.
+Ansible это инструмент для управления конфигурациями и в его задачи входит не только описанное в этой статье выполнение удаленных команд на серверах для развертывания и управления отдельным приложением, но и автоматизация серверного администрирования посредством хранимых серверных конфигураций (ролей на языке Ansible). А значит Ansible (как впрочем и Chef и Puppet) позволяет гораздо больше, чем Capistrano и в конечном счете они все не идут с ним ни в какое сравнение. Однако, задача этой статьи дать rails-разработчикам отправную точку для миграции и разъяснить на этом примере основы Ansible. В конце этой статьи, волшебная команда cap production deploy превратится в ansible-playbook deploy.yml -i inventory/production
+Кому интересно как — прошу под кат.Установка
+Ansible написан на питоне. Не каждому рубисту это понравится, но я развею страхи сразу — ни одной строчки на “вражеском языке” вам писать не придется. Притягательная сила Ansible в том, что все скрипты деплоя это конфигурационные файлы в известном формате yml с простым и мощным описательным синтаксисом.
+Установка ansible тоже простая и быстрая. Устанавливать ansible нужно только на локальной машине:sudo easy_isntall pip
+sudo pip install -U ansible
+
+На этом взаимодействие с утилитами python заканчивается и теперь нам доступна команда ansible-playbook, с помощью которой и осуществляется деплой. Команда имеет лишь один обязательный аргумент — относительный путь к playbook-файлу.Ansible-playbookPlaybook-файл это список запускаемых задач или других плейбуков. Благодаря вложенности, мы можем эффективно изолировать задачи по слоям и добиться возможности запускать только то, что нам в данный момент нужно.
+В качестве примера для развертывания возьмем myawesomestartup — это некое rails-приложение со связкой passenger 5 standalone и nginx в качестве веб-сервера и sidekiq для фоновых задач. Физическая инфраструктура в примере — два продакшн сервера:prima.myawesomestartup.com
+secunda.myawesomestartup.com
+
+И один стейджинг:plebius.myawesomestartup.com
+
+В папке ansible определим мастер-плейбук deploy.yml, содержащий все остальные плейбуки,---
+- hosts: hosts
+- include: release.yml # создание нового релиза
+- include: app.yml     # запуск сервера веб-прриложения
+- include: sidekiq.yml # запуск воркеров sidekiq
+
+Командой ansible-playbook deploy.yml, запустим деплой целиком. Однако, можно запустить плейбуки и по отдельности, если нам нужно перезапустить приложение без выкатывания нового релиза.
+Обратите внимание на переменную hosts в ней содержится информация о серверах, на которых будет производиться развертывание. Эту переменную можно определить в глобальной конфигурации ansible, однако мы поступим по другому, воспользовавшись инвентарными файлами.Инвентарные файлы и конфигурация приложения
+Для хранения групп хостов, их иерархии и настроек в ansible предусмотрены инвентарные файлы. Это ini-файлы с очень простым синтаксисом.
+Мы можем описать группу хостов:[hosts:children]
+prima
+secunda
+
+В группе объявим сами хосты:[prima]
+prima.myawesomestartup.com
+
+[secunda]
+secunda.myawesomestartup.com
+
+Объявим переменные, специфичные для каждого конкретного хоста:[prima:vars]
+ansible_env_name=production
+rails_env_name=production
+database_name={{ lookup('env', 'PRIMA_DB_NAME') }}
+database_username={{ lookup('env', 'PRIMA_DB_LOGIN') }}
+database_password={{ lookup('env', 'PRIMA_DB_PASSWORD') }}
+database_host={{ lookup('env', 'PRIMA_DB_HOST') }}
+database_port={{ lookup('env', 'PRIMA_DB_PORT') }}
+
+Обратите внимания фигурные на скобки — в ansible все файлы являются шаблонами Jinja2. В данном примере через шаблонизатор и команду lookup интерполируются переменные окружения, с машины, с которой выполняется развертывание. Это полезно для того, чтобы не хранить в системе контроля версий какую либо чувствительную информацию, вроде секретных ключей или строк подключения к БД.
+Чтобы пример заработал, нужно объявить следующие переменные в вашем ~/.bashrc или ~/.zshrc или (что более безопасно и менее удобно) экспортировать их каждый раз перед каждым деплоем:export PRIMA_DB_NAME=myawesomestartup_production
+export PRIMA_DB_LOGIN=myawesomestartup
+export PRIMA_DB_PASSWORD=secret
+export PRIMA_DB_HOST=db.myawesomestartup.com
+export PRIMA_DB_PORT=3306
+
+Ниже приведены файлы inventory/production и inventory/staging целиком:inventory/production; production
+
+[prima]
+prima.myawesomestartup.com
+
+[prima:vars]
+ansible_env_name=production
+rails_env_name=production
+database_name={{ lookup('env', 'PRIMA_DB_NAME') }}
+database_username={{ lookup('env', 'PRIMA_DB_LOGIN') }}
+database_password={{ lookup('env', 'PRIMA_DB_PASSWORD') }}
+database_host{{ lookup('env', 'PRIMA_DB_HOST') }}
+database_port={{ lookup('env', 'PRIMA_DB_PORT') }}
+git_branch=master
+app_path=/srv/www/prima.myawesomestartup.com
+custom_server_options=--no-friendly-error-pages
+sidekiq_process_number=4
+
+[secunda]
+secunda.myawesomestartup.com
+
+[secunda:vars]
+ansible_env_name=production
+rails_env_name=production
+database_name={{ lookup('env', 'SECUNDA_DB_NAME') }}
+database_username={{ lookup('env', 'SECUNDA_DB_LOGIN') }}
+database_password={{ lookup('env', 'SECUNDA_DB_PASSWORD') }}
+database_host={{ lookup('env', 'SECUNDA_DB_HOST') }}
+database_port={{ lookup('env', 'SECUNDA_DB_PORT') }}
+git_branch=master
+app_path=/srv/www/secunda.myawesomestartup.com
+custom_server_options=--no-friendly-error-pages
+sidekiq_process_number=4
+
+[hosts:children]
+prima
+secunda
+inventory/staging
+; staging
+
+[plebius]
+plebius.myawesomestartup.com
+
+[plebius:vars]
+ansible_env_name=staging
+rails_env_name=production
+database_name={{ lookup('env', 'PLEBIUS_DB_NAME') }}
+database_username={{ lookup('env', 'PLEBIUS_DB_LOGIN') }}
+database_password={{ lookup('env', 'PLEBIUS_DB_PASSWORD') }}
+database_host={{ lookup('env', 'PLEBIUS_DB_HOST') }}
+database_port={{ lookup('env', 'PLEBIUS_DB_PORT') }}
+git_branch=develop
+app_path=/srv/www/plebius.myawesomestartup.com
+custom_server_options=--friendly-error-pages
+sidekiq_process_number=4
+
+[hosts:children]
+plebius
+
+Шаблоны конфигов положим в папку ansible/configs:configs/database.yml# configs/database.yml
+{{rails_env_name}}:
+  adapter: mysql2
+  database: {{database_name}}
+  username: {{database_username}}
+  password: {{database_password}}
+  host: {{database_host}}
+  port: {{database_port}}
+  secure_auth: false
+
+Для тех настроек, которые можно безопасно хранить в системе контроля версия я предпочитаю dotenv.
+Создадим следующую структуру файлов в папке ansible/environments:production/
+    prima.env
+    secunda.env
+staging/
+    plebius.env
+Релизы как в Capistrano
+Capistrano по умолчанию предлагает довольно продуманную структуру файлов на сервере.releases/
+  20150631130156/
+  20150631130233/
+  20150631172431/
+  20150704162516/
+  20150712165952/
+current - -&gt; /www/domain/releases/20150712165952/
+shared/
+
+Папка releases содержит пять последних последних релизов в папках с названиями вида 20150812165952, содержащих в себе таймстамп времени деплоя этого релиза. Внутри каждого релиза лежит файл REVISION содержащий в себе хеш коммита из которого был сделан релиз.
+Симлинк current ссылается на последний релиз в папке releases.
+Папка shared содержит общие для все релизов файлы (например .pid и .sock) и те файлы, которые исключены из системы контроля версий (например, database.yml). Все это позволяет безопасно откатывать приложение в случае сбоя деплоя или выкатывания кода с неожиданными багами.
+Повторим это с помощью Ansible:ansible/release.yml# ansible/release.yml
+---
+- hosts: hosts # хосты объявлены в inventory-файле для каждого окружения
+  tasks:
+    # установка некоторых переменных вроде app_path и shared_path вынесена в отдельный миксин. Об этом ниже
+    - include: tasks/_set_vars.yml tags=always
+    # создадим таймстамп текущего релиза и установим папку
+    - set_fact: timestamp="{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+    - set_fact: release_path="{{ app_path }}/releases/{{ timestamp }}"
+    # Проверим существование необходимых папок. Если их нет ansible их создаст
+    - name: Ensure shared directory exists
+      file: path={{ shared_path }} state=directory
+    - name: Ensure shared/assets directory exists
+      file: path={{ shared_path }}/assets state=directory
+    - name: Ensure tmp directory exists
+      file: path={{ shared_path }}/tmp state=directory
+    - name: Ensure log directory exists
+      file: path={{ shared_path }}/log state=directory
+    - name: Ensure bundle directory exists
+      file: path={{ shared_path }}/bundle state=directory
+    # Оставим последние пять релизов включая текущий
+    - name: Leave only last releases
+      shell: "cd {{ app_path }}/releases &amp;&amp; find ./ -maxdepth 1 | grep -G .............. | sort -r | tail -n +{{ keep_releases }} | xargs rm -rf"
+    - name: Create release directory
+      file: path={{ release_path }} state=directory
+    # Скачаем приложение из системы контроля версий
+    - name: Checkout git repo into release directory
+      git:
+        repo={{ git_repo }}
+        dest={{ release_path }}
+        version={{ git_branch }}
+        accept_hostkey=yes
+    # получим хеш последнего коммита для файла REVISION и запишем его
+    - name: Get git branch head hash
+      shell: "cd {{ release_path }} &amp;&amp; git rev-parse --short HEAD"
+      register: git_head_hash
+    - name: Create REVISION file in the release path
+      copy: content="{{ git_head_hash.stdout }}" dest={{ release_path }}/REVISION
+    # создадим симлинки необходимые для rails приложения
+    - name: Set assets link
+      file: src={{ shared_path }}/assets path={{ release_path }}/public/assets state=link
+    - name: Set tmp link
+      file: src={{ shared_path }}/tmp path={{ release_path }}/tmp state=link
+    - name: Set log link
+      file: src={{ shared_path }}/log path={{ release_path }}/log state=link
+    # скопируем шаблоны .env и database.yml в новый релиз. При этом в шаблоны подставятся нужные переменные для каждого хоста.
+    - name: Copy .env file
+      template: src=environments/{{ansible_env_name}}/{{ansible_hostname}}.env dest={{ release_path }}/.env
+    - name: Copy database.yml
+      template: src=configs/database.yml dest={{ release_path }}/config
+    - set_fact: rvm_wrapper_command="cd {{ release_path }} &amp;&amp; RAILS_ENV={{ rails_env_name }} rvm ruby-{{ ruby_version }}@{{ full_gemset_name }} --create do"
+    # Bundle, миграции, компиляция ассетов...
+    - name: Run bundle install
+      shell: "{{ rvm_wrapper_command }} bundle install --path {{ shared_path }}/bundle --deployment --without development test"
+    - name: Run db:migrate
+      shell: "{{ rvm_wrapper_command }} rake db:migrate"
+    - name: Precompile assets
+      shell: "{{ rvm_wrapper_command }} rake assets:precompile"
+    # Симлинкнем наш релиз в папку current
+    - name: Update app version
+      file: src={{ release_path }} path={{ app_path }}/current state=link
+
+Установка некоторых переменных была вынесена в отдельную задачу-миксин, так как эти переменные идентичны для всех плейбуков и серверов:# ansible/tasks/_set_vars.yml
+---
+- set_fact: app_name="myawesomestartup"
+- set_fact: ruby_version="2.2.2"
+- set_fact: ruby_gemset="myawesomestartup"
+- set_fact: git_repo="ilpagency/rails-sidekiq-ansible-sample"
+- set_fact: keep_releases="5"
+- set_fact: full_app_name="{{ app_name }}-{{ ansible_env_name }}"
+- set_fact: full_gemset_name="{{ ruby_gemset }}-{{ ansible_env_name }}"
+- set_fact: current_path="{{ app_path }}/current"
+- set_fact: shared_path="{{ app_path }}/shared"
+Запуск passenger и sidekiq — теги и циклы Ansible
+Создадим ещё один плейбук для управления состоянием приложения ansible/app.yml, с помощью которого приложение можно будет запустить, остановить или перезапустить. Как и другие плейбуки, его можно запускать отдельно, либо как часть мастер-плейбука.
+Для большей гибкости добавим теги app_stop и app_start. Теги, позволяют выполнять только те части задач, которые явно указаны при деплое. Если не указывать теги при деплое — плейбук будет выполнен целиком.
+Вот как это выглядит на практике:# Перезапустить приложение:
+ansible-playbook app.yml -i inventory/production
+# Только остановить:
+ansible-playbook app.yml -i inventory/production -t "app_stop"
+# Только запустить:
+ansible-playbook app.yml -i inventory/production -t "app_start"
+# Это тоже перезапуск:
+ansible-playbook app.yml -i inventory/production -t "app_stop,app_start"
+
+А вот реализация:ansible/app.yml# ansible/app.yml
+---
+- hosts: hosts # хосты объявлены в inventory-файле для каждого окружения
+  tasks:
+    - include: tasks/_set_vars.yml tags=always # always это специальный тег, задача отмеченная им будет выполнена всегда, при любых указанных команде деплоя тегах
+    - set_fact: socks_path={{ shared_path }}/tmp/socks
+      tags: always
+    - name: Ensure sockets directory exists
+      file: path={{ socks_path }} state=directory
+      tags: always
+    - set_fact: app_sock={{ socks_path }}/app.sock
+      tags: always
+    - set_fact: pids_path={{ shared_path }}/tmp/pids
+      tags: always
+    - name: Ensure pids directory exists
+      file: path={{ pids_path }} state=directory
+      tags: always
+    - set_fact: app_pid={{ pids_path }}/passenger.pid
+      tags: always
+    - set_fact: rvm_wrapper_command="cd {{ current_path }} &amp;&amp; RAILS_ENV={{ rails_env_name }} rvm ruby-{{ ruby_version }}@{{ full_gemset_name }} --create do"
+      tags: always
+    - include: tasks/app_stop.yml tags=app_stop #эта задача будет запщуена если не указан ни один тег или указан тег app_start
+    - include: tasks/app_start.yml tags=app_start # поведение аналогично предыдущему, только тег - app_stop
+
+Задачи запуска и остановки приложения выделены отдельно в файлы ansible/tasks/app_start.yml и ansible/tasks/app_stop.yml:ansible/tasks/app_start.yml# ansible/tasks/app_start.yml
+---
+- name: start passenger
+  shell: "{{ rvm_wrapper_command }} bundle exec passenger start -d -S {{ app_sock }} --environment {{ rails_env_name }} --pid-file {{ app_pid }} {{ custom_server_options }}"
+ansible/tasks/app_stop.yml# ansible/tasks/app_stop.yml
+---
+- name: stop passenger
+  shell: "{{ rvm_wrapper_command }} bundle exec passenger stop --pid-file {{ app_pid }}"
+  ignore_errors: yes # если вдруг приложение не запущено... игнорируем ошибки. Лучше - добавить явную проверку.
+
+С sidekiq ситуация схожая. Для него реализуем отдельный плейбук ansible/sidekiq.yml поддерживающий соответствующие теги sidekiq_stop и sidekiq_start:ansible/app.yml# ansible/sidekiq.yml
+---
+- hosts: hosts
+  tasks:
+    - include: tasks/_set_vars.yml tags=always
+    - set_fact: pids_path={{ shared_path }}/tmp/pids
+      tags: always
+    - name: Ensure pids directory exists
+      file: path={{ pids_path }} state=directory
+      tags: always
+    - set_fact: rvm_wrapper_command="cd {{ current_path }} &amp;&amp; RAILS_ENV={{ rails_env_name }} rvm ruby-{{ ruby_version }}@{{ full_gemset_name }} --create do"
+      tags: always
+    - include: tasks/sidekiq_stop.yml tags=sidekiq_stop
+    - include: tasks/sidekiq_start.yml tags=sidekiq_start
+
+Задачи запуска и остановки так-же выделены отдельно в файлы ansible/tasks/sidekiq_start.yml и ansible/tasks/sidekiq_stop.yml. Помимо собственно запуска и остановки sidekiq, в этих задачах демонстрируется работа с циклами в Ansible и решается проблема запуска/остановки нескольких процессов сразу:ansible/tasks/sidekiq_start.yml# ansible/tasks/sidekiq_start.yml
+---
+- name: start sidekiq
+  shell: "{{ rvm_wrapper_command }} bundle exec sidekiq --index {{ item }} --pidfile {{ pids_path }}/sidekiq-{{ item }}.pid --environment {{ rails_env_name }} --logfile {{ shared_path }}/log/sidekiq.log --daemon" # переменная item - суть i в цикле. Если в with_sequence указать 4, то item будет 1,2,3,4
+  with_sequence: count={{ sidekiq_process_number }} # число процессов sidekiq указано в инвентарном файле для каждого сервера и каждого окружения
+ansible/tasks/sidekiq_stop.yml# ansible/tasks/sidekiq_stop.yml
+---
+- name: stop sidekiq
+  shell: "{{ rvm_wrapper_command }} bundle exec sidekiqctl stop {{ pids_path }}/sidekiq-{{ item }}.pid 20"
+  ignore_errors: yes # И снова, желательно реализовать проверку на то, запущен ли процесс, а не игонорировать ошибки.
+  with_sequence: count={{ sidekiq_process_number }}
+Заключение
+Теперь мы можем пользоваться Ansible для развертывания rails приложений:cd myawesomestartup/ansible
+
+# Деплой:
+ansible-playbook deploy.yml -i inventory/production
+# Перезапустить приложение:
+ansible-playbook app.yml -i inventory/production
+# Перезапустить sidekiq:
+ansible-playbook sidekiq.yml -i inventory/production
+# Деплой в стейджинг из кастомной ветки:
+ansible-playbook deploy.yml -i inventory/staging -e git_branch="hotfix/14082015-777-production_bug"
+
+Поскольку эта статья даёт лишь пример (пусть и рабочий), отмечу пути, по которым можно пойти дальше:Реализовать graceful restart для Passenger.
+Использовать механизм ролей Ansible вместо вложенных плейбуков.
+Реализовать роллбек для отката к предыдущим релизам.
+И вообще привести этот пример в большее соответствие с рекомендациями разработчиков.
+
+И самое главное. Ansible может гораздо больше, чем выкатывать релизы приложения и перезапускать сервера. Ведь, повторюсь, ansible не просто утилита для деплоя, а полноценный инструмент управления конфигурациями. К примеру, с помощью ролей вы можете настроить развертывание приложения с нуля, прямо на голое серверное железо. А простота yml-нотаций позволяет с лёгкостью модифицировать найденные решения под свои нужды.
+Все исходные коды из статьи доступны на GitHub. Спасибо за внимание.
+    

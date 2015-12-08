@@ -1,0 +1,380 @@
+﻿#TITLE:В помощь маркетологу: пишем автоматическую выгрузку данных из Adfox с визуализацией
+
+      В прошлой статье был рассмотрен пример настройки автоматической выгрузки данных из Яндекс Метрики. Это облегчает регулярную выгрузку, но способ получается полуавтоматическим: надо запускать скрипт, копировать результаты выгрузки к себе и дальше заниматься их оформлением. Посмотрим как можно сделать процесс полностью автоматическим. Для примера будем использовать выгрузку данных их рекламной системы Adfox.
+Adfox имеет много готовых отчетов, однако даже простые усложнения требований к отчетности вызывают проблемы. Есть опция настройки регулярных отчетов, однако в большинстве случаев приходится настраивать комбинации выгрузок самому.
+В этой статье показано как сделать скрипт, который выгружает CTR всех баннеров, которые доступны аккаунту (сделать это вручную нереально по времени). А также как отобразить это на графике в виде простой HTML-страницы. Т. е. мы последовательно просмотрим все кампании и флайты, возьмем показы и клики по всем баннерам и нарисуем график CTR. Как и в прошлой статье работать будем на инстансах Amazon Web Services, чтобы было универсально и главное бесплатно. Выгрузка данных на PHP, графики рисуем в Highcharts. В коде реализован самый простой способ выгрузки и обработки данных без каких-либо улучшений. В итоге получим ежедневно обновляемую за вчерашний день страницу вида:
+Начинаем с создания аккаунта на AWS (если еще нет). Эта процедура подробно описана в документации: docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-ug.pdf (до пункта Getting started). Далее мы пройдем этап, описанный в этой же документации в главе «Tutorial: Installing a LAMP Web Server on Amazon Linux»: установим нужные нам для выгрузки и хранения данных PHP и MySQL (в дальнейшем работать с MySQL лучше, чем с текстовыми файлами). Можно конечно обойтись без этого, используя встроенный Python. Запускаем инстанс Amazon Linux (подробности см. предыдущую статью где мы выбирали инстанс Ubuntu Server). Здесь нам понадобится именно Linux, а не Ubuntu. Чтобы запустить LAMP web server на Ubuntu смотрите документацию: help.ubuntu.com/community/ApacheMySQLPHP. Итак, выбираем инстанс Amazon Linux, проверяем Security Group и убеждаемся что у нас есть приватный ключ. Через пару минут получаем Public DNS нашего инстанса и подсоединяемся к нему через Putty (для Windows) или Terminal для MAC:
+Ставим LAMP web server. Выполняем команду проверки, что имеем последние обновления:
+$ sudo yum update -y
+Ставим PHP подходящей нам версии:
+$ sudo yum install -y httpd24 php56 mysql55-server php56-mysqlnd
+Запускаем Apache web server:
+$ sudo service httpd start
+Хотим, чтобы Apache web server стартовал при каждом запуске системы:
+$ sudo chkconfig httpd on
+Тестируем, что все прошло успешно: копипастим в браузер Public DNS нашего инстанса и получаем следующую страничку:
+Сейчас корневой директорией /var/www/ «владеет» пользователь root. Сделаем туда доступ пользователю ec2-user:
+Создаем группу «www»:
+$ sudo groupadd www
+Добавляем пользователя ec2-user в группу www:
+$ sudo usermod -a -G www ec2-user
+Чтобы изменения вступили в силу закрываем Putty или Terminal (команда exit) и подсоединяемся к инстансу еще раз. Проверяем, что пользователь ec2-user прописан в группе www:
+$ groups
+ec2-user wheel www
+Меняем владельца папки /var/www:
+$ sudo chown -R root:www /var/www
+Добавляем возможность пользователю ec2-user и другим пользователям из группы www права на изменение папки /var/www:
+$ sudo chmod 2775 /var/www
+$ find /var/www -type d -exec sudo chmod 2775 {} +
+$ find /var/www -type f -exec sudo chmod 0664 {} +
+Тестируем, что теперь мы можем создавать PHP-файлы в директории /var/www. Для этого создаем файл phpinfo.php и записываем в него &lt;?php phpinfo(); ?&gt;:
+$ echo "&lt;?php phpinfo(); ?&gt;" &gt; /var/www/html/phpinfo.php
+Снова в адресной строке браузера копипастим Public DNS нашего инстанса и добавляем "/phpinfo.php". Мы должны получить следующую страницу с конфигурацией PHP:
+В целях безопасности удаляем созданный нами файл phpinfo.php:
+$ rm /var/www/html/phpinfo.php
+Отлично, мы готовы к выгрузке данных из Adfox!Выгружаем статистику Adfox
+Документацию к API Adfox можно найти на странице help.adfox.ru (ссылка на скачивание в самом низу страницы). В целом документация составлена не очень наглядно, поэтому в общем случае можно использовать следующее правило: если вам нужно получить ссылку для отчета в API, то копируете ссылку из браузера и подставляете в нее логин и пароль + '&amp;isXML=1' для получения данных в формате XML. Если нужны функции поиска или настроек кампаний, то придется смотреть в документации API.
+В общем случае запросы к API Adfox сопровождаются логином (как вы заходите в систему) и хэшом SHA-256 от вашего пароля. Сгенерировать хэш к паролю можно на любом сайте по поисковому запросу «sha-256 online». Например, тут: www.xorbin.com/tools/sha256-hash-calculator
+Если ваш пароль «12345», то для обращений к API в качестве пароля надо использовать значение «5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5»:
+Наш алгоритм будет состоять из двух шагов:Шаг 1. Получаем список всех доступных нам кампаний.
+Возьмем список доступных кампаний. Если кампаний много, то можно ограничиться теми, что были заведены, например, с 1 августа:login.adfox.ru/API.php?object=account&amp;action=list&amp;actionObject=superCampaign&amp;dateAddedFrom=2015-08-01&amp;loginAccount=логин&amp;loginPassword=пароль-sha-256&amp;isXML=1
+В браузере получим следующий XML-файл:Шаг 2. Для каждой кампании имеем ее название (тэг ) и ID (). Теперь для каждого ID получаем отчет по баннерам (например, для кампании с ID=55555):login.adfox.ru/commonReportsOutputForm.php?period=&amp;startDate=начальная-дата&amp;endDate=конечная-дата&amp;criteria=superCampaignBanner&amp;isNewSearch=on&amp;objectName=superCampaign&amp;objectID=55555&amp;ignoreStartDate=off&amp;loginAccount=логин&amp;loginPassword=пароль-sha-256&amp;isXML=1
+Сделаем скрипт, который будет ежедневно делать эту процедуру и записывать данные в файл. Проще всего будет зайти в папку /var/www/html, создать там папку adfox и создать в ней файл daily.php со следующим кодом:Код выгрузки данных Adfox&lt;?php
+
+// Задаем диапазон дат, за которые выгружаем данные: startDate и endDate
+// Формат дат для запросов к Adfox дд.мм.гг
+date_default_timezone_set("Europe/Moscow");
+//$startDate = '04.09.15';
+//$endDate = '04.09.15';
+
+// Для ежедневных выгрузок указываем в качестве даты выгрузки вчерашний день
+$startDate = date('d.m.y', strtotime('-1 day'));
+$endDate = $startDate;
+
+// Функция getCampaigns показывает доступные данному логину кампании
+// Возвращается массив $campIDs с ID и названием кампаний
+// В теле запроса в переменной dateAddedFrom можно указать дату создания кампании, чтобы не выгружать все подряд
+function getCampaigns() {
+	$ch = curl_init();
+	$options = array(
+		CURLOPT_URL =&gt; 'https://login.adfox.ru/API.php?object=account&amp;action=list&amp;actionObject=superCampaign&amp;dateAddedFrom=2015-08-01&amp;loginAccount=логин&amp;loginPassword=пароль-sha-256&amp;isXML=1',
+		CURLOPT_HEADER =&gt; "Content-Type:application/xml",
+		CURLOPT_HTTPAUTH =&gt; CURLAUTH_BASIC,
+		CURLOPT_SSL_VERIFYPEER =&gt; FALSE,
+		CURLOPT_RETURNTRANSFER =&gt; TRUE
+	);
+
+	curl_setopt_array($ch, $options);
+	$data = curl_exec($ch);
+
+	curl_close($ch);
+
+	// Можно записать ответ Adfox в файл, чтобы убедиться в его верности
+	// file_put_contents('request.txt', $data, FILE_APPEND);
+
+	// Преобразуем ответ Adfox из XML в массив vals
+	$parser=xml_parser_create('UTF-8');
+	xml_parse_into_struct($parser, $data, $vals, $index);
+
+	$campIDs = array();
+	$j = 0;
+
+	// Проходим массив vals, выбирая из всех параметров ID и название кампаний и записывая их в массив campIDs
+	for ($i = 0; $i &lt; count($vals); ++$i) {
+
+		if ($vals[$i]["tag"]=="ID") {
+		  $ID = $vals[$i]["value"];
+		}
+
+		if ($vals[$i]["tag"]=="NAME") {
+		  $name = $vals[$i]["value"];
+
+		  $campIDs[$j]['id'] = $ID;
+		  $campIDs[$j]['name'] = $name;
+
+		  $j += 1;
+		}
+	}
+
+	return $campIDs;
+}
+
+// Функция getBanners для заданной кампании по ее ID запрашивает отчет по баннерам
+// Отчет записывается в массив campReport в виде ID кампании + название флайта - название баннера - показы - клики
+function getBanners($id, $startDate, $endDate) {
+	$ch = curl_init();
+	$options = array(
+		CURLOPT_URL =&gt; 'https://login.adfox.ru/commonReportsOutputForm.php?period=&amp;startDate='.$startDate.'&amp;endDate='.$endDate.'&amp;criteria=superCampaignBanner&amp;isNewSearch=on&amp;objectName=superCampaign&amp;objectID='.$id.'&amp;ignoreStartDate=off&amp;loginAccount=логин&amp;loginPassword=пароль-sha-256&amp;isXML=1',
+		CURLOPT_HEADER =&gt; "Content-Type:application/xml",
+		CURLOPT_HTTPAUTH =&gt; CURLAUTH_BASIC,
+		CURLOPT_SSL_VERIFYPEER =&gt; FALSE,
+		CURLOPT_RETURNTRANSFER =&gt; TRUE
+	);
+
+	curl_setopt_array($ch, $options);
+	$data = curl_exec($ch);
+
+	curl_close($ch);
+
+	//Можно записать ответ Adfox в файл, чтобы убедиться в его верности
+	//file_put_contents('request.txt', $data, FILE_APPEND);
+
+	$parser=xml_parser_create('UTF-8');
+	xml_parse_into_struct($parser, $data, $vals, $index);
+
+	$campReport = array();
+	$j = 0;
+
+	for ($i = 0; $i &lt; count($vals); ++$i) {
+		if ($vals[$i]["tag"]=="CRITERIA") {
+		  $bannername = $vals[$i]["value"];
+		}
+
+		if ($vals[$i]["tag"]=="FLIGHTNAME") {
+		  $flightname = $vals[$i]["value"];
+		}
+
+		if ($vals[$i]["tag"]=="IMPRESSIONS") {
+		  $impressions = $vals[$i]["value"];
+		}
+
+		if ($vals[$i]["tag"]=="CLICKS") {
+		  $clicks = $vals[$i]["value"];
+
+		  $campReport[$j]['campaign'] = $id;
+		  $campReport[$j]['flightname'] = $flightname;
+		  $campReport[$j]['bannername'] = $bannername;
+		  $campReport[$j]['impressions'] = $impressions;
+		  $campReport[$j]['clicks'] = $clicks;
+
+		  $j += 1;
+		}
+	}
+
+	return $campReport;
+}
+
+// Получаем список доступных кампаний
+$campIDs = getCampaigns();
+
+// Для каждой кампании запрашиваем отчет по баннерам
+for ($i = 0; $i &lt; count($campIDs); ++$i) {
+	$campReport = getBanners($campIDs[$i]['id'], $startDate, $endDate);
+	
+	// Для каждого баннера записываем в файл data.txt результат запроса с показами и кликами
+	// Полный путь файла data.txt нужно указывать для корректной работы автоматической выгрузки Cron
+	for ($j = 0; $j &lt; count($campReport); ++$j) {
+		file_put_contents('/var/www/html/adfox/data.txt', $startDate."\t".$campReport[$j]['campaign']."\t".$campReport[$j]['flightname']."\t".$campReport[$j]['bannername']."\t".$campReport[$j]['impressions']."\t".$campReport[$j]['clicks']."\n", FILE_APPEND);
+
+		// Пишем в консоли строчку о создании записи (опционально)
+		echo 'Record created - '.$startDate.' - '.$campReport[$j]['bannername']."\n";
+	}
+}
+
+Прогоняем код за несколько дней (например, за 1-4 сентября), подставляя в startDate и endDate даты от 01.09.15 до 04.09.15. В результате в файле data.txt должна накопиться статистика по каждому баннеру за каждый день с 1 по 4 сентября.
+Осталось отобразить наши данные на графике и поставить скрипт на автоматическое обновление. Для отрисовки графиков используем www.highcharts.com/demo/line-basic. Можно скачать библиотеку на инстанс или обращаться к библиотекам на сайте Highcharts. В примере используется второй вариант. Код всех примеров можно посмотреть на www.highcharts.com/demo/line-basic, кликнув под графиком кнопку «EDIT IN JSFIDDLE».
+Для корректной работы библиотеки нам понадобится jQuery. Скачиваем его с сайта или в сразу в консоли в папку /var/www/html/adfox:
+$ wget code.jquery.com/jquery-1.11.3.js
+Добавляем код графика в файл report.html:Код HTML-страницы с визуализацией&lt;html&gt;
+&lt;head&gt;
+
+&lt;script src="jquery-1.11.3.js"&gt;&lt;/script&gt;
+&lt;script src="http://code.highcharts.com/highcharts.js"&gt;&lt;/script&gt;
+&lt;script src="http://code.highcharts.com/modules/exporting.js"&gt;&lt;/script&gt;
+
+&lt;/head&gt;
+
+&lt;body&gt;
+
+&lt;script&gt;
+
+// массив списка баннеров, которые были выгружены в файл data.txt
+var banners = [];
+
+// массивы дат, показов и кликов, которые загрузим из файла data.txt
+// значения CTR (отношение кликов к показам) рассчитаем
+var dates1 = [];
+var shows1 = [];
+var clicks1 = [];
+var ctr1 = [];
+
+var dates2 = [];
+var shows2 = [];
+var clicks2 = [];
+var ctr2 = [];
+
+var dates3 = [];
+var shows3 = [];
+var clicks3 = [];
+var ctr3 = [];
+
+// читаем файл data.txt построчно
+$.get("data.txt", function(data){
+	var lines = data.split("\n");
+	for (var i = 0, len = lines.length; i &lt; len; i++) {
+		// проверяем в консоли, что файл прочитан корректно
+	    //console.log(lines[i]);
+
+	    // разделяем каждую строчку файла на массив из 6 элементов, соответствующих столбцам в data.txt
+	    elements = lines[i].split("\t");
+
+	    // название баннера это третий по счету столбец, соответственно берет третий элемент массива elements
+	    // (на всякий случай - нумерация элементов массива начинается с 0, а не с 1)
+	    banners.push(elements[2]);
+	}
+	// проверяем, что названия баннеров считались корректно
+	//console.log(banners);
+
+	// возьмем уникальные названия баннеров и запишем в массив bannerNames первые 3 названия
+	Array.prototype.unique = function()
+	{
+	    var tmp = {}, out = [];
+	    for(var i = 0, n = this.length; i &lt; n; ++i)
+	    {
+	        if(!tmp[this[i]]) { tmp[this[i]] = true; out.push(this[i]); }
+	    }
+	    return out;
+	}
+	
+	bannersNames = banners.unique().slice(0, 3);
+	
+	// проверяем, что получили 3 корректных названия баннеров
+	//console.log(bannersNames);
+
+	// проходим еще раз по файлу data.txt и выбираем даты, показы и клики для баннеров из массива bannerNames
+	for (var i = 0, len = lines.length; i &lt; len; i++) {
+
+	    elements = lines[i].split("\t");
+
+	    // если строчка в файле data.txt относится к первому баннеру, то добавляем в массив дат, показов и кликов значения этой строчки
+	    if (elements[2] == bannersNames[0]) {
+	    	dates1.push(elements[0]);
+	    	shows1.push(parseInt(elements[4]));
+	    	clicks1.push(parseInt(elements[5]));
+
+	    	// toFixed(3) - округляем значения CTR до третьего знака после запятой
+	    	if (parseInt(elements[4]) &gt; 0) {
+	    		ctr1.push(Number(parseFloat(elements[5] / elements[4] * 100).toFixed(3)));
+	    	} else {
+	    		ctr1.push(0);
+	    	}
+	    }
+
+	    // то же самое для второго баннера
+	    if (elements[2] == bannersNames[1]) {
+	    	dates2.push(elements[0]);
+	    	shows2.push(parseInt(elements[4]));
+	    	clicks2.push(parseInt(elements[5]));
+	    	if (parseInt(elements[4]) &gt; 0) {
+	    		ctr2.push(Number(parseFloat(elements[5] / elements[4] * 100).toFixed(3)));
+	    	} else {
+	    		ctr2.push(0);
+	    	}
+	    }
+
+	    // то же самое для третьего баннера
+	    if (elements[2] == bannersNames[2]) {
+	    	dates3.push(elements[0]);
+	    	shows3.push(parseInt(elements[4]));
+	    	clicks3.push(parseInt(elements[5]));
+	    	if (parseInt(elements[4]) &gt; 0) {
+	    		ctr3.push(Number(parseFloat(elements[5] / elements[4] * 100).toFixed(3)));
+	    	} else {
+	    		ctr3.push(0);
+	    	}
+	    }
+	}
+
+	// проверяем, что все массивы CTR (которые будут на графике) имеют числовой формат
+	// например: [0.22, 0.25, 0.30, 0.24]
+	//console.log(ctr1);
+	//console.log(ctr2);
+	//console.log(ctr3);
+
+	// отображаем значения CTR на графике
+	$(function () {
+		// название блока container должно совпадать с вызываемым в &lt;div id="container"... внизу страницы
+	    $('#container').highcharts({
+	    	// заголовок графика
+	        title: {
+	            text: 'Campaign banners CTR',
+	            x: -20 //center
+	        },
+	        
+	        // подпись под заголовком
+	        subtitle: {
+	            text: 'Source: ADFOX',
+	            x: -20
+	        },
+
+	        // в качестве оси абсции берем значения массива дат dates1
+	        xAxis: {
+	            categories: dates1
+	        },
+
+	        // параметры оси ординат
+	        yAxis: {
+	            title: {
+	                text: 'CTR %'
+	            },
+	            plotLines: [{
+	                value: 0,
+	                width: 1,
+	                color: '#808080'
+	            }]
+	        },
+
+	        // параметры подсказки при наведении на график
+	        tooltip: {
+	            valueSuffix: '%'
+	        },
+
+	        // параметры легенды
+	        legend: {
+	            layout: 'vertical',
+	            align: 'right',
+	            verticalAlign: 'middle',
+	            borderWidth: 0
+	        },
+
+	        // задаем значения, которые хотим отобразить на графике: название баннера и значения CTR из соответствующего массива
+	        series: [{
+	            name: bannersNames[0],
+	            data: ctr1
+	        }, {
+	            name: bannersNames[1],
+	            data: ctr2
+	        }, {
+	            name: bannersNames[2],
+	            data: ctr3
+	        }],
+	        credits: {
+		        enabled: false
+		    }
+	    });
+	});
+});
+&lt;/script&gt;
+
+&lt;div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"&gt;&lt;/div&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+
+Открываем страницу report.html в браузере, не забывая, что файл лежит в папке adfox:
+Осталось поставить наш скрипт на ежедневное обновление (например, в 8:00 по системному времени инстанса, которое можно проверить командой date в консоли). Для этого в консоли выполняем:
+$ crontab -e
+По умолчанию откроется редактор vim. Для редактирования файла нажмите 'i' (режим редактирования) и добавьте следующую строчку (вставьте в редактор с помощью Shift+Ins):
+00 08 * * * /usr/bin/php /var/www/html/adfox/daily.php &gt; /var/www/html/adfox/out
+Затем жмем esc (выход из режима редактирования) и набираем ':wq' — сохранить и выйти. В консоли должна отобразиться строчка:
+crontab: installing new crontab
+Для проверки установки расписания:
+$ crontab -l
+00 08 * * * /usr/bin/php /var/www/html/adfox/daily.php &gt; /var/www/html/adfox/out
+В файле out можно отслеживать результаты работы Cron задач. Например, если возникнут ошибки в ходе выполнения скрипта.
+Подробнее про Cron на AWS: docs.aws.amazon.com/opsworks/latest/userguide/workingcookbook-extend-cron.html
+Все готово. Итого у нас есть скрипт, который ежедневно утром обновляет данные по показам и кликам всех доступных нам баннеров за вчерашний день. А также HTML-страница, на которой в любое время можно посмотреть динамику CTR баннеров за последние несколько дней. На AWS есть много возможностей по настройке безопасного доступа к данным. Также при совершенствовании этого подхода можно записывать данные в базу MySQL, с которой гораздо проще работать, чем с текстовыми файлами. Надеюсь этот подход поможет вам сэкономить время при регулярной работе с Adfox.
+
+      
+      
+    

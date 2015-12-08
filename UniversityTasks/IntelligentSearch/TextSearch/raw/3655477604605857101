@@ -1,0 +1,549 @@
+﻿#TITLE:Микросервисы без серверов (облачный вариант)
+
+      Здравствуйте, дорогие читатели!
+Как помнят самые внимательные из вас, мы работаем над инновационной книгой о микросервисах, но в то же время не забываем читать, что пишут в Сети на эту тему. Поэтому не смогли пройти мимо интереснейшей статьи из блога Amazon, автор которой Тим Вагнер делится своими взглядами на микросервисную архитектуру.
+Много Java, JavaScript, схем, рассуждений и очень много текста
+На конференции LinuxCon/ContainerCon 2015 я представил демо-доклад под названием “Микросервисы без серверов”. В нем я описал создание микросервиса для обработки изображений, развернул его в нескольких регионах, написал мобильное приложение, использовавшее этот микросервис в качестве машинного интерфейса, добавил API на основе HTTPS, воспользовавшись Amazon API Gateway и веб-сайт, а затем выполнил для всей этой конструкции модульное и нагрузочное тестирование — все без серверов. 
+В этой статье вышеупомянутый доклад восстановлен во всех подробностях, причем кое-где я углубляюсь в тонкости архитектуры. Дополнительные иллюстрации — в подборке слайдов. Еще один пример такой архитектуры – исполняемый файл SquirrelBin в репозитории gist.Бессерверная архитектура
+Термин “бессерверный” означает, что нам не потребуется никакой явной архитектуры, то есть: обойдемся без серверов, без развертывания на серверах, без установки каких-либо программ. Будем работать только с управляемыми облачными сервисами и с ноутбуком. На приведенной ниже схеме изображены основные компоненты и их связи: лямбда-функция в качестве машинного интерфейса и мобильное приложение, напрямую подключающееся к нему, плюс шлюз Amazon API Gateway, предоставляющий конечную HTTP-точку для статического сайта, расположенного на Amazon S3.
+Бессерверная архитектура для мобильных и веб-приложений с использованием AWS Lambda
+Итак, приступаем!Этап 1: Создаем сервис для обработки изображений
+Чтобы весь процесс получился проще, мы воспользуемся библиотекой ImageMagick, которая встроена в язык nodejs технологии Lambda. Однако, это не обязательно — если вы предпочитаете собственные библиотеки, то можете загружать библиотеки JavaScript или нативные библиотеки, запускать Python или даже обернуть код в исполняемый файл командной строки. Приведенный ниже пример реализован на nodejs, но вы можете с тем же успехом создать такой сервис при помощи Java, Clojure, Scala или другого jvm-языка в AWS Lambda.
+Нижеприведенный код можно считать своеобразным «hello world» для ImageMagick — он позволяет познакомиться с базовой структурой команды (эта команда — оператор переключения), извлечь встроенное изображение розы и вернуть его. Если не считать кодирования результата, все остальное вполне может быть написано на JSON, примерно так.var im = require("imagemagick");
+var fs = require("fs");
+exports.handler = function(event, context) {
+    if (event.operation) console.log("Operation " + event.operation + " requested");
+    switch (event.operation) {
+        case 'ping': context.succeed('pong'); return;
+        case 'getSample':
+            event.customArgs = ["rose:", "/tmp/rose.png"];
+            im.convert(event.customArgs, function(err, output) {
+                if (err) context.fail(err);
+                else {
+                    var resultImgBase64 = new Buffer(fs.readFileSync("/tmp/rose.png")).toString('base64');
+                    try {fs.unlinkSync("/tmp/rose.png");} catch (e) {} // discard
+                    context.succeed(resultImgBase64);
+                }
+            });
+            break; // разрешаем завершение обратного вызова
+        default:
+            var error = new Error('Unrecognized operation "' + event.operation + '"');
+            context.fail(error);
+            return;
+    }
+};
+
+Сначала давайте убедимся, что сервис работает. Для этого отправим следующий JSON в тестовое окно консоли AWS Lambda:{
+  "operation": "ping"
+}
+
+Вы должны получить обязательный отклик “pong”. Далее переходим, собственно, к вызову ImageMagick, отправляя такой JSON:{
+  "operation": "getSample"
+}
+
+
+Этот запрос извлекает строковое представление PNG-изображения розы в кодировке base64: “”iVBORw0KGg…Jggg==”. Чтобы убедиться, что это не просто какие-то случайные символы, вырежьте их и вставьте (без двойных кавычек) в любой удобный декодер, преобразующий Base64 в изображения, например codebeautify.org/base64-to-image-converter. У вас должно получиться красивое изображение розы:
+Пример изображения (красная роза)
+Теперь давайте допишем сервис обработки изображений, подготовив к использованию оставшуюся часть его nodejs-обертки. Мы собираемся предложить ряд различных операций: ping: проверка доступности сервиса.
+getDimensions: сокращенный вариант вызова операции identify для получения высоты и ширины изображения.
+identify: извлечение метаданных изображения.
+resize: вспомогательная процедура для изменения размера («под капотом» вызывающая convert)
+thumbnail: синоним resize.
+convert: “универсальная” процедура – может преобразовывать медиа-форматы, применять преобразования, пересчитывать размеры и т.д. 
+getSample: извлекает образец изображения; эта операция соответствует “hello world” 
+
+Большая часть кода здесь крайне прямолинейна. Код обертывает процедуры ImageMagick, реализованные на nodejs, некоторые из них принимают JSON (в таком случае событие, передаваемое Lambda, очищается и перенаправляется) а другие принимают аргументы командной строки (т.н. “кастомные”), передаваемые в виде массива строк. Один из аспектов этого функционала может быть неочевиден, если вы ранее не работали с ImageMagick, а именно: она функционирует в качестве обертки для командной строки, а имена файлов обладают семантикой. У нас две конкурирующие потребности: во-первых, клиент должен передавать семантику (напр., выходной формат изображения, допустим, PNG против JPEG), во-вторых, автор сервиса должен определять, где делать на диске временное хранилище, поэтому не допускаем утечек деталей реализации. Чтобы решить обе эти задачи одновременно, мы определяем два аргумента в схеме JSON: “inputExtension” и “outputExtension”, а затем создаем фактическое местоположение файла, совмещая клиентскую часть (расширение файла) с серверной (имя каталога и базовое имя). Посмотреть (и использовать!) готовый код можно на следующем чертеже обработки изображения.
+Существует множество тестов, которые здесь можно выполнить (что мы и сделаем ниже), но в качестве быстрой проверки работоспособности вновь извлечем то самое изображение розы и передадим его обратно при помощи негативного фильтра (выполняющего инверсию цветов). Можно воспользоваться подобным файлом JSON в консоли Lambda, просто замените содержимое поля base64Image теми символами, которые соответствуют вашему изображению (эта последовательность достаточно длинная).
+{
+  "operation": "convert",
+  "customArgs": [
+    "-negate"
+  ],
+  "outputExtension": "png",
+  "base64Image": "...fill this in with the rose sample image, base64-encoded..."
+}
+
+Вывод, декодированный в изображение — это настоящий ботанический изыск, голубая роза:
+Голубая роза (негатив от исходного изображения с красной розой)
+Вот и все, что касается функциональности сервиса. Как правило, здесь и начинаются закавыки, мы переходим от «однажды сработало» к «масштабируемый и надежный сервис с круглосуточным отслеживанием и логированием производства». Но в этом и заключается красота Lambda: наш код для обработки изображений уже является полностью развернутым микросервисом, готовым к практическому использованию. Осталось добавить мобильное приложение, которое сможет его вызывать…Этап 2: Создаем мобильный клиент
+Обратиться к нашему микросервису для обработки приложений можно несколькими способами, но чтобы продемонстрировать образец клиента, напишем небольшое приложение для Android. Ниже приведен клиентский код, использованный докладе на ContainerCon. Здесь создается простое приложение для Android, позволяющее взять изображение и фильтр, после чего фильтр применяется к изображению в операции “convert”, и мы видим, что получается в итоге. Фильтрация осуществляется в микросервисе обработки изображений, который теперь работает в AWS Lambda.
+Чтобы было понятнее, что делает это приложение, возьмем для примера пиктограмму AWS Lambda:
+Эмулятор Android, в котором отображается пиктограмма AWS Lambda
+Мы выберем “негативный” фильтр, чтобы инвертировать цвета на пиктограмме:
+Выбор фильтра ‘Negate’ для преобразования изображений 
+…и вот результат: голубая версия нашего моникера Lambda (изначально он был оранжевым):
+Результат применения фильтра ‘Negate’ к пиктограмме AWS Lambda
+Кроме того, мы могли бы придать винтажный вид современной панораме Сиэтла. Берем картинку с Сиэтлом и применяем к нему фильтр в тонах сепии: 
+Панорама Сиэтла в тонах сепии.
+Переходим к коду. Я не стремлюсь здесь обучить вас основам программирования под Android, а просто обращу внимание на Lambda-специфичные элементы приложения. Если вы пишете собственное приложение, то вам потребуется включить архив AWS Mobile SDK, чтобы запускать приведенные ниже образцы кода). Концептуально код состоит из четырех частей:Схема данных POJO 
+Определение удаленного сервиса (операции)
+Инициализация
+Вызов сервиса
+
+Рассмотрим все части по очереди.
+Схема данных определяет все объекты, которые потребуется передавать между клиентом и сервером. Здесь нет «Lambda-измов»; все объекты являются обычными POJO (Plain Old Java Object) без каких-либо специальных библиотек или фреймворков. Мы определяем базовое событие, а затем расширяем его, чтобы отразить структуру нашей операции. Можете считать, что здесь происходит «джавафикация» того JSON, которым мы пользовались при определении и тестировании сервиса обработки изображений выше. Если вы также пишете сервер Java, то, как правило, будете совместно использовать эти файлы в рамках определения общей структуры событий; в нашем примере эти объекты POJO превращаются в JSON на стороне сервера.
+LambdaEvent.javapackage com.amazon.lambda.androidimageprocessor.lambda;
+public class LambdaEvent {
+    private String operation;
+    public String getOperation() {return operation;}
+    public void setOperation(String operation) {this.operation = operation;}
+    public LambdaEvent(String operation) {setOperation(operation);}
+}
+
+ImageConvertRequest.javapackage com.amazon.lambda.androidimageprocessor.lambda;
+import java.util.List;
+public class ImageConvertRequest extends LambdaEvent {
+    private String base64Image;
+    private String inputExtension;
+    private String outputExtension;
+    private List customArgs;
+    public ImageConvertRequest() {super("convert");}
+    public String getBase64Image() {return base64Image;}
+    public void setBase64Image(String base64Image) {this.base64Image = base64Image;}
+    public String getInputExtension() {return inputExtension;}
+    public void setInputExtension(String inputExtension) {this.inputExtension = inputExtension;}
+    public String getOutputExtension() {return outputExtension;}
+    public void setOutputExtension(String outputExtension) {this.outputExtension = outputExtension;}
+    public List getCustomArgs() {return customArgs;}
+    public void setCustomArgs(List customArgs) {this.customArgs = customArgs;}
+}
+
+Пока все сравнительно просто. Теперь, имея модель данных, определяем конечную точку сервера при помощи нескольких аннотаций Java. Здесь мы предоставляем две операции, “ping” и “convert”; будет несложно расширить код, добавив к ним и другие операции, но для рассматриваемого ниже демонстрационного приложения это не требуется. 
+ILambdaInvoker.javapackage com.amazon.lambda.androidimageprocessor.lambda;
+import com.amazonaws.mobileconnectors.lambdainvoker.LambdaFunction;
+import java.util.Map;
+public interface ILambdaInvoker {
+    @LambdaFunction(functionName = "ImageProcessor")
+    String ping(Map event);
+    @LambdaFunction(functionName = "ImageProcessor")
+    String convert(ImageConvertRequest request);
+}
+
+Теперь мы готовы переходить к основной части приложения. Здесь вы увидите в основном трафаретный код Android, а также код для простого управления клиентскими ресурсами, но я отдельно отмечу пару фрагментов, связанных с Lambda: 
+Это раздел “init”; здесь создается провайдер аутентификации для вызова Lambda API и and creates a Lambda-инвокер, позволяющий вызывать конечные точки, определенные выше, и передавать объекты POJO в нашу модель данных: // Создаем экземпляр CognitoCachingCredentialsProvider
+        CognitoCachingCredentialsProvider cognitoProvider = new CognitoCachingCredentialsProvider(
+                this.getApplicationContext(), "us-east-1:&lt;YOUR COGNITO IDENITY POOL GOES HERE&gt;", Regions.US_EAST_1);
+
+        // Создаем LambdaInvokerFactory, которая будет использоваться для инстанцирования посредника Lambda.
+        LambdaInvokerFactory factory = new LambdaInvokerFactory(this.getApplicationContext(),
+                Regions.US_EAST_1, cognitoProvider);
+
+        // Создаем объект-посредник Lambda с задаваемым по умолчанию компонентом для связывания данных Json.
+        lambda = factory.build(ILambdaInvoker.class);
+
+Другой фрагмент кода, который (довольно) интересен — это сам вызов удаленной процедуры: try {
+                    return lambda.convert(params[0]);
+                } catch (LambdaFunctionException e) {
+                    Log.e("Tag", "Failed to convert image");
+                    return null;
+                }
+
+На самом деле, он не так уж интересен, поскольку вся магия (сериализация аргумента и десериализация результата) протекает неявно, а нам здесь остается выполнить лишь кое-какую обработку ошибок.
+Вот полный исходный файл:
+MainActivity.javapackage com.amazon.lambda.androidimageprocessor;
+
+import android.app.Activity;
+import android.app.ProgressDialog;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.util.Base64;
+import android.util.Log;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.Spinner;
+import android.widget.Toast;
+
+import com.amazon.lambda.androidimageprocessor.lambda.ILambdaInvoker;
+import com.amazon.lambda.androidimageprocessor.lambda.ImageConvertRequest;
+import com.amazonaws.auth.CognitoCachingCredentialsProvider;
+import com.amazonaws.mobileconnectors.lambdainvoker.LambdaFunctionException;
+import com.amazonaws.mobileconnectors.lambdainvoker.LambdaInvokerFactory;
+import com.amazonaws.regions.Regions;
+
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public class MainActivity extends Activity {
+
+    private ILambdaInvoker lambda;
+    private ImageView selectedImage;
+    private String selectedImageBase64;
+    private ProgressDialog progressDialog;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        // Создаем экземпляр CognitoCachingCredentialsProvider
+        CognitoCachingCredentialsProvider cognitoProvider = new CognitoCachingCredentialsProvider(
+                this.getApplicationContext(), "us-east-1:2a40105a-b330-43cf-8d4e-b647d492e76e", Regions.US_EAST_1);
+
+        // Создаем LambdaInvokerFactory, которая будет использоваться для инстанцирования посредника Lambda.
+        LambdaInvokerFactory factory = new LambdaInvokerFactory(this.getApplicationContext(),
+                Regions.US_EAST_1, cognitoProvider);
+
+        // Создаем объект-посредник Lambda с задаваемым по умолчанию компонентом для связывания данных Json.
+        lambda = factory.build(ILambdaInvoker.class);
+
+        // пингуем lambda-функцию, чтобы убедиться, что все работает 
+        pingLambda();
+    }
+
+    // пингуем lambda-функцию
+    @SuppressWarnings("unchecked")
+    private void pingLambda() {
+        Map event = new HashMap();
+        event.put("operation", "ping");
+
+        // Активация Lambda-функции приводит к сетевому вызову.
+        // Убеждаемся, что вызов делается не из главного потока.
+        new AsyncTask&lt;Map, Void, String&gt;() {
+            @Override
+            protected String doInBackground(Map... params) {
+                // Вызываем метод "ping". Если не получится, то будет выброшено
+                // исключение LambdaFunctionException.
+                try {
+                    return lambda.ping(params[0]);
+                } catch (LambdaFunctionException lfe) {
+                    Log.e("Tag", "Failed to invoke ping", lfe);
+                    return null;
+                }
+            }
+
+            @Override
+            protected void onPostExecute(String result) {
+                if (result == null) {
+                    return;
+                }
+
+                // Отображаем быстрое сообщение
+                Toast.makeText(MainActivity.this, "Made contact with AWS lambda", Toast.LENGTH_LONG).show();
+            }
+        }.execute(event);
+    }
+
+    // Обработчик событий для кнопки "process image"
+    public void processImage(View view) {
+        // изображение пока не выбрано
+        if (selectedImageBase64 == null) {
+            Toast.makeText(this, "Please tap one of the images above", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // получаем выбранный фильтр
+        String filter = ((Spinner) findViewById(R.id.filter_picker)).getSelectedItem().toString();
+        // собираем новый запрос
+        ImageConvertRequest request = new ImageConvertRequest();
+        request.setBase64Image(selectedImageBase64);
+        request.setInputExtension("png");
+        request.setOutputExtension("png");
+
+        // специальные аргументы для фильтра
+        List customArgs = new ArrayList();
+        request.setCustomArgs(customArgs);
+        switch (filter) {
+            case "Sepia":
+                customArgs.add("-sepia-tone");
+                customArgs.add("65%");
+                break;
+            case "Black/White":
+                customArgs.add("-colorspace");
+                customArgs.add("Gray");
+                break;
+            case "Negate":
+                customArgs.add("-negate");
+                break;
+            case "Darken":
+                customArgs.add("-fill");
+                customArgs.add("black");
+                customArgs.add("-colorize");
+                customArgs.add("50%");
+                break;
+            case "Lighten":
+                customArgs.add("-fill");
+                customArgs.add("white");
+                customArgs.add("-colorize");
+                customArgs.add("50%");
+                break;
+            default:
+                return;
+        }
+
+        // async-запрос к lambda-функции
+        new AsyncTask() {
+            @Override
+            protected String doInBackground(ImageConvertRequest... params) {
+                try {
+                    return lambda.convert(params[0]);
+                } catch (LambdaFunctionException e) {
+                    Log.e("Tag", "Failed to convert image");
+                    return null;
+                }
+            }
+
+            @Override
+            protected void onPostExecute(String result) {
+                // если данные не вернулись, то это отказ
+                if (result == null || Objects.equals(result, "")) {
+                    hideLoadingDialog();
+                    Toast.makeText(MainActivity.this, "Processing failed", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                // в противном случае декодируем данные base64 и помещаем их в выбранное представление с изображением 
+                byte[] imageData = Base64.decode(result, Base64.DEFAULT);
+                selectedImage.setImageBitmap(BitmapFactory.decodeByteArray(imageData, 0, imageData.length));
+                hideLoadingDialog();
+            }
+        }.execute(request);
+
+        showLoadingDialog();
+    }
+
+    /*
+    Выбираем методы для каждого изображения
+     */
+
+    public void selectLambdaImage(View view) {
+        selectImage(R.drawable.lambda);
+        selectedImage = (ImageView) findViewById(R.id.static_lambda);
+        Toast.makeText(this, "Selected image 'lambda'", Toast.LENGTH_LONG).show();
+    }
+
+    public void selectSeattleImage(View view) {
+        selectImage(R.drawable.seattle);
+        selectedImage = (ImageView) findViewById(R.id.static_seattle);
+        Toast.makeText(this, "Selected image 'seattle'", Toast.LENGTH_LONG).show();
+    }
+
+    public void selectSquirrelImage(View view) {
+        selectImage(R.drawable.squirrel);
+        selectedImage = (ImageView) findViewById(R.id.static_squirrel);
+        Toast.makeText(this, "Selected image 'squirrel'", Toast.LENGTH_LONG).show();
+    }
+
+    public void selectLinuxImage(View view) {
+        selectImage(R.drawable.linux);
+        selectedImage = (ImageView) findViewById(R.id.static_linux);
+        Toast.makeText(this, "Selected image 'linux'", Toast.LENGTH_LONG).show();
+    }
+
+    // извлекаем данные ‘id’ отрисовываемого ресурса, закодированные как base64 
+    private void selectImage(int id) {
+        Bitmap bmp = BitmapFactory.decodeResource(getResources(), id);
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        selectedImageBase64 = Base64.encodeToString(stream.toByteArray(), Base64.DEFAULT);
+    }
+
+    // возвращаем изображения в их исходное состояние
+    public void reset(View view) {
+        ((ImageView) findViewById(R.id.static_lambda)).setImageDrawable(getResources().getDrawable(R.drawable.lambda, getTheme()));
+        ((ImageView) findViewById(R.id.static_seattle)).setImageDrawable(getResources().getDrawable(R.drawable.seattle, getTheme()));
+        ((ImageView) findViewById(R.id.static_squirrel)).setImageDrawable(getResources().getDrawable(R.drawable.squirrel, getTheme()));
+        ((ImageView) findViewById(R.id.static_linux)).setImageDrawable(getResources().getDrawable(R.drawable.linux, getTheme()));
+
+        Toast.makeText(this, "Please choose from one of these images", Toast.LENGTH_LONG).show();
+    }
+
+    private void showLoadingDialog() {
+        progressDialog = ProgressDialog.show(this, "Please wait...", "Processing image", true, false);
+    }
+
+    private void hideLoadingDialog() {
+        progressDialog.dismiss();
+    }
+}
+
+Вот и все мобильное приложение. Оно состоит из модели данных (класс Java), модели управления (пара методов), три команды для инициализации всяких вещей, а затем удаленный вызов, заключенный в блок try/catch…все просто.Развертывание в нескольких регионах
+До сих пор мы особенно не останавливались на том, где будет работать этот код. Lambda отвечает за развертывание вашего кода внутри того или иного региона, но вам остается решить, в каких еще регионах вы будете его использовать. В моей исходной демо-версии я писал функцию для работы на востоке США — например, это относится к датацентру в штате Виргиния. Выше я писал, что мы делаем глобальный сервис, поэтому давайте расширим зону его действия на запад Европы (Ирландия) и тихоокеанский регион (Токио), чтобы мобильные приложения из этих регионов могли подключаться к сервису с минимальной задержкой:
+Бессерверный механизм для развертывания Lambda-функций в двух дополнительных регионахБессерверное веб-приложение, часть 1: конечные точки API 
+Итак, теперь у нас есть мобильное приложение и глобально развернутый сервис обработки изображений, служащий его машинным интерфейсом. Давайте перейдем к созданию бессерверного веб-приложения для тех товарищей, которые предпочитают работать в браузере, а не на устройстве. Мы сделаем это в два этапа. Сначала создадим конечную точку API для сервиса обработки изображений. Затем, в следующем разделе, добавим сам сайт, воспользовавшись Amazon S3.
+AWS Lambda упрощает превращение кода в сервисы, в частности, потому, что клиентский интерфейс веб-сервиса здесь уже «встроен». Однако для этого нужны клиенты (такие, как тот мобильный клиент, который мы написали в предыдущем разделе), чтобы подписывать запросы учетными данными, предоставляемыми AWS. Эту задачу решает клиент авторизации  Amazon Cognito, применяемый в нашем приложении Android, но что если бы мы хотели открыть общий доступ к сервису обработки изображений через веб-сайт? 
+Чтобы это сделать, обратимся к другому серверу, Amazon API Gateway. Этот сервис позволяет определить API, не требуя при этом никакой инфраструктуры – API полностью управляется AWS. Мы задействуем шлюз API при создании URL, который будет использоваться сервисом обработки изображений, предоставляющим доступ к подмножеству своих возможностей любому пользователю Сети. В Amazon API Gateway предоставляются различные способы управления доступом к различным API: вызовы API можно подписывать учетными данными AWS, либо использовать маркеры OAuth и просто перенаправлять заголовки маркеров на верификацию, можно использовать ключи API (не рекомендуется, если нужен защищенный доступ) или сделать API полностью общедоступным, как будет показано здесь.
+Кроме разнообразных моделей доступа API Gateway также предлагает множество возможностей, обсуждение которых выходит за рамки этой статьи. Некоторые из них встроены (например, защита от DDOS-атак), а другие, например, кэширование, позволяют дополнительно сократить задержки и затраты на многократное извлечение популярного изображения. Реализовав уровень косвенности между клиентами и (микро)сервисами, API Gateway также позволяет развивать их независимо, применяя отдельные процедуры контроля версий и первичного размещения данных (staging). Пока же мы сосредоточимся на решении основной задачи: предоставить наш сервис обработки изображений в качестве API.
+Итак, давайте создадим наш API. В AWS Console нажмите API Gateway, а затем выберите “New API”, задайте имя для API, можно также добавить описание. Я выбрал название “ImageAPI”.
+Далее создайте ресурс для вашего нового API (я назвал его “ImageProcessingService”), после чего сделайте в нем метод POST. Выберите “Lambda function” в качестве типа интеграции и введите имя Lambda-функции, которую вы будете использовать в качестве сервиса для обработки изображений. В конфигурации “Method Request” задайте в качестве типа авторизации вариант “none” (то есть, это будет общедоступная конечная точка). Вот и все.
+Чтобы протестировать интеграцию, нажмите кнопку “Test”:
+Затем укажите тестовую полезную нагрузку {“operation”: “ping”}. Вы должны получить ожидаемый результат “pong”, указывающий, что вы успешно связали ваш API с Lambda-функцией.
+Ремарка: ниже мы проделаем более полное (и глубокое) тестирование, но обычно я нахожу полезным добавлять в мой API в качестве ресурса верхнего уровня метод GET, который связан с какой-нибудь простой операцией, например, ping. Таким образом, я могу быстро убедиться из любого браузера, что мой API правильно связан с Lambda-функцией. В нашем демо-приложении (и вообще) это не является обязательным, но вполне возможно, что такой прием вам понравится.
+Для того, что будет дальше (статический контент S3) нам также потребуется активировать CORS. Это просто, но делается в несколько этапов. Команда API Gateway продолжает упрощать этот процесс, поэтому чтобы не повторять здесь их инструкции (которые вполне могут вскоре устареть), отсылаю вас к документации.
+Нажмите кнопку “Deploy this API”. Теперь все должно быть готово для создания вашего сайта!Бессерверное веб-приложение, часть 2: Статический хостинг сайта на Amazon S3
+Здесь все просто: загрузите следующий Javascript-код для сайта в контейнер S3, который вам больше нравится:var ENDPOINT = 'https://fuexvelc41.execute-api.us-east-1.amazonaws.com/prod/ImageProcessingService';
+
+angular.module('app', ['ui.bootstrap'])
+
+    .controller('MainController', ['$scope', '$http', function($scope, $http) {
+        $scope.loading = false;
+        $scope.image = {
+            width: 100
+        };
+
+        $scope.ready = function() {
+            $scope.loading = false;
+        };
+
+        $scope.submit = function() {
+            var fileCtrl = document.getElementById('image-file');
+            if (fileCtrl.files &amp;&amp; fileCtrl.files[0]) {
+                $scope.loading = true;
+                var fr = new FileReader();
+                fr.onload = function(e) {
+                    $scope.image.base64Image = e.target.result.slice(e.target.result.indexOf(',') + 1);
+                    $scope.$apply();
+                    document.getElementById('original-image').src = e.target.result;
+                    // Теперь изменяем размер!
+                    $http.post(ENDPOINT, angular.extend($scope.image, { operation: 'resize', outputExtension: fileCtrl.value.split('.').pop() }))
+                        .then(function(response) {
+                            document.getElementById('processed-image').src = "data:image/png;base64," + response.data;
+                        })
+                        .catch(console.log)
+                        .finally($scope.ready);
+                };
+                fr.readAsDataURL(fileCtrl.files[0]);
+            }
+        };
+    }]);
+
+А вот HTML-код нашего (очень простого) демонстрационного сайта:&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+    &lt;title&gt;Image Processing Service&lt;/title&gt;
+    &lt;meta charset="utf-8"&gt;
+    &lt;meta http-equiv="X-UA-Compatible" content="IE=edge"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.4/css/bootstrap.min.css"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Open+Sans:400,700"&gt;
+    &lt;link rel="stylesheet" type="text/css" href="main.css"&gt;
+&lt;/head&gt;
+&lt;body ng-app="app" ng-controller="MainController"&gt;
+    &lt;div class="container"&gt;
+        &lt;h1&gt;Image Processing Service&lt;/h1&gt;
+        &lt;div class="row"&gt;
+            &lt;div class="col-md-4"&gt;
+                &lt;form ng-submit="submit()"&gt;
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="image-file"&gt;Image&lt;/label&gt;
+                        &lt;input id="image-file" type="file"&gt;
+                    &lt;/div&gt;
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="image-width"&gt;Width&lt;/label&gt;
+                        &lt;input id="image-width" class="form-control" type="number"
+                               ng-model="image.width" min="1" max="4096"&gt;
+                    &lt;/div&gt;
+                    &lt;button type="submit" class="btn btn-primary"&gt;
+                        &lt;span class="glyphicon glyphicon-refresh" ng-if="loading"&gt;&lt;/span&gt;
+                        Submit
+                    &lt;/button&gt;
+                &lt;/form&gt;
+            &lt;/div&gt;
+            &lt;div class="col-md-8"&gt;
+                &lt;accordion close-others="false"&gt;
+                    &lt;accordion-group heading="Original Image" is-open="true"&gt;
+                        &lt;img id="original-image" class="img-responsive"&gt;
+                    &lt;/accordion-group&gt;
+                    &lt;accordion-group heading="Processed Image" is-open="true"&gt;
+                        &lt;img id="processed-image" class="img-responsive"&gt;
+                    &lt;/accordion-group&gt;
+                &lt;/accordion&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.3.15/angular.min.js"&gt;&lt;/script&gt;
+    &lt;script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/0.13.3/ui-bootstrap.min.js"&gt;&lt;/script&gt;
+    &lt;script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/0.13.3/ui-bootstrap-tpls.min.js"&gt;&lt;/script&gt;
+    &lt;script type="text/javascript" src="main.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+Наконец, вот CSS:body {
+    font-family: 'Open Sans', sans-serif;
+    padding-bottom: 15px;
+}
+
+a {
+    cursor: pointer;
+}
+
+/** LOADER **/
+
+.glyphicon-refresh {
+    -animation: spin .7s infinite linear;
+    -webkit-animation: spin .7s infinite linear;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@-webkit-keyframes spin {
+    from { -webkit-transform: rotate(0deg); }
+    to { -webkit-transform: rotate(360deg); }
+}
+
+…далее переходим к наполнению статического сайта контентом в S3:
+URL будет зависеть от региона S3 и имен объектов, напр., “http://image-processing-service.s3-website-us-east-1.amazonaws.com/”. Перейдите по этому URL в браузере — и должна открыться страница с вашим изображением:Модульное и нагрузочное тестирование
+API Gateway предоставляет Lambda-микросервису классический интерфейс, взаимодействие с которым происходит по URL. В вашем распоряжении различные варианты тестирования. Но давайте придерживаться нашего бессерверного подхода, попробуем обойтись не только без инфраструктуры, но даже без клиента! 
+Итак, первым делом нам требуется делать вызовы через API. Это просто: мы будем использовать «чертеж HTTPS-вызова» Lambda, чтобы методом POST сообщить ту конечную точку, которую мы получили при развертывании API Gateway:{
+  "options": {
+    "host": "fuexvelc41.execute-api.us-east-1.amazonaws.com",
+    "path": "/prod/ImageProcessingService",
+    "method": "POST"
+  },
+  "data": {
+    "operation": "getSample"
+  }
+}
+
+Теперь давайте обернем все это в модульный тест. Наш тест делает не так много работы: он просто запускает еще одну Lambda-функцию и выводит результат в указанную нами таблицу Amazon DynamoDB. Затем мы используем модульный и нагрузочный тест для проверки чертежа Lambda, будем работать в режиме «модульного тестирования»:{
+  "operation": "unit",
+  "function": "HTTPSInvoker",
+  "resultsTable": "unit-test-results",
+  "testId": "LinuxConDemo",
+  "event": {
+    "options": {
+      "host": "fuexvelc41.execute-api.us-east-1.amazonaws.com",
+      "path": "/prod/ImageProcessingService",
+      "method": "POST"
+    },
+    "data": {
+      "operation": "getSample"
+    }
+  }
+}
+
+Наконец, выполним простой нагрузочный тест, для этого всего лишь прогоним модульный тест несколько раз. Для этого вновь воспользуемся модульным и нагрузочным тестом для проверки чертежа Lambda, на этот раз будем работать в режиме «нагрузочного тестирования»:{
+  "operation": "load",
+  "iterations": 100,
+  "function": "TestHarness",
+  "event": {
+    "operation": "unit",
+    "function": "HTTPSInvoker",
+    "resultsTable": "unit-test-results",
+    "testId": "LinuxConLoadTestDemo",
+    "event": {
+      "options": {
+        "host": "fuexvelc41.execute-api.us-east-1.amazonaws.com",
+        "path": "/prod/ImageProcessingService",
+        "method": "POST"
+      },
+      "data": {
+        "operation": "getSample"
+      }
+    }
+  }
+}
+
+Вот схема нашей бессерверной тестовой архитектуры:
+Бессерверная программа для модульного и нагрузочного тестирования
+Описанный подход вполне можно варьировать, добавляя к нему валидацию, различные модульные тесты и т.д. Если вам не нужна архитектура веб-приложения, можете пропустить работу с API Gateway и вызов HTTP, просто запустив сервис обработки изображений прямо в рамках модульного теста. Если хотите обобщить и проанализировать тестовый вывод, то вполне можете добавить еще одну лямбда-функцию в качестве обработчика событий к таблице DynamoDB, в которой содержатся результаты теста.Резюме
+Получился длинный пост, но в нем подробно описано все, что нужно для создания реального масштабируемого сервиса для работы с базой данных. Этот сервис может «спереди» подключаться как к мобильным клиентам, так и к сайту, причем ни в одной части системы не требуется ни серверов, ни какой-либо иной инфраструктуры: клиентского интерфейса, машинного интерфейса, API, развертывания и тестирования. Да здравствуют бессерверные решения!
+      
+    

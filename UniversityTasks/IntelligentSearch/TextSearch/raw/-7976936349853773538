@@ -1,0 +1,151 @@
+﻿#TITLE:Навигация между экранами с использованием xib файлов
+
+      При чтении различных исходников сталкиваюсь с проектами, реализованными с использованием xib файлов. Мне самому больше нравится использование xib, вместо storyboard (не холивара ради пишу, storyboard тоже хорош), однако часто изучение навигации между экранами превращается в пытку. И поэтому хотелось бы поделится собственным опытом.
+Чем так хорош storyboard? В первую очередь тем, что он позволяет собрать всю навигацию и отобразить визуально большинство переходов.
+Да, используя xib для каждого экрана мы лишаемся возможности визуально увидеть все переходы (ну и еще пары возможностей), однако мы получаем немного своих плюсов. Я не стану явно описывать плюсы и минусы использования одного и другого во избежании холивара, только лишь покажу как можно собрать всю навигацию, используя xib файлы, избавиться от лишнего использования singleton'ов, а так же как устранить связность между контроллерами.
+Подход очень простой. Используем Router объекты для связи между экранами. Разделяем Router на пользовательские истории. Взаимодействуем, используя callback.Мини демонстрация на практике Экран с таблицей и кнопкой добавления записи
+ Экран создания записи
+ Экран детального просмотра записи
+Первоначальная настройка
+Создадим роутер и отобразим пустой экранRXAppDelegate.m#import "RXAppDelegate.h"
+#import "RXRouter.h"
+
+
+@implementation RXAppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    // Override point for customization after application launch.
+    
+    self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+    self.window.rootViewController = [[RXRouter alloc] initRouter];
+    [self.window makeKeyAndVisible];
+    
+    return YES;
+}
+
+@end
+RXRouter.h#import &lt;UIKit/UIKit.h&gt;
+
+
+@interface RXRouter : UINavigationController
+
+- (instancetype)initRouter;
+
+@end
+RXRouter.m#import "RXRouter.h"
+
+
+@implementation RXRouter
+
+- (instancetype)initRouter {
+    UIViewController *rootViewController = [self createRootViewController];
+    self = [super initWithRootViewController:rootViewController];
+    if (self != nil) {
+        self.interactivePopGestureRecognizer.enabled = NO;
+    }
+    return self;
+}
+
+- (UIViewController *)createRootViewController {
+    UIViewController *controller = [[UIViewController alloc] init];
+    return controller;
+}
+
+@end
+Реализация
+Реализуем создание контроллера, который будет показывать записи. Так же сразу свяжем этот экран с другими экранами и взаимодействие между ними.RXRoute.m#import "RXRouter.h"
+#import "RXNoteListViewController.h"
+#import "RXCreateNoteViewController.h"
+#import "RXDetailNoteViewController.h"
+
+
+@implementation RXRouter
+
+- (instancetype)initRouter {
+    UIViewController *rootViewController = [self createRootViewController];
+    self = [super initWithRootViewController:rootViewController];
+    if (self != nil) {
+        self.interactivePopGestureRecognizer.enabled = NO;
+    }
+    return self;
+}
+
+- (UIViewController *)createRootViewController {
+    RXNoteListViewController *noteListController = [[RXNoteListViewController alloc] init];
+    __weak RXRouter *weakSelf = self;
+    __weak RXNoteListViewController *weakNoteListController = noteListController;
+    noteListController.createNoteBlock = ^{
+        RXCreateNoteViewController *createNoteViewController = [weakSelf createNoteViewController];
+        createNoteViewController.createNoteBlock = ^(RXNote *note){
+            [weakNoteListController addNote:note];
+            [weakSelf popViewControllerAnimated:YES];
+        };
+        [weakSelf pushViewController:createNoteViewController animated:YES];
+    };
+    noteListController.detailNoteBlock = ^(RXNote *note){
+        RXDetailNoteViewController *detailNoteViewController = [weakSelf createDetailNoteViewControllerWithNote:note];
+        [weakSelf pushViewController:detailNoteViewController animated:YES];
+    };
+    return noteListController;
+}
+
+- (RXCreateNoteViewController *)createNoteViewController {
+    return [[RXCreateNoteViewController alloc] init];
+}
+
+- (RXDetailNoteViewController *)createDetailNoteViewControllerWithNote:(RXNote *)note {
+    RXDetailNoteViewController *controller = [[RXDetailNoteViewController alloc] init];
+    [controller showNote:note];
+    return controller;
+}
+
+@end
+RXNoteListViewController.h#import &lt;UIKit/UIKit.h&gt;
+
+
+@class RXNote;
+
+typedef void (^RXNoteListViewControllerCreateNoteBlock)();
+typedef void (^RXNoteListViewControllerDetailNoteBlock)(RXNote *note);
+
+
+@interface RXNoteListViewController : UIViewController
+
+@property (copy, nonatomic) RXNoteListViewControllerCreateNoteBlock createNoteBlock;
+@property (copy, nonatomic) RXNoteListViewControllerDetailNoteBlock detailNoteBlock;
+
+- (void)addNote:(RXNote *)note;
+
+@end
+RXCreateNoteViewController.h#import &lt;UIKit/UIKit.h&gt;
+
+
+@class RXNote;
+typedef void (^RXCreateNoteViewControllerCreateNoteBlock)(RXNote *note);
+
+
+@interface RXCreateNoteViewController : UIViewController
+
+@property (copy, nonatomic) RXCreateNoteViewControllerCreateNoteBlock createNoteBlock;
+
+@end
+RXDetailNoteViewController.h#import &lt;UIKit/UIKit.h&gt;
+
+
+@class RXNote;
+typedef void (^RXDetailNoteViewControllerDoneBlock)();
+
+
+@interface RXDetailNoteViewController : UIViewController
+
+- (void)showNote:(RXNote *)note;
+
+@end
+
+Таким образом мы сразу видим навигацию между экранами, а каждый экран ничего не знает о других экранах. Более того, используя блоки, удалось устранить необходимость информации экрана о роутере.
+Так же мы можем без проблем передавать данные из экрана в экран и уменьшить использование singleton'ов.
+Ссылка на гитхаб
+
+      
+      
+    

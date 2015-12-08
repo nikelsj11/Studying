@@ -1,0 +1,198 @@
+﻿#TITLE:C# WPF – Разработка WPF пользовательских компонентов
+
+      Почему появилась эта публикация?
+Недавно пришла мысль в голову: пора переходить на использование WPF! Ну и, соответственно, изучить надо его, чтобы также «виртуозно» использовать, как и WinForms. Заодно и более старшим, консервативным, коллегам доказать, что WPF использовать более эффективно и продуктивно. (И ПО на WPF работает «шутстрее».)
+Вот и решил я этой публикацией «мешок зайцев настрелять»:
+ — Сравнить разработку компонента на WinForms (Ссылка на статью) и WPF;
+ — Доказать коллегам, что WPF – это продуктивно и эффективно;
+ — И сделать небольшой простой урок по освоению WPF (особенно для тех, кто привык к WinForms).Изучение WPF для тех, кто с WinForms
+В прошлой публикации ссылка я рассказал о разработке компонента на WinForms. Поэтому, цель следующая: сделать такой же «по-смыслу» компонент, но на WPF. В целом, подход такой же и советы для WinForms работают и на WPF.
+Забегая вперёд, получился следующий компонент, представленный на рисунке ниже.
+Компонент (далее – «dpkEditWPF»), так же как и его «собрат» на WinForms является «partial» (разделён на несколько файлов (partial class), для удобства разработки).
+У него также есть Свойство «Значение слова ДПК» (32 разряда) и «Текстовая метка» (чтобы там время отображать). Событие клика по «битовой ячейке» с номером бита также имеется, но только оно стало «маршрутизируемым».Пример 1/*Общедоступные свойства, события, генераторы событий*/
+    public partial class DpkWordEditWPF
+    {
+        /// &lt;summary&gt;
+        /// Значение слова ДПК (32 разряда)
+        /// &lt;/summary&gt;
+        uint _dpkValue;
+        /// &lt;summary&gt;
+        /// Свойство - Значение слова ДПК (32 разряда)
+        /// &lt;/summary&gt;
+        public uint DpkValue { get { return _dpkValue; } set { _dpkValue = value; Paint(); InvalidateVisual(); } }
+        /// &lt;summary&gt;
+        /// Текстовая метка (добавляется к текстовому значению слова ДПК)
+        /// &lt;/summary&gt;
+        string _txtMark;
+        /// &lt;summary&gt;
+        /// Свойство - Текстовая метка (добавляется к текстовому значению слова ДПК)
+        /// &lt;/summary&gt;
+        public string TextMark { get { return _txtMark; } set { _txtMark = value; Paint(); InvalidateVisual(); } }
+        /******/
+        /// &lt;summary&gt;
+        /// Событие - клик по значению
+        /// &lt;/summary&gt;
+        public event ReturnEventHandler&lt;int&gt; ClickByValue;
+        /// &lt;summary&gt;
+        /// Генератор события клик по значению
+        /// &lt;/summary&gt;
+        /// &lt;param name="index"&gt;номер бита (0-31)&lt;/param&gt;
+        void OnClickByValue(int index)
+        {
+            if (ClickByValue != null)
+                ClickByValue(this, new ReturnEventArgs&lt;int&gt;(index));
+         }
+    }
+
+Расчёт размеров dpkEditWPF также – относительный, на основе текущих размеров.Пример 2/// &lt;summary&gt;
+        /// Установка пропорций
+        /// &lt;/summary&gt;
+        void SetProportions()
+        {
+            _hPropTextMark = 0.2;
+            _hPropAddress = 0.2;
+            _hPropAddressBinVal = 0.2;
+            _hPropData = 0.2;
+            _hPropDataBinVal = 0.2;
+        }
+        /// &lt;summary&gt;
+        /// Установка размеров
+        /// &lt;/summary&gt;
+        void SetSizes()
+        {
+            /*TextMark*/
+            _heightTextMark = RenderSize.Height * _hPropTextMark;
+            /*Address*/
+            _heightAddress = RenderSize.Height * _hPropAddress;
+            /*AddressBinValue*/
+            _heightAddressBinVal = RenderSize.Height * _hPropAddressBinVal;
+            _widthCellAddressBV = RenderSize.Width / 8.0;
+            /*Data*/
+            _heightData = RenderSize.Height * _hPropData;
+            /*DataBinValue*/
+            _heightDataBinVal = RenderSize.Height * _hPropDataBinVal;
+            _widthCellDataBV = RenderSize.Width / 24.0;
+            /*points*/
+            _ptTextMark = new Point(0,0);
+            _ptAddress = new Point(0,_heightTextMark);
+            _ptAddressBinVal  = new Point(0, _heightTextMark + _heightAddress);
+            _ptData  = new Point(0, _heightTextMark + _heightAddress + _heightAddressBinVal);
+            _ptDataBinVal  = new Point(0, _heightTextMark + _heightAddress + _heightAddressBinVal + _heightDataBinVal);
+        }
+
+Отрисовка компонента также разделена на несколько визуальных буферов и соответственно -процедур отрисовки.Пример 3        /// &lt;summary&gt;
+        /// визуальный Буфер значения слова ДПК + текстовая метка
+        /// &lt;/summary&gt;
+        DrawingVisual _imgTextMark;
+        /// &lt;summary&gt;
+        /// визуальный буфер значения адреса
+        /// &lt;/summary&gt;
+        DrawingVisual _imgAddress;
+        /// &lt;summary&gt;
+        /// визуальный буфер двоичного значения адреса (кликабельные ячейки)
+        /// &lt;/summary&gt;
+        DrawingVisual _imgAddressBinVal;
+        /// &lt;summary&gt;
+        /// визуальный буфер значения данных
+        /// &lt;/summary&gt;
+        DrawingVisual _imgData;
+        /// &lt;summary&gt;
+        /// визуальный буфер двоичного значения данных (кликабельные ячейки)
+        /// &lt;/summary&gt;
+        DrawingVisual _imgDataBinVal;
+Пример 4        /// &lt;summary&gt;
+        /// Отрисовка области текстового значения Адреса
+        /// &lt;/summary&gt;
+        void PaintAddress()
+        {
+            if (_imgAddress == null) return;
+            using (DrawingContext dc = _imgAddress.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.LightBlue, new Pen(Brushes.DarkGray, 1), new Rect(_ptAddress, new Size(RenderSize.Width, _heightAddress)));
+                string str = "Адрес: 0x" + (_dpkValue &amp; 0xFF).ToString("X").PadLeft(2, '0');
+                DrawTxt(dc, str, _ptAddress, new Size(RenderSize.Width, _heightAddress), Brushes.Black);
+            }
+        }
+
+Реализация клика по ячейке двоичного значения («битовой ячейке» с номером бита) реализована с помощью обработчика MouseUp, в котором генерируется событие клика по ячейке.Пример 5/// &lt;summary&gt;
+        /// Обработка клика по ячейке
+        /// &lt;/summary&gt;
+        void DpkWordEditWPF_ClickByValue(object sender, ReturnEventArgs&lt;int&gt; e)
+        {
+            uint mask = (uint)0x1 &lt;&lt; e.Result;
+            if ((_dpkValue &amp; mask) &gt; 0)
+                _dpkValue &amp;= (~mask); 
+            else
+                _dpkValue |= mask;
+            Paint();
+            InvalidateVisual();
+        }
+        /// &lt;summary&gt;
+        /// обработка клика мыши (превращение в клик по ячейке)
+        /// &lt;/summary&gt;
+        protected override void OnMouseUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseUp(e);
+            Point curPt = e.GetPosition(this);
+            /*Клик в области адреса*/
+            if ((curPt.X &gt;= _ptAddressBinVal.X) &amp;&amp; (curPt.X &lt;= (_ptAddressBinVal.X+RenderSize.Width)))
+                if ((curPt.Y &gt;= _ptAddressBinVal.Y) &amp;&amp; (curPt.Y &lt;= (_ptAddressBinVal.Y + _heightAddressBinVal)))
+                {
+                    if ((curPt.X % _widthCellAddressBV) == 0) return;
+                    int index = (int)(curPt.X / _widthCellAddressBV);
+                    OnClickByValue(index);
+                    return;
+                }
+            /*клик в области данных*/
+            if ((curPt.X &gt;= _ptDataBinVal.X) &amp;&amp; (curPt.X &lt;= (_ptDataBinVal.X + RenderSize.Width)))
+                if ((curPt.Y &gt;= _ptDataBinVal.Y) &amp;&amp; (curPt.Y &lt;= (_ptDataBinVal.Y + _heightDataBinVal)))
+                {
+                    if ((curPt.X % _widthCellDataBV) == 0) return;
+                    int index = (int)(curPt.X / _widthCellDataBV);
+                    OnClickByValue(index + 8);
+                    return;
+                }
+        }
+
+Масштабирование и вывод на экран сделаны по тому же принципу, что и в компоненте на WinForms. Масштабирование – вызов отрисовки в буфер и вывод на экран. Вывод на экран – отрисовка визуальных буферов.Пример 6/// &lt;summary&gt;
+        /// первая отрисовка при появлении
+        /// &lt;/summary&gt;
+        protected override void OnInitialized(EventArgs e)
+        {
+            base.OnInitialized(e);
+            _imgTextMark = new DrawingVisual();
+            _imgAddress = new DrawingVisual();
+            _imgAddressBinVal = new DrawingVisual();
+            _imgData = new DrawingVisual();
+            _imgDataBinVal = new DrawingVisual();
+            Paint();
+            InvalidateVisual();
+        }
+        /// &lt;summary&gt;
+        /// обработка вывода на экран
+        /// &lt;/summary&gt;
+        protected override void OnRender(DrawingContext drawingContext)
+        {
+            base.OnRender(drawingContext);
+            if (System.ComponentModel.DesignerProperties.GetIsInDesignMode(this))
+            {
+                /*режим дизайнера*/
+                _dpkValue = 0xFFa42312;
+                Paint();
+            }
+            drawingContext.DrawDrawing(_imgTextMark.Drawing);
+            drawingContext.DrawDrawing(_imgAddress.Drawing);
+            drawingContext.DrawDrawing(_imgAddressBinVal.Drawing);
+            drawingContext.DrawDrawing(_imgData.Drawing);
+            drawingContext.DrawDrawing(_imgDataBinVal.Drawing);
+        }
+
+Компонент написан на MS Visual Studio 2010, .Net Framework 4. Ссылка на проект: Ссылка на проектВывод
+В целом код получился компактнее, чем на WinForms и работает «шустрее». Два тестовых проекта были запущены на машине со следующими характеристиками: Windows XP SP2, процессор 1-ядерный, 1 Гб ОЗУ. 
+WPF продемонстрировал работу без фризов при изменении размеров формы, WinForms – в свою очередь, изрядно «подтормаживал» при тех же манипуляциях.
+P.S. Надеюсь, скоро все проекты на WPF будем на заводе делать.
+P.P.S. Трудно бороться с консерватизмом!
+
+      
+      
+    

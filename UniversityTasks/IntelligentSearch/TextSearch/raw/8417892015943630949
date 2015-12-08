@@ -1,0 +1,492 @@
+﻿#TITLE:Введение в Scheme
+
+      Наиболее важным, но в то же время и наиболее незаметным свойством любого инструмента является его влияние на формирование привычек людей, которые имеют обыкновение им пользоваться.
+Эдсгер Вайб ДейкстраЧасть 1 Введение в SchemeЧасть 2 Углубление в SchemeЧасть 3 Практика IronSchemeВведение
+В практике программирования часто возникает потребность в написании небольших скриптов для автоматизации различных административных процессов, тестирования и мониторинга. Так же не редко появляется необходимость встроить какой-либо интерпретатор в приложение или просто создать прототип для проверки идеи. Для этих целей можно использовать различные популярные инструменты JavaScript, Python, Lua, Bash, BAT, PHP и много чего еще. А еще бывает потребность хранить структурированные данные в файлах или передавать по сети, когда речь идет о текстовых форматах обычно используются XML, JSON, CSV, даже KV. Однако несмотря на достоинства и распространенность таких широко известных инструментов меня не оставляла навязчивая идея поиска более гибкого и изящного средства. Таким образом, я однажды обратил внимание на семейство Lisp языков. И Lisp позволил застрелить сразу всех зайцев одним выстрелом, причем красиво и элегантно. Поскольку он имеет множество реализаций и стандартов под любые нужды и вкусы. Может выступать как в качестве самостоятельного языка, так и встраиваемого. Имеет единый формат представления данных и кода программы. А главное при необходимости написание собственного интерпретатора не является непосильной задачей.
+Когда следует использовать Lisp, а когда нет? Этому вопросу посвящены различные статьи в интернете. Я не берусь рассуждать на эту тему, а лишь замечу, где Lisp мне пригодился. По большей части я использовал Lisp в качестве встраиваемого языка. Для управления приложениями через консоль, для создания гибких конфигурационных файлов, для хранения структурированных данных, для передачи данных по сети, для реализации самопального самодельного RPC. На мой взгляд, удобно, когда все перечисленные варианты имеют одинаковый синтаксис да еще могут быть расширены(в плане синтаксиса и функционала) причем на лету.
+Я не считаю себя специалистом в мире Lisp и не гарантирую 100% точности изложенного материала. Одна из целей данной серии статей собрать разрозненную информацию относительно разных реализаций Scheme в одном месте и на родном языке. В общем, данный материал не для тех, кто хочет знать зачем, а для тех, кто хочет знать как. Если кому-то тема будет интересна и полезна, пишите, будем уточнять что есть и думать над продолжением.Начало
+Почти каждая статья о Lisp начинается с того, что Lisp один из самых старых языков программирования высокого уровня и общего назначения, который где-то в 1958г был изобретен Джоном Маккарти. Несмотря на древность Lisp мультипарадигмальный язык, позволяющий писать в функциональном, процедурном, объектно-ориентированном стилях. При этом, вся эта мультипарадигмальность доступна через примитивный и единообразный синтаксис, так называемые S-выражения. Для описания Lisp синтаксиса в форме Бэкуса—Наура достаточно всего 7 строк, с оговорками конечно. Так сложилось, что за долгую историю развития над Lisp ломали голову лучшие умы компьютерных наук, шлифуя его словно драгоценный камень. Однако нельзя сказать, что Lisp очень популярен, возможно, тому виной пугающее нагромождение скобок, из-за которого на первый взгляд программа выглядит сложной для восприятия. Но после небольшой практики дискомфорт переходит в восторг от тех возможностей, которые предоставляет данный способ программирования. По крайней мере, так было у меня).
+Если быть чуть более точным, Lisp это не то чтобы язык программирования, сколько идея, на базе которой разработаны языки Lisp-семейства. В наши дни существует великое множество Lisp диалектов, а их реализаций еще больше. Что не удивительно, ведь написать интерпретатор лиспа относительно не сложно. Так повернулось колесо истории, что наиболее популярными диалектами стали Common lisp, Scheme и Clojure. Каждый диалект преследует свои, чуть отличные цели. Common Lisp – довольно пожилой промышленный стандарт, имеет в своем арсенале не малое количество библиотек и наработок. Scheme – стремится к минимальности базовых конструкций, через которые может быть выражена вся остальная функциональность, многообразие стилей и подходов программирования. То есть минималистичный интерпретатор и развитая стандартная библиотека. Clojure – свежий взгляд на Lisp в целом, были переосмыслены многие конструкции языка для удобной разработки поверх платформы JAVA в первую очередь. Как пишут на форумах разрабатывать под Clujure куда продуктивнее и интереснее чем на JAVA. Исключительно в целях самообучения я попробовал на вкус разные диалекты и их реализации. Можно бесконечно долго спорить Scheme vs Common Lisp, но для себя я выбор сделал в пользу Scheme за лаконичность, современность и доступность реализаций на различных платформах. 
+Про Scheme на форумах можно встретить отзывы, будто это исключительно академический язык, который если и можно использовать на практике, то крайне неудобно из-за чрезмерного минимализма. Что-то подсказывало мне, то это не так. И вот, мой дорогой читатель, скажу тебе, что scheme, довольно гибкий язык программирования, при этом не перегружен хитрыми конструкциями и с успехом может конкурировать со многими популярными инструментами. А использовать его в качестве встраиваемого языка одно удовольствие. Относительная простота стандарта Scheme играет на руку, способствуя появлению множества реализаций. Фактически можно выбрать реализацию под любые нужды и разрабатывать полноценные приложения GUI, DB, WEB, используя Scheme в качестве основного языка.Есть из чего выбрать
+Любопытно, но часто наиболее популярные продукты практически не предоставляют выбора, вот тебе версия единственная и неповторимая, а все остальное либо устарело, либо чья-то самоделка.
+Scheme, возможно благодаря простоте стандарта имеет довольно много реализаций, либо интерпретаторов, либо компиляторов, либо и то и другое сразу. Причем, имеются компиляторы в другие языки, что в некоторых случаях может оказаться крайне полезно.
+В сети можно найти список известных реализаций, например на community.schemewiki.org опубликована таблица.Известные реализации SchemeName
+Link
+Type
+Platform
+Active
+R7RS
+BDC Scheme
+carlstrom.com/bdc-scheme
+interpreter
+Java
+no
+
+Bigloo
+www-sop.inria.fr/mimosa/fp/Bigloo
+compiler
+many
+yes
+
+BiT
+github.com/melvinzhang/bit-scheme
+interpreter
+Hardware (microcontrollers)
+no
+
+BiwaScheme
+www.biwascheme.org
+interpreter
+Javascript
+yes
+
+Bus Scheme
+rubygems.org/gems/bus-scheme
+interpreter
+Ruby
+no
+
+Chez Scheme
+www.scheme.com
+interpreter (free) + compiler (paid)
+many
+no
+
+chibi-scheme
+code.google.com/p/chibi-scheme
+interpreter
+C (library)
+yes
+yes
+Chicken
+www.call-cc.org
+interpreter+compiler
+many
+yes
+yes
+CPSCM
+www.omnigia.com/scheme/cpscm/home
+compiler
+Javascript, Common Lisp
+no
+
+Elk
+sam.zoy.org/projects/elk
+interpreter
+C++ (library)
+no
+
+Foment
+code.google.com/p/foment
+interpreter
+many
+yes
+yes
+Gambit
+www.iro.umontreal.ca/~gambit
+interpreter+compiler
+many
+yes
+
+Gauche
+practical-scheme.net/gauche/index.html
+interpreter
+many
+yes
+yes
+Guile
+www.gnu.org/software/guile
+interpreter
+many
+yes
+yes
+Heist
+github.com/jcoglan/heist/tree/master
+interpreter
+Ruby
+no
+
+HScheme
+hscheme.sourceforge.net
+interpreter
+Haskell
+no
+
+Husk Scheme
+github.com/justinethier/husk-scheme
+interpreter
+Haskell
+yes
+yes
+Ikarus Scheme
+launchpad.net/ikarus
+compiler
+many
+no
+
+Inlab-Scheme
+www.inlab.de/scheme/index.html
+interpreter
+Linux
+no
+
+IronScheme
+www.codeplex.com/IronScheme
+interpreter
+.Net
+yes
+
+Jaja
+pagesperso-systeme.lip6.fr/Christian.Queinnec/Java/Jaja.html
+interpreter
+Java
+no
+
+JScheme
+jscheme.sourceforge.net
+interpreter
+Java
+no
+
+Kawa
+www.gnu.org/software/kawa
+interpreter
+Java
+yes
+yes
+KSI
+ksi.sourceforge.net
+interpreter
+C (library)
+no
+
+KSM
+square.umin.ac.jp/~hchang/ksm
+interpreter
+C (library, Linux-only)
+no
+
+Larceny
+www.larcenists.org
+compiler
+many
+no
+yes
+librep
+librep.sourceforge.net
+interpreter
+C (library)
+no
+
+LispMe
+www.lispme.de/lispme/index.html
+interpreter
+Palm
+no
+
+Llava
+llava.org
+interpreter
+Java
+no
+
+Luna
+sourceforge.net/projects/luna-scheme
+compiler
+.Net
+no
+
+Microscheme
+github.com/ryansuchocki/microscheme
+compiler
+Hardware (Atmel)
+yes
+
+MIT/GNU Scheme
+www.gnu.org/software/mit-scheme
+interpreter
+many
+yes
+
+Minor Scheme
+www.red-bean.com/trac/minor
+compiler
+C
+no
+
+MScheme
+mscheme.sourceforge.net
+interpreter
+Java
+no
+
+mosh-scheme
+code.google.com/p/mosh-scheme
+interpreter
+many
+no
+
+NexJ Scheme
+nexj-scheme.org
+interpreter
+Java
+no
+
+Oaklisp
+oaklisp.alioth.debian.org
+interpreter
+POSIX
+no
+
+Ocs
+github.com/felix-lang/ocs
+interpreter
+Ocaml
+no
+
+Owl Lisp
+code.google.com/p/owl-lisp
+interpreter
+POSIX
+no
+yes
+Picrin
+github.com/picrin-scheme/picrin
+interpreter
+C99
+yes
+yes
+Pixie Scheme III
+JayReynoldsFreeman.com/My/Pixie_Scheme_III.html
+interpreter+compiler
+iPad
+yes
+no
+Pocket Scheme
+www.mazama.net/scheme/pscheme.htm
+interpreter
+Windows CE
+no
+
+PS3I
+pagesperso-systeme.lip6.fr/Christian.Queinnec/VideoC/ps3i.html
+interpreter
+Java
+no
+
+Psyche
+www.xs4all.nl/~yduppen/site/psyche.html
+interpreter
+Python
+no
+
+QScheme
+www.sof.ch/dan/qscheme/index-e.html
+interpreter
+POSIX
+no
+
+Racket
+www.racket-lang.org
+interpreter+compiler
+many
+yes
+
+Rhizome/pi
+www.kt.rim.or.jp/~qfwfq/rhiz-pi/index-e.html
+?
+?
+
+
+RScheme
+github.com/bitwize/rscheme
+?
+?
+
+
+Sagittarius
+code.google.com/p/sagittarius-scheme
+interpreter
+many
+yes
+yes
+Scheme 9 from Empty Space
+t3x.org/s9fes
+interpreter
+C89/POSIX, Plan 9
+yes
+
+Scheme48
+s48.org
+?
+?
+
+
+Scheme-to-C
+scheme2c.alioth.debian.org
+?
+?
+
+
+Schemik
+schemik.sourceforge.net
+?
+?
+
+
+Schemix
+www.abstractnonsense.com/schemix
+?
+?
+
+
+SCM
+swissnet.ai.mit.edu/~jaffer/SCM.html
+?
+?
+
+
+Shoe
+nocrew.org/software-shoe.html
+?
+?
+
+
+SISC
+sisc.sourceforge.net
+?
+?
+
+
+SIOD
+people.delphiforums.com/gjc/siod.html
+?
+?
+
+
+SigScheme
+code.google.com/p/sigscheme
+?
+?
+
+
+Sizzle
+www.grabmueller.de/martin/www/sizzle/sizzle.en.html
+?
+?
+
+
+Stalin
+www.ece.purdue.edu/~qobi/software.html
+?
+?
+
+
+STKlos
+stklos.sourceforge.net
+?
+?
+
+
+SXM
+www.malgil.com/sxm
+?
+?
+
+
+s7
+ccrma.stanford.edu/software/snd/snd/s7.html
+interpreter
+C
+yes
+
+TinyScheme
+tinyscheme.sourceforge.net
+?
+?
+
+
+UCB Scheme
+www-inst.eecs.berkeley.edu/~scheme
+?
+?
+
+
+ULisp
+www.zogotounga.net/comp/squeak/lispkit.htm
+?
+?
+
+
+UMB Scheme
+www.cs.umb.edu/~wrc/scheme
+?
+?
+
+
+Unlikely Scheme
+marijnhaverbeke.nl/unlikely
+?
+?
+
+
+Vicare
+marcomaggi.github.com/vicare.html
+compiler
+POSIX/x86
+yes
+
+VSCM
+sourceforge.net/projects/vscm
+?
+?
+
+
+Vx-Scheme
+colin-smith.net/vx-scheme
+?
+?
+
+
+Wraith Scheme
+JayReynoldsFreeman.com/My/Software.html
+interpreter+compiler
+Macintosh
+Yes
+No
+XLISP
+www.mv.com/ipusers/xlisper
+?
+?
+
+
+Ypsilon Scheme
+code.google.com/p/ypsilon
+interpreter
+many
+no
+
+
+А если хорошенько поискать на GitHub, то становится ясно что вариантов еще больше.
+Следование стандарту в различных реализациях позволяет повторно использовать код на разных платформах, в том числе и для Web программирования. Но не нужно забывать, что функционал не входящий в стандарт с высокой вероятностью будет отличаться, что приведет к непортируемости кода.В металле
+Чаще в своей практике я сталкиваюсь с программированием для .NET. Следовательно, для меня наиболее полезно решение позволяющее использовать .NET библиотеки и встраивать интерпретатор Scheme в свои приложения. Поиграв с разными вариантами, я остановился на IronScheme. Так, как он, на первый взгляд показался наиболее продвинутой реализацией стандарта R6Rs для .NET. Но есть и другие, о которых будет написано в следующих статьях.
+IronScheme реализует шестую версию стандарта R6Rs. Естественно, имеет встроенный функционал для взаимодействия со средой исполнения clr. Таким образом, прямо из скрипта Scheme можем создавать и манипулировать .NET классами. А этого уже вполне достаточно чтобы создать полноценное приложение с GUI, DB и прочими вкусностями, которые доступны из .NET. Но мы не обязаны писать на IronScheme полноценные программы. Тем более что в поставляемых библиотеках имеются обертки для небольшого числа стандартных .NET классов. Хотя ни кто не мешает нам помочь сообществу.Настройка средыЧтобы начать использовать IronScheme качаем архив с ironscheme.codeplex.com/;
+распаковываем например в “Program Files (x86)”;
+добавляем в переменную среды PATH «C:\Program Files (x86)\IronScheme\» ;
+для удобства в директории с IronScheme я создаю фай «is.bat» с содержимым «IronScheme.Console-v4.exe %1»;
+Выполнив команду IronScheme.Console-v4.exe запустим интерпретатор в REPL режиме. 
+
+Теперь можно вводить команды, например «(+ 2 2)». Интерпретатор в REPL режиме поддерживает автодополнение по нажатию на TAB, что удобно использовать в качестве справочника команд или для проверки фрагментов кода. Для выхода из интерпретатора нужно набрать «(exit)».Здравствуй мир!
+По сложившейся традиции напишем и запустим Hello world приложение. В любом привычном текстовом редакторе, желательно поддерживающим Scheme, например Sublime, создадим файл и сохраним его hello-world.ss. 
+Содержимое файла hello-world.ss:(import 
+  (rnrs) 
+  (ironscheme)
+)
+
+(displayln "Hello, world!")
+
+Запускаем командой «IronScheme.Console-v4.exe hello-world.ss» в результате получим долгожданную надпись.
+
+      
+      
+    

@@ -1,0 +1,272 @@
+﻿#TITLE:«Хакеры и художники», «On Lisp» и эссе на русском. Учим(ся) писать как Пол Грэм
+
+      To follow the path:
+ look to the master,
+ follow the master,
+ walk with the master,
+ see through the master,
+ become the master.«Лучший способ писать — это переписывать» Пол Грэм, «The Age of the Essay»
+Преред курсом Сергея Абдульманова ( milfgard) я взял для себя квест — структурировать все статьи Грэма. Пол не только крутой программист и инвестор — он мастер лаконичного письма. Если  milfgard назвал свой курс для контент-менеджеров "Буквы, которые стреляют в голову", то Пол Грэм стреляет из  «по глазам» (кто играл в Fallout 2 тот поймет). 
+А еще мне захотелось освоить Lisp. Чисто так, чтобы мозг поразвивать, потому что крутые люди — Грэм, Кей и Рэймонд, Моррис — говорят хором: «Учите Lisp».
+На данный момент Пол Грэм написал (по крайней мере, я нашел) 167 эссе. Из них на русский переведены 69.74(+10). Если читать по 1 статье в день (что очень хороший результат, потому что я после одной статьи хожу задумчивый неделю — голова кипит как после отличного мастер-класса, а иногда и как после двухдневного интенсива), то процесс займет полгода.
+Под катом — список всех статей со ссылками на оригинал и с переводом (если он есть). Подборка живая (так что, как обычно, добавляйте в избранное, потом прочитаете) и будет дополняться по мере обнаружения свежака. Еще вы найдете переведенную на 8/15 книгу «Хакеры и художники» и 4/25 перевода книги «On Lisp». Так же я приведу свою подборку топ-5 статей Пола Грэма, с которых я бы рекомендовал начать знакомство с этим автором. Эссе
+Публикации Грэма можно условно разделить на 3 раздела:программирование
+стартапы/инвестиции 
+«за жизнь»
+С какой статьи начать чтение?
+Предлагаю два варианта. Субъективный и объективный.
+Я поделюсь своим топ-5 статей (и призываю вас в комментах написать свой топ-5 статей с коротеньким обоснованием).
+Объективный подход сделали американские программеры — они оседлали PageRank и составили рейтинг статей Пола Грэма.Мои топ-5:Я променял тайгу, плеск волн, закаты, кайты и гребешки с красной икрой (Владивосток) на Макдональдс и метро. Сейчас вновь задумался над тем, как место определяет состояние души (и наоборот). Cities and Ambition (Города и амбиции). Ищите то место, которое ищет вас. «Нет ничего более мощного, чем сообщество талантливых людей, работающих над сходными проблемами.»
+The Age of the Essay (Век Сочинения) — про то, как писать. Я в школе ненавидел сочинения, но после Хабра стал по-другому относиться к тексту. В этом эссе я нашел много ответов и целей на будущее.
+Я какое-то время посвятил профориентации, то статья What You’ll Wish You’d Known (То, что вы хотели бы знать заранее) это действительно то, что я бы хотел знать заранее. Очень толковая стратегия выбора пути в жизни и про то, как это можно организовать для подрастающей смены.
+Читая статью про Дурова, я впервые узнал про Пола. Это эссе я осилил только с 3-4 подходов. How to Start a Startup (Как начать новое дело) 
+«с языками программирования все по-другому — они не просто технология, они воплощают собой способ мышления программистов. Это наполовину технология, наполовину религия.» Причащаемся к новой религии Beating the Averages (Lisp: побеждая посредственность)
+Связи статей (тут кликабельная карта)
+Задача: как соотносится цвет и рейтинг(см. ниже) статьи?Paul Graham Essays Ranking
+Американцы заморочились и посчитали коэффиценты популярности статей. Этот список можно использовать как руководство, в каком порядке читать/переводить статьи Пола Грэма.Топ-10:
+ 23.02 Beating the Averages (Lisp: побеждая посредственность)
+ 19.84 Lisp for Web-Based Applications (нет перевода)
+ 5.56 What You Can't Say (нет перевода)
+ 3.81 Revenge of the Nerds (нет перевода)
+ 3.72 The Roots of Lisp (нет перевода)
+ 3.66 The Age of the Essay (Век Сочинения)
+ 3.29 What Made Lisp Different (нет перевода)
+ 3.26 Why Nerds are Unpopular (За что не любят ботанов, Отчего нёрды непопулярны?)
+ 2.81 Taste for Makers (Вкус — созидателям)
+ 2.77 Great Hackers (Первоклассные хакеры, Часть 2)еще 60+ 2.33 The Other Road Ahead
+2.12 How to Make Wealth
+1.91 Succinctness is Power
+1.74 A Unified Theory of VC Suckage
+1.73 The Word «Hacker»
+1.67 How to Start a Startup
+1.43 Hiring is Obsolete
+1.39 Why Startups Condense in America
+1.39 Programming Bottom-Up
+1.35 Inequality and Risk
+1.35 How to Be Silicon Valley
+1.21 After the Ladder
+1.04 How to Do What You Love
+1.00 Good and Bad Procrastination(Хорошая и плохая прокрастинация)
+ 0.90 After Credentials
+0.88 The Equity Equation
+0.88 How Not to Die
+0.84 What You'll Wish You'd Known
+0.83 A Plan for Spam
+0.80 How to Be an Angel Investor
+0.76 Why to Start a Startup in a Bad Economy
+0.74 The High-Res Society
+0.67 The Python Paradox
+0.65 Ideas for Startups
+0.64 Better Bayesian Filtering
+0.64 Filters that Fight Back
+0.61 Relentlessly Resourceful
+0.61 The Future of Web Startups
+0.61 The Hundred-Year Language
+0.60 Why Smart People Have Bad Ideas
+0.59 The Submarine
+0.59 The Power of the Marginal
+0.59 How to Fund a Startup
+0.56 Why TV Lost
+0.56 High Resolution Fundraising 
+0.56 Being Popular
+0.56 Stuff
+0.56 Trolls
+0.49 Why There Aren't More Googles
+0.49 The 18 Mistakes That Kill Startups
+0.48 The Top Idea in Your Mind 
+0.48 Hackers and Painters
+0.47 What the Bubble Got Right
+0.46 Five Questions about Language Design
+0.46 The Venture Capital Squeeze
+0.45 Cities and Ambition
+0.44 Startups in 13 Sentences
+0.44 A Fundraising Survival Guide
+0.44 The Hacker's Guide to Investors
+0.43 Design and Research
+0.43 Two Kinds of Judgement
+0.40 An Alternative Theory of Unions
+0.38 Can You Buy a Silicon Valley? Maybe.
+0.38 Why to Move to a Startup Hub
+0.35 Founder Control
+0.35 Why to Not Not Start a Startup
+0.34 What Business Can Learn from Open SourceЕще статьи с рейтингом 0.31Five Founders6,631,372The Acceleration of AddictivenessSubject: AirbnbFrighteningly Ambitious Startup IdeasApple's MistakeThe Other Half of «Artists Ship» You Weren't Meant to Have a BossIt's Charisma, StupidUndergraduationNews from the FrontCopy What You LikeThe Anatomy of Determination How to DisagreePersuade xor Discover Disconnecting DistractionCould VC be a Casualty of the Recession?What Languages FixWhat We Look for in FoundersLearning from FoundersThe Founder VisaThe Future of Startup Funding Mind the GapBe GoodHow Art Can Be GoodWhat I've Learned from Hacker NewsHolding a Program in One's HeadSome HeroesWhy Startup Hubs WorkKeep Your Identity Small If Lisp is So GreatHow to Present to InvestorsThe Island TestJava's CoverWhat Kate Saw in Silicon Valley A Version 1.0Lies We Tell KidsReturn of the MacMaker's Schedule, Manager's Schedule Microsoft is DeadA Student's Guide to StartupsSix Principles for Making New ThingsWhy Arc Isn't Especially Object-OrientedThe List of N ThingsOrganic Startup IdeasThe Patent PledgeHow to Do PhilosophyBradley's GhostThe Pooled-Risk Company Management CompanyDefining PropertyPost-Medium PublishingRamen ProfitableSee RandomnessWhat Startups Are Really LikeA Local Revolution?Schlep BlindnessWhere to See Silicon ValleyThe Trouble with the SegwayHow to Lose Time and Money What I Did this SummerAre Software Patents Evil?Writing and SpeakingThe Hardest Lessons for Startups to LearnThe New Funding LandscapeTabletsMade in USASnapshot: Viaweb, June 1998Web 2.0Why YCIs It Worth Being Wise?A Word to the ResourcefulWriting, BrieflyWhat Happened to Yahoo A New Venture Animal
+Ах, да, судя по тому как бодро перевели 80% книги про подпольный рынок кардеров «KingPIN», предлагаю присоединиться к флешмобу по переводам статей Пола Грэма. (Кто желает помочь с переводом, пишите — magisterludi2016&lt;собака&gt;yandex.ru) 
+Это обогатит ваш мозг еще парочкой извилин и даст, как минимум, +15% к навыку письма.
+Буду благодарен тем, кто сделает оффлайн-архив русских статей, а то некоторые уже безвозвратно потеряны.Все статьиWhy It's Safe for Founders to Be Nice (Почему стартаперу выгодно быть щедрым)Change Your Name (Измени свое имя)What Microsoft Is this the Altair Basic of? (Что для Microsoft значил Altair BASIC?)The Ronco Principle (принципы Ронко)What Doesn’t Seem Like Work? (Мелкие странности: как найти дело своей жизни)Don’t Talk to Corp Dev (Не разговаривайте со специалистами по корпоративному развитию)Let the Other 95% of Great Programmers InHow to Be an Expert in a Changing World (Как оставаться экспертом в постоянно меняющемся мире)How You KnowThe Fatal Pinch (Последняя капля)Mean People Fail (Почему подлецы проигрывают?)Before the Startup (Перед стартапом — часть первая, Перед стартапом – часть вторая)How to Raise Money (“Как поднимать деньги”. Часть 1, Часть 2, Часть 3.)Investor Herd Dynamics (Инвестор как стадное животное)How to Convince Investors (Как убедить инвесторов)Do Things that Don’t Scale (Делайте вещи, которые не масштабируются, альтернатива, на Хабре)Startup Investing Trends (Что изменилось в мире стартапов, Тенденции инвестирования в стартапы )How to Get Startup Ideas (Как найти идею для стартапа. Часть первая, часть вторая, часть третья, часть четвертая))The Hardware Renaissance (Железный ренессанс)Startup = Growth (Почему «парикмахерская» не может быть стартапом. Часть 1, В погоне за ростом. Часть 2)Black Swan Farming (Как отличать гениальные бизнес-идеи от никчемных)The Top of My Todo ListWriting and Speaking (Как хорошо писать и хорошо выступать)Defining PropertyFrighteningly Ambitious Startup Ideas (Пугающе амбициозные идеи стартапов)A Word to the ResourcefulSchlep Blindness (Слепота скуки)Snapshot: Viaweb, June 1998Why Startup Hubs Work (Как работают инкубаторы стартапов)The Patent PledgeSubject: AirbnbFounder Control (Нужно ли основателю сохранять контроль над компанией?)Tablets (94%, Планшеты )What We Look for in Founders (Что мы ищем в стартаперах и молодых предпринимателях?)The New Funding LandscapeWhere to See Silicon ValleyHigh Resolution Fundraising What Happened to Yahoo The Future of Startup Funding The Acceleration of AddictivenessThe Top Idea in Your Mind  (Самая главная идея)How to Lose Time and Money  (UPD 7 сентября. Как потерять время и деньги)Organic Startup Ideas (кто знает как воскресить это - habrahabr.ru/post/91158)Apple’s Mistake (Ошибка Apple)What Startups Are Really Like (Что такое жизнь настоящего стартапера)Persuade xor Discover Post-Medium PublishingThe List of N Things (Лист из N вещей)The Anatomy of Determination  (Анатомия целеустремленности)What Kate Saw in Silicon Valley  (Что увидела Кейт в силиконовой долине)The Trouble with the SegwayRamen Profitable (Стартап на дошираке)Maker’s Schedule, Manager’s Schedule  (Чем жизнь творца отличается от жизни менеджера)A Local Revolution?Why Twitter is a Big DealThe Founder VisaFive FoundersRelentlessly Resourceful (Будьте неустанно находчивы. 40% переведено начерно.)How to Be an Angel Investor (Что значит быть «бизнес-ангелом»)Why TV Lost (Почему телевидение погибло)Can You Buy a Silicon Valley? Maybe. (25% Можно ли купить Кремниевую долину? Возможно)What I’ve Learned from Hacker News (Чему я научился у Hacker News)Startups in 13 Sentences (13 главных принципов в жизни стартапа)Keep Your Identity Small (перевод)After CredentialsCould VC be a Casualty of the Recession? (Могут ли венчурные капиталисты стать жертвами кризиса?)The High-Res SocietyThe Other Half of “Artists Ship” Why to Start a Startup in a Bad Economy (Зачем запускать стартап во время кризиса)A Fundraising Survival Guide (Руководство по выживанию в процессе поиска инвесторов)The Pooled-Risk Company Management Company (Управляющая компания с объединённым страховым фондом)Cities and Ambition (Города и амбиции)Disconnecting Distraction (Отключившись от отвлекающих факторов)Lies We Tell Kids (Ложь, которую мы говорим детям)Be Good (Будь хорошим)Why There Aren’t More Googles (Почему не появляются новые Google)Some Heroes (51% Мои герои)How to Disagree (Как выражать несогласие)You Weren’t Meant to Have a Boss (Вы не родились подчинённым)A New Venture Animal (Новый зверь среди венчурных инвесторов)Trolls (Тролли)Six Principles for Making New Things (Шесть принципов при создании новых вещей)Why to Move to a Startup Hub (Зачем переезжать стартапу)The Future of Web Startups (Будущее интернет-стартапов)How to Do Philosophy (Как дела с философией )News from the FrontHow Not to Die (Как не умереть)Holding a Program in One’s Head (Удерживая проект в голове)Stuff (Барахло, Вещи)The Equity EquationAn Alternative Theory of UnionsThe Hacker’s Guide to InvestorsTwo Kinds of JudgementMicrosoft is Dead (Microsoft мертва)Why to Not Not Start a Startup (Для чего не не создавать стартап?)Is It Worth Being Wise? (Стоит ли быть мудрым?)Learning from FoundersHow Art Can Be GoodThe 18 Mistakes That Kill Startups (Ошибки, которые убивают стартапы)A Student’s Guide to StartupsHow to Present to Investors (Как провести презентацию для инвесторов)Copy What You Like (Копируй то, что нравится)The Island TestThe Power of the MarginalWhy Startups Condense in America (Почему стартапы концентрируются в Америке)How to Be Silicon Valley (Как стать кремниевой долиной)The Hardest Lessons for Startups to Learn (Самые трудные уроки для стартапов)See RandomnessAre Software Patents Evil?6,631,372Why YCHow to Do What You Love (Как делать то, что любишь но так, чтобы за это ничего не было)Good and Bad Procrastination (Хорошая и плохая прокрастинация)Web 2.0 (Веб 2.0)How to Fund a Startup (Как финансировать стартап?)The Venture Capital SqueezeIdeas for Startups (Идеи для стартапа)What I Did this SummerInequality and RiskAfter the LadderWhat Business Can Learn from Open Source (Что бизнес мог бы взять от свободного ПО, Работа настоящая и мнимая, Снизу вверх)Hiring is Obsolete (Наем устарел)The SubmarineWhy Smart People Have Bad Ideas (Почему умным людям приходят в голову глупые идеи)Return of the Mac (Возвращение Макинтоша)Writing, Briefly (&lt;Перевод в конце статьи)UndergraduationA Unified Theory of VC SuckageHow to Start a Startup (Как начать новое дело)What You’ll Wish You’d Known (То, что вы хотели бы знать заранее)Made in USA (Сделано в США)It’s Charisma, StupidBradley’s GhostA Version 1.0What the Bubble Got Right (В чем интернет-бум оказался прав)The Age of the Essay (Век Сочинения)The Python Paradox (Парадокс питона)Great Hackers (Первоклассные хакеры, Часть 2)Mind the Gap («Осторожно, разрыв»)How to Make Wealth (Как стать богатым)The Word “Hacker”What You Can’t SayFilters that Fight BackHackers and Painters (перевод часть 1, часть 2, альтернатива)If Lisp is So GreatThe Hundred-Year Language (Языки программирования через сто лет , Язык программирования будущего — сегодня)Why Nerds are Unpopular (За что не любят ботанов, Отчего нерды непопулярны?)Better Bayesian FilteringDesign and ResearchA Plan for SpamRevenge of the NerdsSuccinctness is Power (Краткость — сила)What Languages Fix (Что решают языки программирования)Taste for Makers (Вкус — созидателям)Why Arc Isn’t Especially Object-OrientedWhat Made Lisp DifferentThe Other Road AheadThe Roots of LispFive Questions about Language DesignBeing Popular (Быть Популярным, часть 1, часть 2)Java’s CoverBeating the Averages (Lisp: побеждая посредственность)Lisp for Web-Based ApplicationsChapter 1 of Ansi Common LispChapter 2 of Ansi Common LispProgramming Bottom-Upwww.paulgraham.com/accents.htmlАкцент у основателей стартапов
+Не с сайта Пола ГрэмаStartup Ideas We'd Like to Fund (Идеи для стартапов, в которые хочется вложить деньги)Копирование идеи стартапа
+Жена Пола рассказывает: «Как я влюбилась в мир стартапов»КнигиХакеры и художникиНапутственные слова к его книге«Reading Paul's essays is like having a conversation with a genius who doesn't need to score any points by proving it to you, except that most geniuses aren't as articulate as he is. You get to share Paul's sense that the Universe is a fascinating place, and his knack for looking at it from an unusual angle.»
+ — Eric Raymond, author of The Cathedral and the Bazaar
+«This book will force you to re-think your ideas about the nature of computer programming.»
+ — Robert Morris (создатель первого сетевого червя), MIT
+«Paul Graham is a hacker, a painter, and a terrific writer. His lucid, humorous prose is brimming with contrarian insight and practical wisdom on writing great code at the intersection of art, science and commerce. He may even make you want to start programming in Lisp.»
+ — Andy Hertzfeld, co-creator of the Macintosh
+«Since programmers create programs out of nothing, imagination is our only limitation. Thus, in the world of programming, the hero is the one who has great vision. Paul Graham is one of our contemporary heroes. He has the ability to embrace the vision, and to express it plainly. His works are my favorites, especially the ones describing language design. He explains secrets of programming, languages, and human nature that can only be learned from the hacker experience. This book shows you his great vision, and tells you the truth about the nature of hacking.»
+ — Yukihiro «Matz» Matsumoto, creator of Ruby
+«So wonderful that its biggest problem is its title… How to Think Like a Computer Millionaire would, I suspect, be a more popular title. It would certainly be apt.»
+ — Aaron Swartz
+«Paul Graham's Hackers &amp; Painters is one diverse book, but it doesn't matter if you're learning why nerds get beat up in high school, or the subtleties of language design and acceptance. Paul approaches each of his subjects with an entertaining insight that will make you smile and think. Highly recommended to anyone.»
+ — Rob «CmdrTaco» Malda, Creator/Director, Slashdotаннотация глав на русскомстащил отсюдаWhy Nerds Are Unpopular. Школа — это тюрьма, управляемая самими арестантами. Единственное её назначение — занять чем-то детей, пока родители на работе. Для того, чтобы не быть внизу иерархии, надо тратить усилия на поддержание статуса. Но умным детям интересны другие занятия, на имидж времени не остаётся, и они оказываются внизу.
+Статья суровая, но с оттенком оптимизма. Осознание ситуации — первый шаг к её исправлению. У кого есть знакомые подростки, дайте им эту статью.Hackers and Painters. Computer Science и программирование — разные вещи. Плохо, когда яйцеголовые оценивают хакеров по своим критериям. Ещё хуже, когда хакеры сами себя оценивают так.
+«Хакеры на конвейере» — тоже далеко не самый лучший вариант. «Большие компании выигрывают не потому, что делают великолепные вещи. Они выигрывают потому, что „сосут“ меньше, чем другие большие компании.»
+Лучше всего оценивать хакеров как писателей или художников. А хакерам стоит поучиться у них. Чему именно, посвящена вторая часть статьи.What You Can't Say. В любое время и в любом месте есть идеи, которые не стоит афишировать. Если у вас таких идей нет, вам «промыли мозги». А что делать, если есть?Good Bad Attitude. Хорошо, когда есть люди, готовые нарушать правила.The Other Road Ahead. Веб как новая среда создания и доставки программ. Какие перспективы открываются перед стартапами.How to Make Wealth. Стартап — это способ сжать всю обычную долгую рабочую жизнь в несколько лет.
+Чтобы много заработать, нужно создавать ценности. Признак того, что стартап на правильном пути — наличие пользователей.Mind the Gap. Небольшая, но «вставляюшая» статья. Мысль, что богатство и количество денег — это совершенно разные вещи, довольно-таки очевидна. А вот следствия — нет.
+Плохо ли, когда одни люди зарабатывают во много раз больше, чем другие? Нет! Даже наоборот, в современном мире, огромная разница в доходе — это показатель того, что общество здорово и не скатилось в застой.
+Там ещё несколько идей по поводу богатства государства и его жителей, но я лучше приведу забавную цитату. «Если бы Ленин побродил по офисам таких компаний как Yahoo, Intel или Cisco, он бы подумал, что коммунизм победил. Все носят одинаковую одежду, сидят в однотипных офисах (точнее, в кабинках) с однообразной мебелью, обращаются друг к другу по имени, а не званию. Всё выглядит так, как он предсказывал, до тех пор, пока не посмотреть на банковские счета. Оопс.»A Plan for Spam. С этой статьи начинается славная история байесовских спам-фильтров. Сейчас сложно представить, как мы жили без них, и поэтому забавно читать фразы типа «я надеюсь, этот метод сработает».Taste for Makers. Говорят, что о вкусах не спорят, но на самом-то деле всё прекрасное имеет общие особенности.Programming Languagues Explained. Пол Грэм высказывает своё отношение к некоторым понятиям, связанным с языками программирования. The Hundred-Year Language. Язык программирования — это не технология, а способ изложения мыслей. Поэтому языки изменяются медленно, и можно оценить, что нас ожидает в будущем.Beating the Averages. Статья как статья, но я почему-то перечитывал её много раз, чем-то она цепляет. О том, почему Лисп круче всех, почему его использование даёт конкурентное преимущество, и почему мало кто знает о его использовании в реальной жизни.Revenge of the Nerds. Как теоретическая игрушка неожиданно стала языком программирования, или снова о том, почему Лисп круче всех.The Dream Language. Как создать популярный язык программирования.Design and Research. Чем разработка дизайна отличается от научного исследования (удобство vs новизна), и как стоит подходить к дизайну.Hackers and Painterswww.paulgraham.com/hptoc.htmlWhy Nerds Are Unpopular
+ Their minds are not on the game.оригинал, перевод часть 1, часть 2
+Hackers and Painters
+ Hackers are makers, like painters or architects or writers.оригинал, перевод часть 1, часть 2, альтернатива
+What You Can't Say
+ How to think heretical thoughts and what to do with them.оригинал
+Good Bad Attitude
+ Like Americans, hackers win by breaking rules.оригинал, перевод
+The Other Road Ahead
+ Web-based software offers the biggest opportunity since the arrival of the microcomputer.
+How to Make Wealth
+ The best way to get rich is to create wealth. And startups are the best way to do that.оригинал, перевод
+Mind the Gap
+ Could «unequal income distribution» be less of a problem than we think?оригинал, перевод
+A Plan for Spam
+ Till recently most experts thought spam filtering wouldn't work. This proposal changed their minds.оригинал
+Taste for Makers
+ How do you make great things?оригинал, перевод
+Programming Languages Explained
+ What a programming language is and why they are a hot topic now.
+The Hundred-Year Language
+ How will we program in a hundred years? Why not start now?оригинал, перевод
+Beating the Averages
+ For web-based applications you can use whatever language you want. So can your competitors.орининал, перевод
+Revenge of the Nerds
+ In technology, «industry best practice» is a recipe for losing.оригинал
+The Dream Language
+ A good programming language is one that lets hackers have their way with it.оригинал, перевод часть 1, часть 2
+Design and Research
+ Research has to be original. Design has to be good.оригинал
+On LispпредисловиеГлава 1Глава 2Глава 3Глава 22. Недетерминированностьgithub.com/rigidus/onlispДля тех кто хочет прокачаться в писательствеЕще творцы учатся на примерах. Для художника музей — справочная по художественным техникам. Сотни лет элементом традиционного обучения художников являлось копирование работ великих мастеров, потому что копирование заставляет пристальнее вглядываться, как сделано полотно.
+Писатели тоже так делают. Бенджамин Франклин учился писать, резюмируя основные пункты эссе Эддисона и Стила, а затем пытаясь их воспроизвести. Рэймонд Чандлер то же самое проделывал с детективными рассказами. «Хакеры и художники»
+Пожалуй, самое короткое и концентрированное эссэ Грэма:Writing, BrieflyМногие просят моего совета о том, как писать. 
+Насколько важно уметь гладко излагать мысли и как некто может стать лучшим литератором? 
+В процессе ответа на этот вопрос я совершенно случайно написал крохотное эссе на эту тему.
+Обычно, я трачу на написание эссе недели. А вот это заняло 67 минут — 23 на написание и 44 на переписывание. И в онлайн оно попало только в качестве эксперимента, поскольку оно весьма емкое, как минимум.
+Я считаю, что хорошо писать гораздо важнее, чем предполагают многие люди. Любая литературная форма не просто передает идеи, само ее создание порождает их. И если вы плохо выражаете свои мысли в письме и вам не нравится этот процесс, то вы пропустите многие идеи, которые пришли бы к вам во время литераторства.
+А вот краткий рецепт «как быть хорошим писателем»:быстро напишите самый плохой вариант,
+переписывайте его снова и снова, 
+отбрасывайте все ненужное, 
+пишите в разговорной манере, 
+надо развить нюх на плохой стиль для обнаружения его в своих работах, 
+подражайте нравящимся вам авторам, 
+если трудно начать, то расскажите кому-либо о будущей теме и запишите свои слова, 
+ожидайте, что 80% идей придут к вам во время написания и что половина исходных окажется неверна, 
+уверенно режьте текст, 
+дайте вашим друзьям ваше творчество и пусть они скажут вам, что их смущает или тормозит, 
+не стоит (всегда) делать подробные наброски, 
+оставить идеи в тепле на несколько дней перед началом творчества, 
+носите с собой записную книжку или листочки бумаги, 
+начинайте писать в момент прихода мысли о первой фразе, а если поджимает время, то начните с самой важной мысли, 
+пишите о том, что вам нравится, 
+не пытайтесь произвести глубокое впечатление, 
+не стоит стесняться менять на лету темы, 
+используйте сноски для отклонений от темы, 
+используйте анафору для соединения предложений, 
+читайте свои эссе вслух для выявления плохо читаемых фраз и скучных частей (те параграфы, которые страшно читать), 
+расскажите читателю что-либо новое и полезное, 
+пишите долго, 
+перечитайте уже имеющееся перед началом переписывания, 
+завершайте трудный этап работы для того, чтобы на следующее утро начать с чего-то легкого, 
+учитывайте темы, которые вы собираетесь осветить в конце, 
+не считайте своим долгом разобрать хоть какую-либо из них, 
+пишите для читателя, который не будет читать столь же внимательно, как вы (наподобие попсы, которая нормально звучит на дрянной автомагнитоле), 
+исправляйте свои ошибки сразу, 
+пусть друзья укажут вам на ту фразу, о которой вы пожалеете больше всего, 
+вернитесь и смягчите жесткие замечания, 
+выкладывайте творения в Интернет, поскольку аудитория заставит вас писать больше и создавать больше идей, 
+распечатайте наброски, а не читайте их с экрана, 
+используйте простые, общеупотребительные слова, 
+научитесь отличать неожиданность и отклонения от темы, 
+научитесь распознавать близость финала, и используйте ее при первой возможности.
+
+Статьи про написание текста от автора курса на Хабре:Ускоряем понимание коммерческого или технического текста: как перестать бояться писать простоПочему 98% текстов на ваших сайтах не работают. Вообще. И как это починитьОписание курса «Буквы, которые стреляют в голову»Мы научим делать крутой контент без котиков и сисек. Чтобы каждая буква на своём месте. Чтобы интересно и понятно. Чтобы сильно и ритмично. Истории, бренд-журналистика, яркие образы — всё это здесь.
+(На самом деле даже описание программы курса есть куча подсказок как писать круто, в тч и на Хабр)Что нужно знать про тексты, которые работают и не работают. Как их отличить. Базовые навыки редактирования: выкидываем словесный мусор, учимся подавать факты. Метод гопника.
+Место, где контент и маркетинг пересекаются и бьют морду пиару.
+Какое отношение вирус собачьего бешенства типа А имеет к 99% обитателям Рунета, и что с этим делать. В идеале, точка дифференциации («о, это про меня и для меня») должна определяться читателем за 5 секунд.
+И еще много юмора тут
+P.S.
+Кто хочет взяться за перевод — рекомендую эссе «What You Can't Say» (готово 12 сентября), так как она третья по рейтингу и входит в книгу «Хакеры и художники». Следующий кандидат на перевод — «Revenge of the Nerds».
+
+      	
+		
+
+	
+
+		Какую статью стоит перевести в первую очередь?
+
+		
+					
+
+
+				
+					What You Can't Say
+				
+			
+					
+
+
+				
+					Revenge of the Nerds
+				
+			
+					
+
+
+				
+					The Other Road Ahead
+				
+			
+					
+
+
+				
+					Good Bad Attitude
+				
+			
+					
+
+
+				
+					The Hacker's Guide to Investors
+				
+			
+					
+
+
+				
+					How You Know
+				
+			
+					
+
+
+				
+					How to Be an Expert in a Changing World
+				
+			
+					
+
+
+				
+					How to Raise Money
+				
+			
+					
+
+
+				
+					другое
+				
+			Проголосовало 33 человека. Воздержалось 47 человек.
+	
+
+    Только зарегистрированные пользователи могут участвовать в опросе. Войдите, пожалуйста.
+	
+
+      
+    

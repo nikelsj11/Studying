@@ -1,0 +1,303 @@
+﻿#TITLE:Управление сложностью в проектах на ruby on rails. Часть 2
+
+      В предыдущей части я рассказал про представления. Теперь поговорим про контроллеры.
+В этой части я расскажу про:REST
+gem responders
+иерархию контроллеров
+хлебные крошки
+
+Контроллер обеспечивает связь между пользователем и системой:получает информацию от пользователя, 
+выполняет необходимые действия, 
+отправляет результат пользователю.
+
+Контроллер содержит только логику взаимодействия с пользователем:выбор view для отображения данных
+вызов процедур обработки данных
+отображение уведомлений
+управление сессиями
+
+Бизнес логика должна храниться отдельно. Ваше приложение может так же взаимодействовать с пользователем через командную строку с помощью rake команд. Rake команды, по сути, те же контроллеры и логика должна разделяться между ними.REST
+Я не буду углубляться в теорию REST, а расскажу вещи, имеющие отношение к rails.
+Очень часто вижу, что контроллеры воспринимают как набор экшенов, т.е. на любое действе пользователя добавляют новый нестандартный action.resources :projects do
+  member do
+    get :create_act
+    get :create_article_waybill
+    get :print_packing_slips
+    get :print_distributions
+  end
+
+  collection do
+    get :print_packing_slips
+    get :print_distributions
+  end
+end
+
+resources :buildings do
+  [:act, :waybill].each do |item|
+    post :"create_#{item}"
+    delete :"remove_#{item}"
+  end
+end
+
+Иногда случается, что программисты не понимают назначение и разницу методов GET и POST. Подробнее об этом написано в статье «15 тривиальных фактов о правильной работе с протоколом HTTP».
+Возьмем для примера работу с сессиями. По техническому заданию пользователь может: открыть форму входа
+отправить данные формы и войти в систему
+выйти из системы
+если пользователь является администратором, то он может подменить свою сессию на сессию другого пользователя
+
+Для реализации этого функционала создаем одиночный ресурс session, соответственно, со следующими экшенами: new, create, destroy, update. Таким образом, у нас есть один контроллер, который отвечает только за сессии.
+Рассмотрим пример сложнее. Есть сущность проект и контроллер, реализующий crud операции. 
+Проект может быть активным или завершенным. При завершении проекта нужно указать дату фактического завершения и причину задержки. Соответственно, нам нужно 2 экшена: для отображения формы и обработки данных из формы. Первое очевидное и неверное решение — добавить 2 новых метода в ProjectsController. Правильное решение — создать вложенный ресурс «завершение проекта». resources :projects do
+  scope module: :projects do
+    resource :finish
+    # GET /projects/1/finish/new
+    # POST /projects/1/finish
+  end
+end
+
+В этом контроллере мы добавим проверку статуса: а можем ли мы вообще завершать проект?class Web::Projects::FinishesController &lt; Web::Projects::ApplicationController
+  before_action :check_availability
+
+  def new
+  end
+
+  def create
+  end
+
+  private
+  def check_availability
+    redirect_to resource_project unless resource_project.can_finish?
+  end
+end
+
+Аналогично можно поступать с пошаговыми формами: каждый шаг — это отдельный вложенный ресурс.
+Идеальный случай, это когда используется только стандартные экшены. Понятно, что бывают исключения, но это случается очень редко.RespondersGem respongers помогает убрать повторяющуюся логику из контроллеров.делает код экшенов линейным
+автоматически проставляет flash при редиректах из локалей
+можно вынести общую логику, например, выбор версии сериалайзера, проставлять заголовки.
+class Web::ApplicationController &lt; ApplicationController
+  self.responder = WebResponder # потомок ActionController::Responder
+  respond_to :html
+end
+
+class Web::UsersController &lt; Web::ApplicationController
+  def update
+    @user = User.find params[:id]
+    @user.update user_params
+    respond_with @user
+  end
+end 
+Иерархия контроллеров
+Подробное описание есть в статье Кирилла Мокевнина. 
+Что-то подобное я видел в англоязычном блоге, но ссылку не приведу. Цель этой методики — организовать контроллеры.
+Сначала приложение рендерит только html. Потом появляется ajax, те же html, только без layout.
+Потом появляется api и вторая версия api, первую версию оставляем для обратной совместимости. Api использует для аутентификации токен в заголовке, а не cookie. Потом появляются rss ленты, для гостей и зарегистрированных, причем rss клиенты не умеют работать с cookies. В ссылку на rss feed нужно включать токен пользователя. После требуется использовать js фреймворк, и написать json api для этого с аутентификацией через текущую сессию. Затем появляется раздел сайта с отдельным layout и аутентификацией. Так же у нас появляются логически вложенные сущности с вложенными url.
+Как это решается. 
+Все контроллеры раскладываются по неймспейсам: web, ajax, api/v1, api/v2, feed, web_api, promo.
+И для вложенных ресурсов используются вложенные роуты и вложенные контроллеры.
+Пример кода:Rails.application.routes.draw do
+  scope module: :web do
+    resources :tasks do
+      scope module: :tasks do
+        resources :comments
+      end
+    end
+  end
+
+  namespace :api do
+    namespace :v1, defaults: { format: :json } do
+      resources :some_resources
+     end
+   end
+end
+
+class Web::ApplicationController &lt; ApplicationController
+  include UserAuthentication # подключаем специфичную для web аутентификацию
+  include Breadcrumbs # подключаем хлебные крошки, зачем они нужны в api?
+
+  self.responder = WebResponder
+  respond_to :html  # отвечаем всегда в html
+
+  add_breadcrumb {{ url: root_path }}
+
+  # в случае отказа в доступе
+  rescue_from Pundit::NotAuthorizedError, with: :user_not_authorized
+
+  private
+
+  def user_not_authorized
+    flash[:alert] = "You are not authorized to perform this action."
+    redirect_to(request.referrer || root_path)
+  end
+end
+
+# базовый класс для ресурсов, вложенных в ресурс task
+class Web::Tasks::ApplicationController &lt; Web::ApplicationController
+  # базовый ресурс доступен во view
+  helper_method :resource_task
+
+  add_breadcrumb {{ url: tasks_path }}
+  add_breadcrumb {{ title: resource_task, url: task_path(resource_task) }}
+
+  private
+
+  # используем этот метод для получения базового ресурса
+  def resource_task
+    @resource_task ||= Task.find params[:task_id]
+  end
+end
+
+# вложенный ресурс
+class Web::Tasks::CommentsController &lt; Web::Tasks::ApplicationController
+  add_breadcrumb
+
+  def new
+    @comment = resource_task.comments.build
+    authorize @comment
+    add_breadcrumb
+  end
+
+  def create
+    @comment = resource_task.comments.build
+    authorize @comment
+    add_breadcrumb
+    attrs = comment_params.merge(user: current_user)
+    @comment.update attrs
+    CommentNotificationService.on_create(@comment)
+    respond_with @comment, location: resource_task
+  end
+end
+
+Понятно, что глубокая вложенность — это плохо. Но это касается только ресурсов, а не неймспейсов. Т.е. допустимо иметь такую вложенность: Api::V1::Users::PostsController#create, POST /api/v1/users/1/posts. Вложенность ресурсов необходимо ограничивать только 2-мя уровнями: родительский ресурс и вложенный ресурс. Так же те экшены, которые не зависят от базового ресурса, можно вынести на уровень выше. В случае с users и posts: /api/v1/users/1/posts и /api/v1/posts/1
+Можно поспорить, что иерархия наследования классов — лучший выбор для этой задачи. Если у кого-то есть соображения, как организовать контроллеры иначе, то предлагайте свои варианты в комментариях.Хлебные крошки
+Я перепробовал несколько библиотек для формирования хлебных крошек, но ни одна не подошла. В итоге сделал свою реализацию, которая использует иерархическую организацию контроллеров.class Web::ApplicationController &lt; ApplicationController
+  include Breadcrumbs
+  # Добавляем хлебную крошку для главной страницы, первая ссылка в списке
+  # Заголовок подставляется из локали, ключ основан на класса контроллера
+  # {{}} означает блок, возвращающий хэш
+  add_breadcrumb {{ url: root_path }}
+end
+
+class Web::TasksController &lt; Web::ApplicationController
+  # добавляем вторую хлебную крошку
+  add_breadcrumb {{ url: tasks_path }}
+
+  def show
+    @task = Task.find params[:id]
+    # добавляем крошку для конкретного ресурса
+    add_breadcrumb model: @task
+    respond_with @task
+  end
+end
+
+class Web::Tasks::ApplicationController &lt; Web::ApplicationController
+  # крошки для вложенных ресурсов
+  add_breadcrumb {{ url: tasks_path }}
+  add_breadcrumb {{ title: resource_task, url: task_path(resource_task) }}
+
+  def resource_task; end # опустим
+end
+
+class Web::Tasks::CommentsController &lt; Web::Tasks::ApplicationController
+  # т.к. не указали url, то будет выведен только заголовок
+  add_breadcrumb
+
+  def new
+    @comment = resource_task.comments.build
+    authorize @comment
+    add_breadcrumb # добавит крошку "Создание новой записи"
+  end
+end
+
+# ru.yml
+ru:
+  breadcrumbs:
+    defaults:
+      show: "%{model}"
+      new: Создание новой записи
+      edit: "Редактирование: %{model}"
+    web:
+      application:
+        scope: Главная
+      tasks:
+        scope: Задачи
+        application:
+          scope: Задачи
+        comments:
+          scope: Комментарии
+Реализация# app/helpers/application_helper.rb
+# Хэлпер, отображающий крошки
+def render_breadcrumbs
+  return if breadcrumbs.blank? || breadcrumbs.one?
+  items = breadcrumbs.map do |breadcrumb|
+    title, url = breadcrumb.values_at :title, :url
+
+    item_class = []
+    item_class &lt;&lt; :active if breadcrumb == breadcrumbs.last
+
+    content_tag :li, class: item_class do
+      if url
+        link_to title, url
+      else
+        title
+      end
+    end
+  end
+
+  content_tag :ul, class: :breadcrumb do
+    items.join.html_safe
+  end
+end
+
+# app/controllers/concerns/breadcrumbs.rb
+module Breadcrumbs
+  extend ActiveSupport::Concern
+
+  included do
+    helper_method :breadcrumbs
+  end
+
+  class_methods do
+    def add_breadcrumb(&amp;block)
+      controller_class = self
+      before_action do
+        options = block ? instance_exec(&amp;block) : {}
+        title = options.fetch(:title) { controller_class.breadcrumbs_i18n_title :scope, options }
+        breadcrumbs &lt;&lt; { title: title, url: options[:url] }
+      end
+    end
+
+    def breadcrumbs_i18n_scope
+      [:breadcrumbs] | name.underscore.gsub('_controller', '').split('/')
+    end
+
+    def breadcrumbs_i18n_title(key, locals = {})
+      default_key = "breadcrumbs.defaults.#{key}"
+      if I18n.exists? default_key
+        default = I18n.t default_key
+      end
+
+      I18n.t key, locals.merge(scope: breadcrumbs_i18n_scope, default: default)
+    end
+  end
+
+  def breadcrumbs
+    @_breadcrumbs ||= []
+  end
+
+  # используется внутри экшена контроллера
+  def add_breadcrumb(locals = {})
+    key =
+        case action_name
+        when 'update' then 'edit'
+        when 'create' then 'new'
+        else action_name
+        end
+    title = self.class.breadcrumbs_i18n_title key, locals
+    breadcrumbs &lt;&lt; { title: title }
+  end
+end
+
+В этой части я показал как можно организовать код контроллеров. В следующей части я расскажу про работу с объектами-формами.
+
+      
+      
+    

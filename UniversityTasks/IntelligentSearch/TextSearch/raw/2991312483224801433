@@ -1,0 +1,297 @@
+﻿#TITLE:Опыт разработки игры для Android. От идеи до реализации
+
+      
+В данной статье хочу представить вам опыт разработки игры-тренажера английского языка для платформы Android, рассказать какие трудности возникли в процессе разработки, а также какие ошибки были допущены.Предыстория
+С 2011 года я работал Android-разработчиком в разных компаниях, в том числе и на фрилансе. За все это время участвовал в разработке различных проектов, но так и не нашел времени написать собственное приложение. Получается «сапожник без сапог» – программист, у которого есть аккаунт на Google Play и опыт участия в различных проектах, но нет собственных приложений. Идея
+В мае 2015 года задумал сделать игру-тренажер для запоминания слов на английском языке. В Google Play существует огромное множество таких игр и приложений, но хотелось сделать что-нибудь свое, не похожее на других. Для этого нужно было добавить какую-нибудь «изюминку», которая отличала бы мою игру от других. Этим ключевым отличием стало ограничение времени, за которое пользователь должен успеть перевести слова. Наличие таймера должно добавить в игру элемент напряжения. 
+Основная концепция игры схожа с другими играми – пользователь переводит слова, получает за это «звездочки», которые позволяют открывать новые уровни сложности. Для дальнейшей разработки необходимо было провести более глубокую детализацию проекта.
+Первым делом решил разделить слова по классическим для игр 3-м уровням сложности: легкий, средний и тяжелый, где в легком – наиболее простые и часто употребляемые в английском языке слова, а в сложном уровне – редко употребляемые слова, либо редкие варианты перевода. 
+После определения уровня сложности, нужно было понять, что будет представлять собой игровой уровень. Было принято решение, что уровень будет содержать 5 слов, на перевод которых дается ограниченное время. Каждому слову дается 4 варианта перевода. Чтобы усложнить задачу, слова для перевода будут выбраны либо созвучные с русским переводом, либо переводы слов, созвучных с оригинальным английским словом. Всё это сделано для того, чтобы пользователь полностью сосредоточился на приложении и внимательно (и в то же время быстро) выбирал ответы. 
+Если время, отведенное на уровень, закончилось, либо пользователь ошибся с переводом, уровень должен начинаться заново, при этом пользователю доступна возможность просмотра правильного ответа.
+При ответе правильно на все 5 слов, выставляется рейтинг (от 1-й до 3-х звезд, в зависимости от затраченного времени). При наборе определенного количества слов должен открываться новый уровень сложности, в котором будет меньше времени на ответы.
+В итоге у нас 3 уровня сложности, в каждом из которых 36 карточек по 5 слов в каждой. Получается, при полном прохождении игры пользователь выучит 540 английских слов различного уровня сложности, если полностью пройдет игру. Довольно неплохо для начала. Нэйминг
+Название приложения само пришло на ум – сочетание английских слов “Fun” и “English”, которые описывают всю суть игры – нескучное изучение английских слов. Дизайн
+Для начала на обычной бумаге были нарисованы скетчи будущих экранов приложения с указанием последовательности переходов между экранами и комментариями для дизайнера. Получилось всего 10 экранов: заставка
+главное меню
+выбор уровня сложности
+выбор игрового уровня
+игра
+окно «победа»
+окно «поражение»
+настройки
+информация
+обучение
+
+Этот материал был передан знакомому дизайнеру, который принялся за работу. Он разработал логотип, иконку, выбрал основные цвета, шрифты, размеры кнопок и др. Затем представил готовое решение интерфейса, нарисованное в векторе, и нарезку. Подготовил материалы для релиза («превьюшки», рекламные изображения и т.д.). Результат работы можете увидеть на скриншотахРазработкаОсновные моменты
+Минимально поддерживаемой версией Android был выбран API 15 (Android 4.0.3). 
+Приложению не нужны дополнительные разрешения (Android Permissions), т.к. в приложении нет ни рекламы, ни сбора статистики.
+В проекте всего 2 Activity: SplashActivity и GameActivity, в последнем экраны меняются путем изменения различных фрагментов, которых всего 7:InfoFragment — информация о разработчике
+MainFragment — главное меню
+PlayFragment — игра
+SelectDifficultFragment — выбор уровня сложности
+SelectLevelFragment — выбор игрового уровня
+SettingsFragment — настройки
+TutorialFragment — обучение
+
+База данных по своей структуре очень проста, поэтому сделана традиционным для Android способом, без использования каких-либо вспомогательных библиотек (greenDao или др.). Структура базы данныхpublic static abstract class BaseTable {
+        public static final String _ID = BaseColumns._ID;
+    }
+
+    public static class LevelResultTable extends BaseTable {
+        private static final String TABLE_NAME = "LevelResult";
+
+        public static final String DIFFICULT = "difficult";
+        public static final String LEVEL_NUMBER = "level_number";
+        public static final String STARS = "stars";
+
+        private static final String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + " (" + _ID + " INTEGER PRIMARY KEY UNIQUE, " +
+                DIFFICULT + " INTEGER NOT NULL, " +
+                LEVEL_NUMBER + " INTEGER NOT NULL, " +
+                STARS + " INTEGER NOT NULL, " +
+                " UNIQUE (" + DIFFICULT + ", " + LEVEL_NUMBER + ")" +
+                ") ;";
+    }
+
+    public static class WordTable extends BaseTable {
+        private static final String TABLE_NAME = "Word";
+
+        public static final String ORIGINAL = "original";
+        public static final String DIFFICULT = "difficult";
+        public static final String LEVEL = "level";
+        public static final String ANSWER = "answer";
+        public static final String TRANSLATE1 = "translate1";
+        public static final String TRANSLATE2 = "translate2";
+        public static final String TRANSLATE3 = "translate3";
+        public static final String TRANSLATE4 = "translate4";
+        public static final String TRANSLATE5 = "translate5";
+
+        private static final String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + " (" + _ID + " INTEGER PRIMARY KEY UNIQUE, " +
+                DIFFICULT + " INTEGER NOT NULL, " +
+                LEVEL + " INTEGER NOT NULL, " +
+                ORIGINAL + " TEXT UNIQUE NOT NULL, " +
+                ANSWER + " TEXT NOT NULL, " +
+                TRANSLATE1 + " TEXT NOT NULL, " +
+                TRANSLATE2 + " TEXT NOT NULL, " +
+                TRANSLATE3 + " TEXT NOT NULL, " +
+                TRANSLATE4 + " TEXT NOT NULL, " +
+                TRANSLATE5 + " TEXT NOT NULL " +
+                ");";
+    }
+
+Можно заметить, что в таблице WordTable присутствует поле answer и поля translate1, translate2, translate3, translate4, translate5, что в сумме дает 6 вариантов ответа, хотя в приложении на экране отображается всего 4. Дополнительные 2 варианта ответа используются для того, чтобы пользователь при повторном прохождении уровня увидел частично другие варианты ответа.
+При разработке первой версии ориентировались только на телефоны, поэтому в AndroidManifest была дописана строчка &lt;supports-screens android:xlargeScreens="false"/&gt;чтобы ограничить список поддерживаемых устройств.Контент
+Популярность любого приложения (если не брать в расчет какие-либо утилиты или узконаправленные профессиональные приложения) напрямую зависит от качества его контента.
+Как уже упоминал выше, в приложении 3 уровня сложности. Слова для каждого уровня подбирались вручную, причем сложность оценивалась субъективно. Для дополнительного усложнения игры при поиске слов старался использовать созвучные и схожие по написанию или смыслу слова, например, если оригинальное слово «Something», то вариантами перевода будут:Что-то
+Где-то
+Куда-то
+Кого-то
+Зачем-то
+Почему-то
+Блюр
+Когда по окончанию уровня появляется окно результата («поражение» или «успех»), задний фон становится «заблюренным». Эффект блюр реализован классическим способом: сохраняем Bitmap игрового Layout’а, обрабатываем его и ставим фоном в окно результата.
+Обработка изображения была реализована с помощью кода Mario Klingemann (mario@quasimondo.com), который был найден по ссылке. Обработка изображения является очень долгим процессом, поэтому для ускорения обработки изображение предварительно уменьшается. Как это часто бывает, теряя в качестве выигрываем во времени. В данном случае потери качества не критичны.Код метода для создания скриншотаpublic class ScreenShot {
+    public static Bitmap getScaledScreenshot(View v, float scaleFactor) {
+        Bitmap b = Bitmap.createBitmap((int) (v.getWidth() / scaleFactor), (int) (v.getHeight() / scaleFactor), Bitmap.Config.RGB_565);
+        Canvas c = new Canvas(b);
+        c.scale(1.f / scaleFactor, 1.f / scaleFactor);
+        v.draw(c);
+        return b;
+    }
+}
+Код класса для уменьшения изображенияpublic class Resize {
+    private static Paint sPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+
+    public static Bitmap scale(Bitmap bmp, float scaleFactor, boolean recycleOriginalBmp) {
+        Bitmap overlay = Bitmap.createBitmap((int) (bmp.getWidth()/scaleFactor),
+                (int) (bmp.getHeight()/scaleFactor), Bitmap.Config.RGB_565);
+
+        Canvas canvas = new Canvas(overlay);
+        canvas.scale(1 / scaleFactor, 1 / scaleFactor);
+        Paint paint = new Paint();
+        paint.setFlags(Paint.FILTER_BITMAP_FLAG);
+        canvas.drawBitmap(bmp, 0, 0, paint);
+
+        if(recycleOriginalBmp) {
+            bmp.recycle();
+            bmp = null;
+        }
+
+        return overlay;
+    }
+}
+CustomView
+Для повышения производительности и для улучшения отображения некоторых экранов были написано несколько собственных View и ViewGroup, например, кнопка ответа на вопрос.
+Текст кнопок со словами должен быть максимально большими, но в то же время количество букв в слове может отличаться от слова к слову. Поэтому был сделан автоматический подгон размера текста, если он превышает некоторую ширину (ширина View за вычетом отступа).Код кнопкиpublic class AnswerButton extends View {
+    //private final static String TAG = AnswerButton.class.getSimpleName();
+    public final static int STATE_NORMAL = 0;
+    public final static int STATE_SUCCESS = 1;
+    public final static int STATE_FAILED = 2;
+    public final static int STATE_PRESSED = 3;
+
+    private Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private Paint mBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+
+    private static Bitmap sBackgroundBitmap, sPressedBitmap, sSuccessBitmap, sFailedBitmap;
+
+    private int mState = STATE_NORMAL;
+    private int mWidth;
+    private int mHeight;
+
+    private float mTextLeftX, mTextTopY;
+    private float mLeftRightPadding;
+
+    private Rect mBackgroundRect = new Rect(), mTextBounds = new Rect();
+
+    private float mTextSize;
+
+    private String mText;
+
+    public AnswerButton(Context context) {
+        super(context);
+        init();
+    }
+
+    public AnswerButton(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        init();
+    }
+
+    public AnswerButton(Context context, AttributeSet attrs, int defStyle) {
+        super(context, attrs, defStyle);
+        init();
+    }
+
+    private void init() {
+        if(sBackgroundBitmap == null) {
+            sBackgroundBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.btn_answer_normal);
+        }
+
+        if(sSuccessBitmap == null) {
+            sSuccessBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.btn_answer_success);
+        }
+
+        if(sFailedBitmap == null) {
+            sFailedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.btn_answer_failed);
+        }
+
+        if(sPressedBitmap == null) {
+            sPressedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.btn_answer_pressed);
+        }
+
+        setOnTouchListener(new OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                int action = event.getAction() &amp; MotionEvent.ACTION_MASK;
+                if(action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+                    if(mState == STATE_PRESSED) {
+                        return false;
+                    }
+                    mState = STATE_PRESSED;
+                    invalidate();
+                } else {
+                    if(mState != STATE_PRESSED) {
+                        return false;
+                    }
+
+                    mState = STATE_NORMAL;
+                    invalidate();
+                }
+                return false;
+            }
+        });
+
+        mLeftRightPadding = getResources().getDimension(R.dimen.view_answer_button_left_right_padding);
+        mTextSize = getResources().getDimension(R.dimen.answer_button_text_size);
+
+        mTextPaint.setTextSize(mTextSize);
+        mTextPaint.setColor(getResources().getColor(R.color.answer_button_text_color));
+        mTextPaint.setTypeface(FontManager.VDS_COMPENSATED_LIGHT);
+    }
+
+    public void setText(String text) {
+        setState(STATE_NORMAL);
+        mText = text;
+
+        recalculate();
+        invalidate();
+    }
+
+    public String getText() {
+        return mText;
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+
+        mWidth = w;
+        mHeight = h;
+
+        mBackgroundRect.left = 0;
+        mBackgroundRect.top = 0;
+        mBackgroundRect.right = w;
+        mBackgroundRect.bottom = h;
+
+        recalculate();
+        invalidate();
+    }
+
+    public void setState(int state) {
+        mState = state;
+        invalidate();
+    }
+
+    private void recalculate() {
+        mTextPaint.setTextSize(mTextSize);
+
+        mTextPaint.getTextBounds(mText, 0, mText.length(), mTextBounds);
+        if(mWidth != 0) {
+            while (mTextBounds.width() &gt;= mWidth - mLeftRightPadding * 2) {
+                mTextPaint.setTextSize(mTextPaint.getTextSize() - 2);
+                mTextPaint.getTextBounds(mText, 0, mText.length(), mTextBounds);
+            }
+        }
+
+        mTextLeftX = (mWidth - mTextBounds.width()) / 2 - mTextBounds.left;
+        mTextTopY = (mHeight - mTextBounds.height()) / 2 - mTextBounds.top;
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+
+        if(mState == STATE_NORMAL) {
+            canvas.drawBitmap(sBackgroundBitmap, null, mBackgroundRect, mBackgroundPaint);
+        } else if(mState == STATE_PRESSED) {
+            canvas.drawBitmap(sPressedBitmap, null, mBackgroundRect, mBackgroundPaint);
+        } else if(mState == STATE_SUCCESS) {
+            canvas.drawBitmap(sSuccessBitmap, null, mBackgroundRect, mBackgroundPaint);
+        } else {
+            canvas.drawBitmap(sFailedBitmap, null, mBackgroundRect, mBackgroundPaint);
+        }
+        canvas.drawText(mText, mTextLeftX, mTextTopY, mTextPaint);
+    }
+}
+Анимация
+Статический Splash-screen выглядел скучно. Поэтому решили добавить к нему анимацию, а именно вращающийся британский флаг в букве g логотипа. Можно было сделать обычную gif-анимацию, но мы легких путей не ищем, поэтому всё реализовано в коде.
+Реализована анимация была достаточно просто: в разметке первым слоем идет изображение британского флага, выравненное по центру относительно контейнера, следующим слоем идет изображение слова funglish, тоже выравненное по центру. При открытии Activity запускается анимация, которая выполняет 2 оборота изображения британского флага. Также был изменен стандартный интерполятор анимации на AccelerateDecelerateInterpolator, чтобы вращение нелинейно ускорялось и замедлялось.
+Анимация получилась достаточно симпатичной и запоминающейся и понравилась всем опрошенным людям.Tutorial
+Большинство статей и книг про разработку и продвижение приложений в один голос твердят, что одним из самых важных моментов является обучение пользователя использованию продукта. Для обучения был создан экран Tutorial, в котором на 3-х страницах пользователю в вкратце рассказываются ключевые моменты игры. Данный экран появляется один раз перед первым началом игры.СкриншотПубликация
+Публикация приложения была сделана 7 августа. Думаю, не имеет смысла описывать процесс получения ключа и выкладывания приложения на Play Market.
+Приложение доступно для скачивания только в нескольких странах, где можно встретить большое число русскоговорящего населения, это, конечно же, Россия и Беларусь, Болгария, Казахстан и Украина. Как вы уже поняли, в приложении имеется поддержка только русского языка.Тестирование
+Когда большая часть игры была сделана, контент был найден, а игра уже готовилась к релизу, было проведено тестирование. Для этого были найдены добровольцы, которые согласились поиграть в альфа-версию игры.
+Ожидания оправдались – концепция отгадывания слов на время понравилась пользователям. По их словам, постоянно обновляющийся таймер держит в напряжении, а похожие переводы слов сбивают с толку.
+При этом был обнаружен эффект «Flappy Bird», когда пользователь не успевает до окончания таймера ответить на слова или в последний момент отвечает неправильно – он очень злится. Эмоции, хоть в данном случае они негативные, несут положительный эффект. Пользователь не может успокоиться, пока не пройдет уровень, а значит, выучит незнакомое ему слово.Распространение
+По некоторым причинам у меня не было возможности вплотную заняться распространением приложения. Единственное, что было сделано в первый день – выкладывание ссылки в соц. сеть ВКонтакте, и рассказ друзьям с просьбой скачать приложение. Первый день принес 17 скачиваний. Затем количество скачиваний упало до 1 в день.
+20 августа была создана тема на форуме сайта 4pda.ru, где было выложено описание приложения и ссылка на Play Market. На сегодняшний день эту тему посмотрели более 700 человек. Чуть позже сайт r-android.ru приятно удивил и написал обзор игры на своем сайте. В эти дни количество скачиваний поднялось до 30. Статистика скачиваний
+Надо отметить, что 4pda.ru принес большую аудиторию пользователей. И, скорее всего, авторы сайта r-android.ru именно оттуда узнали про игру и написали на нее обзор.Вывод
+Если оглянуться назад, можно понять, что многое было сделано не так или не вовремя. Например, можно было лучше продумать концепцию приложения, чтобы на середине разработки дизайна не переделывать половину работы дизайнера.
+Тестирование UX можно и нужно было провести в первую очередь на быстро собранном концепте, чтобы проверить идею. Но это было сделано уже перед самым релизом.
+Из-за отсутствия времени, не стал добавлять статистику Flurry, хотя сейчас она дала бы очень много полезной и необходимой информации об использовании приложения.
+Также очень хотелось добавить рекламу AdMob, чтобы посмотреть какие доходы он может принести и принесет ли. Но снова не хватило времени.
+К релизу тоже не был готовы: не были написаны ни пресс-релизы, ни статьи, ничего. Если бы лучше подошел к этому вопросу, в день выкладывания приложения можно было бы распространить сообщения на тематических форумах, сделать страницу приложения в соц.сетях, разослать статьи на различные сайты. Всё это могло бы в теории принести большое количество скачиваний, что положительно сказалось бы на положении приложения в рейтинге Play Market’а.
+Тема изучения английского языка является очень актуальной, поэтому сейчас стою перед выбором: сделать небольшое обновление (обновить контент), сделать концептуальное обновление (добавить новые виды уровней, например аудио-перевод), либо сделать пакет приложений для изучения английского языка (времена, неправильные глаголы и др.).
+Говорят, «первый блин – комом». Но думаю, что к Funglish это не относится. Разработка этой игры – бесценный опыт. Игра имеет хорошие рейтинги, люди пишут отзывы, просят добавить некоторые новые возможности. Очень приятно осознавать, что кому-то действительно нравится твое приложение. Это воодушевляет делать новые игры и приложения.
+      
+    

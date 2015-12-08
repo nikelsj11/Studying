@@ -1,0 +1,221 @@
+﻿#TITLE:Asterisk и Truecaller. Определение имени неизвестного абонента при входящих звонках
+
+      TrueCaller — это сервис по определению имени абонента при входящих звонках, а также блокировка спама. На смартфонах с CyanogenOS 12.1 он вшит в штатную звонилку. Также можете установить себе TrueDialler/TrueCaller с GooglePlay/AppStore/BlackBerryWorld/WindowsPhoneStore.
+Если вы активировали данный функционал в вашем смартфоне, то ваша книга контактов полностью слита на сервера Truecaller'а? Проверить, есть ли ваш номер в базе можно по ссылке, например: https://www.truecaller.com/ru/74996813210 (необходима аутентификация).
+ 
+На данный момент сервис насчитывает 1.6 миллиарда номеров по всему миру. Выписать свой номер из базы возможно по ссылке https://www.truecaller.com/unlist.Прикручиваем Truecaller к Asterisk'у 
+На сайте Truecaller'а есть возможность определить имя абонента по номеру телефона. Вход на сайт возможен только через сторонние сервисы и социальные сети. Для аутентификации я выбрал Вконтакте (протокол Oauth).
+1. Вручную войти на сайт truecaller.com, используя ранее зарегистрированную учетную запись вконтакте, разрешить доступ.
+2. Необходимо создать внутреннюю БД для хранения уже однажды звонивших контактов. Это необходимо чтобы каждый раз не обращаться к сервису truecaller'а.
+3. Написать скрипт прохождения аутентификации на сайте truecaller.com через сеть вконтакте, а также функцию для проверки номеров на наличие имени абонента.
+  
+Скрипт написан на PHP для удобства внедрения под AGI и общей читаемости.
+Создадим БД в MySQL:USE asterisk;
+
+CREATE TABLE asterisk.phonebook (
+  id int(11) NOT NULL AUTO_INCREMENT,
+  create_date timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  number varchar(20) NOT NULL,
+  name varchar(80) NOT NULL,
+  temporary_contact tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id)
+)
+ENGINE = INNODB
+AUTO_INCREMENT = 9
+AVG_ROW_LENGTH = 8192
+CHARACTER SET utf8
+COLLATE utf8_general_ci;
+
+PHP скрипт /var/lib/asterisk/agi-bin/phonebook.php (для тех кто делает через PHP-AGI, не забудьте раскомментировать соответствующие строчки, результат вы получите в переменную канала CID_NAME):#!/usr/bin/php -q
+&lt;?php	
+$error_level = error_reporting(0);
+set_time_limit(30);
+
+//require('phpagi.php');
+//$agi = new AGI();
+
+if (isset($argv[1])) {$num=$argv[1];} else {$num=NULL;}
+$cookie_file='/tmp/asterisk_truecaller_vk.cookie';
+$vk = array("login"=&gt; "логин_вконтакте", "password"=&gt; "пароль_вконтакте");
+$mysql = array("hostname" =&gt; "localhost", "login"=&gt; "root", "password"=&gt; "пароль_mysql", "database"=&gt; "asterisk");
+	
+if (!is_null($num))
+{
+	$callerid_name=get_num($num,$vk,$mysql,$cookie_file,true);
+	return $callerid_name;
+}
+else
+{
+	echo "Номер телефона не задан\n";
+	//$agi-&gt;set_variable("CID_NAME", "");
+	return false;
+}
+
+// поиск номера на сервисе truecaller
+function get_num($num,$vk,$mysql,$cookie_file,$isauth)
+{
+	// ищем в своей базе
+	mysql_connect($mysql['hostname'],$mysql['login'],$mysql['password']); 
+	mysql_select_db($mysql['database']) or die(mysql_error());
+	mysql_query("SET NAMES 'utf8'"); mysql_query("SET CHARACTER SET 'utf8'"); mysql_query("SET SESSION collation_connection = 'utf8_general_ci'");
+	
+	$query = "SELECT * FROM phonebook WHERE `number`=$num";
+	$res = mysql_query($query);
+	$count = mysql_num_rows($res);
+	if ($count&gt;0)
+	while ($row=mysql_fetch_array($res)) 
+	{ 
+		$name=$row['name'];
+		echo "Найден контакт в MySQL '".$name."'\n";
+		//$agi-&gt;set_variable("CID_NAME", "$name");
+		return $name;
+	}
+	mysql_close();
+	
+	// ищем в truecaller
+	if ($isauth)
+	{
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, 'http://www.truecaller.com/ru/'.$num ); 
+		curl_setopt($ch, CURLOPT_HEADER, 1);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+		curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file);
+		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);	
+		$data = curl_exec($ch);
+		curl_close($ch);	
+		
+		if (preg_match("/You need to sign in to view the result/i", $data)) {
+		    echo "Необходима аутентификация TC\n";
+		  	$isauth = oauth_vk($vk, $cookie_file);
+		  	get_num($num,$vk,$mysql,$cookie_file,$isauth);
+		  	
+		} else {
+		    preg_match("/&lt;div class=\"detailView__nameText\"&gt;\n\s*(.+)\s\n\s*&lt;\/div&gt;/i", $data, $matches); 
+		    if (count($matches)&gt;0) 
+		    {
+			    $name=$matches[1]; 
+			    echo "Найден контакт в TC '".$name."'\n";
+			    
+				mysql_connect($mysql['hostname'],$mysql['login'],$mysql['password']); 
+				mysql_select_db($mysql['database']) or die(mysql_error());
+				mysql_query("SET NAMES 'utf8'"); mysql_query("SET CHARACTER SET 'utf8'"); mysql_query("SET SESSION collation_connection = 'utf8_general_ci'");
+				$query = "INSERT INTO phonebook (`name`,`number`) VALUE ('".$name."','".$num."')";
+				$res = mysql_query($query);
+				mysql_close();			    
+			    
+			    //$agi-&gt;set_variable("CID_NAME", "$name");
+			    return $name;
+		    } else {
+		    	echo "Совпадения в TC не найдены\n";
+		    	//$agi-&gt;set_variable("CID_NAME", "");
+		    	return false;
+		    }
+		}	
+	}
+	else
+	{
+		echo "Аутентификация TC не была пройдена, попробуйте в следующий раз\n";
+		//$agi-&gt;set_variable("CID_NAME", "");
+		return false;
+	}
+}
+
+// авторизация через кнопку "зайти через вконтакте"
+function oauth_vk($vk, $cookie_file)
+{
+	unlink($cookie_file);
+	
+	$ch = curl_init();
+	curl_setopt($ch, CURLOPT_URL, 'https://oauth.vk.com/authorize?client_id=4951501&amp;scope=friends%2Coffline&amp;redirect_uri=http%3A%2F%2Fwww.truecaller.com%2Fsign-in%2Fvk&amp;response_type=code&amp;state=KKoLuT0vbWEOXfqIW9C0yAvoX7uoEDszIrVOxYSr');
+	curl_setopt($ch, CURLOPT_HEADER, 1);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+	curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+	curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file); // сохранять куки в файл 
+	curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);	
+	$data = curl_exec($ch);
+	curl_close($ch);
+	
+	preg_match("/&lt;form method=\"post\" action=\"(.+)\"&gt;/i", $data, $matches); if (count($matches)&gt;0) $action=$matches[1]; 
+	preg_match("/&lt;input type=\"hidden\" name=\"_origin\" value=\"(.+)\"&gt;/i", $data, $matches); if (count($matches)&gt;0) $origin=$matches[1];
+	preg_match("/&lt;input type=\"hidden\" name=\"ip_h\" value=\"(.+)\" \/&gt;/i", $data, $matches); if (count($matches)&gt;0) $ip_h=$matches[1];
+	preg_match("/&lt;input type=\"hidden\" name=\"lg_h\" value=\"(.+)\" \/&gt;/i", $data, $matches); if (count($matches)&gt;0) $lg_h=$matches[1];
+	preg_match("/&lt;input type=\"hidden\" name=\"to\" value=\"(.+)\"&gt;/i", $data, $matches); if (count($matches)&gt;0) $to=$matches[1];
+
+	if (isset($action) &amp;&amp; isset($origin) &amp;&amp; isset($ip_h) &amp;&amp; isset($lg_h) &amp;&amp; isset($to))
+	{	
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $action );
+		curl_setopt($ch, CURLOPT_HEADER, 1);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+		curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file);
+		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);
+		curl_setopt($ch, CURLOPT_POST, 1);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, array(
+		    '_origin'=&gt;$origin,
+		    'ip_h'=&gt;$ip_h,
+		    'lg_h'=&gt;$lg_h,
+		    'to'=&gt;$to,
+		    'email'=&gt;$vk['login'],
+		    'pass'=&gt;$vk['password']
+		));	
+		$data = curl_exec($ch);
+		curl_close($ch);
+		
+		preg_match('/Location: (http\:\/\/www\.truecaller\.com\/sign\-in\/vk\?code\=.+)\&amp;state.+/', $data, $matches); if (count($matches)&gt;0) $location=$matches[1];
+		
+		if (isset($location))
+		{
+			$ch = curl_init();
+			curl_setopt($ch, CURLOPT_URL, $location);
+			curl_setopt($ch, CURLOPT_HEADER, 1);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+			curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+			curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($ch, CURLOPT_COOKIEJAR, $cookie_file);
+			curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);	
+			$data = curl_exec($ch);
+			curl_close($ch);
+			
+			if (preg_match("/\&lt;title\&gt;Signed In \| Truecaller\&lt;\/title\&gt;/i", $data)) {
+			    echo "Аутентификация VK пройдена успешно\n";
+			  	return true;
+			} else {
+			    echo "Ошибка при прохождении авторизации через VK / не найдена строка о успешной авторизации\n";
+			    return false;
+		    }	
+		} else {
+		    echo "Ошибка при прохождении авторизации через VK / переменная location не получена\n";
+		    return false;
+		}
+	} else {
+	    echo "Ошибка при прохождении авторизации через VK / не все переменные получены action='".$action."', origin='".$origin."', ip_h='".$ip_h."', lg_h='".$lg_h."', to='".$to."'\n";
+	    return false;
+	}		
+}
+
+?&gt;
+
+У меня диалплан на LUA, поэтому в extensions.lua:local call = {}
+call.cid_num = channel["CALLERID(num)"]:get()
+call.cid_name = ""
+
+-- ищем телефонный номер в базе
+local handle = io.popen("/var/lib/asterisk/agi-bin/phonebook.php "..call.cid_num)
+local founded_name = handle:read("*a")
+handle:close()
+app.Noop(founded_name)
+_, _, call.cid_name = string.find(founded_name,"Найден%sконтакт%sв.+%s'(.+)'")
+channel["CALLERID(name)"]:set(call.cid_name)
+
+В данном скрипте нет учета блокировки спам контактов. Данная статья описана как «обзорная» по возможности интеграции столь чудесного сервиса Truecaller с вашей PBX.
+      
+    

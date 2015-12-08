@@ -1,0 +1,39 @@
+﻿#TITLE:Шорткаты для веб-панелей и улучшенный список введённых адресов в Vivaldi 1.0.283.8
+
+      Всем привет!
+Время идёт, приближается «час X» для выпуска полноценной бета-версии, и мы занимаемся в основном «полировкой» и отладкой уже существующих функций. Правда, не забываем и расширять их возможности.
+В частности, мы продолжали работать над списком введённых адресов. Надеемся, что теперь эта функция лучше соответствует своему предназначению.
+Ещё одно интересное нововведение касается веб-панелей. Теперь вы можете назначать индивидуальные комбинации быстрых клавиш для доступа к ним.
+Также хотелось бы сказать отдельное спасибо нашим добровольным тестерам, Sopranos. Они провели большую работу по оптимизации эскизов Экспресс-панели, предустановленных в браузере по умолчанию. Мы надеемся, вы оцените их усилия несмотря на:Известные проблемы
+Да. К сожалению, мы всё ещё ищем способ решить очень неприятный баг с исчезанием ячеек Экспресс-панели. Надеемся, что к ближайшим сборкам выход будет найден.
+На этом пока всё на сегодня. Загрузить новую сборку можно по ссылкам ниже:Windows 32-bit
+Windows 64-bit (экспериментальная)
+Mac
+Linux RPM 32-bit
+Linux RPM 64-bit
+Linux DEB 32-bit
+Linux DEB 64-bit
+Полный список изменений:VB-9204 Need clearer sorting indicator in bookmarks manager: Using full-width buttons in the vivaldi-tree headers; Ensuring that the header drop shadow overlays the content beneath it; Aligning table columns and headers (replacing padding with text-indent); Increasing verbosity of  text content
+ VB-8860 Private window leaks when opening several links in new tab
+ VB-9239 Reopening window from private window crashes vivaldi
+ VB-9236 Bookmarks text grayed: Upped the contrast for date stamp icon and text; Added 'title' for link icon in Notes; Added subtle shadow to folder icon to give better contrast
+ VB-8720 Rightclick on link choosing “open in new window” opens window with page and a blank tab
+ VB-1214 Missing/incorrect typed history
+ VB-7866 Start Page Background Image option “Stretch to fill” scaling improperly: Renamed “Stretch to Fill” to “Scale to fit”.
+ VB-8981 Add shortcuts to open web panels: can be mapped via keyboard settings
+ VB-7496 Tabbing never stops, goes to background tabs
+ VB-5168 Additional “find” keyboard shortcuts broken: Changed find shortcut defaults on Windows and Linux
+ VB-8581 Esc to exit Spatial Navigation does not make the second row disappear
+ VB-9263 Visual tab cycler dark ui background color is wrong: Added style for dark ui
+ VB-9322 Page Action Chooser not highlighted when active
+ VB-9082 Impossible to rename an item inside a Speed Dial folder
+ VB-9315 Prevent adding duplicate menu entries
+ VB-6002 Spatial navigation uses wrong dimensions for overflow:hidden boxes
+ VB-4784 Deal with ghost processes on Windows
+ VB-9251 Improve strategy for closing “Add Web Panel” callout
+ Made FFMpeg linking dynamic instead of static: more details here
+ Small improvement to new tab creation speed
+ URL field speed improvements: speed of autocompletion
+ Updated to Chromium version 45.0.2454.99
+.
+    

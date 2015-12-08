@@ -1,0 +1,428 @@
+﻿#TITLE:Android архитектура клиент-серверного приложения
+
+      Клиент-серверные приложения являются самыми распространенными и в то же время самыми сложными в разработке. Проблемы возникают на любом этапе, от выбора средств для выполнения запросов до методов кэширования результата. Если вы хотите узнать, как можно грамотно организовать сложную архитектуру, которая обеспечит стабильную работу вашего приложения, прошу под кат.
+Конечно, сейчас уже не 2010 год, когда разработчикам приходилось использовать знаменитые паттерны A/B/C или вообще запускать AsyncTask-и и сильно бить в бубен. Появилось большое количество различных библиотек, которые позволяют вам без особых усилий выполнять запросы, в том числе и асинхронно. Эти библиотеки весьма интересны, и нам тоже стоит начать с выбора подходящей. Но для начала давайте немного вспомним, что у нас уже есть.
+Раньше в Android единственным доступным средством для выполнения сетевых запросов был клиент Apache, который на самом деле далек от идеала, и не зря сейчас Google усиленно старается избавиться от него в новых приложениях. Позже плодом стараний разработчиков Google стал класс HttpUrlConnection. Он ситуацию исправил не сильно. По-прежнему не хватало возможности выполнять асинхронные запросы, хотя модель HttpUrlConnection + Loaders уже является более-менее работоспособной. 
+2013 год стал в этом плане весьма эффективным. Появились замечательные библиотеки Volley и Retrofit. Volley — библиотека более общего плана, предназначенная для работы с сетью, в то время как Retrofit специально создана для работы с REST Api. И именно последняя библиотека стала общепризнанным стандартом при разработке клиент-серверных приложений.
+У Retrofit, по сравнению с другими средствами, можно выделить несколько основных преимуществ:
+1) Крайне удобный и простой интерфейс, который предоставляет полный функционал для выполнения любых запросов;
+2) Гибкая настройка — можно использовать любой клиент для выполнения запроса, любую библиотеку для разбора json и т.д.;
+3) Отсутствие необходимости самостоятельно выполнять парсинг json-а — эту работу выполняет библиотека Gson (и уже не только Gson);
+4) Удобная обработка результата и ошибок;
+5) Поддержка Rx, что тоже является немаловажным фактором сегодня.
+Если вы еще не знакомы с библиотекой Retrofit, самое время изучить ее. Но я в любом случае сделаю небольшое введение, а заодно мы немного рассмотрим новые возможности версии 2.0.0 (советую также посмотреть презентацию по Retrofit 2.0.0). 
+В качестве примера я выбрал API для аэропортов за его максимальную простоту. И мы решаем самую банальную задачу — получение списка ближайших аэропортов. 
+В первую очередь нам нужно подключить все выбранные библиотеки и требуемые зависимости для Retrofit:compile 'com.squareup.retrofit:retrofit:2.0.0-beta1'
+compile 'com.squareup.retrofit:converter-gson:2.0.0-beta1'
+compile 'com.squareup.okhttp:okhttp:2.0.0'
+
+Мы будем получать аэропорты в виде списка объектов определенного класса. Поэтому этот класс надо создатьpublic class Airport {
+
+    @SerializedName("iata")
+    private String mIata;
+
+    @SerializedName("name")
+    private String mName;
+
+    @SerializedName("airport_name")
+    private String mAirportName;
+
+    public Airport() {
+    }
+}
+
+Создаем сервис для запросов:public interface AirportsService {
+
+    @GET("/places/coords_to_places_ru.json")
+    Call&lt;List&lt;Airport&gt;&gt; airports(@Query("coords") String gps);
+
+}
+Примечание про Retrofit 2.0.0
+Раньше для выполнения синхронных и асинхронных запросов мы должны были писать разные методы. Теперь при попытке создать сервис, который содержит void метод, вы получите ошибку. В Retrofit 2.0.0 интерфейс Call инкапсулирует запросы и позволяет выполнять их синхронно или асинхронно.Раньшеpublic interface AirportsService {
+
+    @GET("/places/coords_to_places_ru.json")
+    List&lt;Airport&gt; airports(@Query("coords") String gps);
+
+    @GET("/places/coords_to_places_ru.json")
+    void airports(@Query("coords") String gps, Callback&lt;List&lt;Airport&gt;&gt; callback);
+
+}
+СейчасAirportsService service = ApiFactory.getAirportsService();
+Call&lt;List&lt;Airport&gt;&gt; call = service.airports("55.749792,37.6324949");
+
+//sync request
+call.execute();
+
+//async request
+Callback&lt;List&lt;Airport&gt;&gt; callback = new RetrofitCallback&lt;List&lt;Airport&gt;&gt;() {
+    @Override
+    public void onResponse(Response&lt;List&lt;Airport&gt;&gt; response) {
+        super.onResponse(response);
+    }
+};
+call.enqueue(callback);
+
+Теперь создадим вспомогательные методы:public class ApiFactory {
+
+    private static final int CONNECT_TIMEOUT = 15;
+    private static final int WRITE_TIMEOUT = 60;
+    private static final int TIMEOUT = 60;
+
+    private static final OkHttpClient CLIENT = new OkHttpClient();
+
+    static {
+        CLIENT.setConnectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS);
+        CLIENT.setWriteTimeout(WRITE_TIMEOUT, TimeUnit.SECONDS);
+        CLIENT.setReadTimeout(TIMEOUT, TimeUnit.SECONDS);
+    }
+
+    @NonNull
+    public static AirportsService getAirportsService() {
+        return getRetrofit().create(AirportsService.class);
+    }
+
+    @NonNull
+    private static Retrofit getRetrofit() {
+        return new Retrofit.Builder()
+                .baseUrl(BuildConfig.API_ENDPOINT)
+                .addConverterFactory(GsonConverterFactory.create())
+                .client(CLIENT)
+                .build();
+    }
+}
+
+Отлично! Подготовка завершена, и теперь мы можем выполнить запрос:public class MainActivity extends AppCompatActivity implements Callback&lt;List&lt;Airport&gt;&gt; {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        AirportsService service = ApiFactory.getAirportsService();
+        Call&lt;List&lt;Airport&gt;&gt; call = service.airports("55.749792,37.6324949");
+        call.enqueue(this);
+    }
+
+    @Override
+    public void onResponse(Response&lt;List&lt;Airport&gt;&gt; response) {
+        if (response.isSuccess()) {
+            List&lt;Airport&gt; airports = response.body();
+            //do something here
+        }
+    }
+
+    @Override
+    public void onFailure(Throwable t) {
+    }
+}
+
+Все кажется очень простым. Мы без особых усилий создали нужные классы, и уже можем делать запросы, получать результат и обрабатывать ошибки, и все это буквально за 10 минут. Что же еще нужно?
+Однако такой подход является в корне неверным. Что будет, если во время выполнения запроса пользователь повернет устройство или вообще закроет приложение? С уверенностью можно сказать только то, что нужный результат вам не гарантирован, и мы недалеко ушли от первоначальных проблем. Да и запросы в активити и фрагментах никак не добавляют красоты вашему коду. Поэтому пора, наконец, вернуться к основной теме статьи — построение архитектуры клиент-серверного приложения.
+В данной ситуации у нас есть несколько вариантов. Можно воспользоваться любой библиотекой, которая обеспечивает грамотную работу с многопоточностью. Здесь идеально подходит фреймворк Rx, тем более что Retrofit его поддерживает. Однако построить архитектуру с Rx или даже просто использовать функциональное реактивное программирование — это нетривиальные задачи. Мы пойдем по более простому пути: воспользуемся средствами, которые предлагает нам Android из коробки. А именно, лоадерами.
+Лоадеры появились в версии API 11 и до сих пор остаются очень мощным средством для параллельного выполнения запросов. Конечно, в лоадерах можно делать вообще что угодно, но обычно их используют либо для чтения данных с базы, либо для выполнения сетевых запросов. И самое важное преимущество лоадеров — через класс LoaderManager они связаны с жизненным циклом Activity и Fragment. Это позволяет использовать их без опасения, что данные будут утрачены при закрытии приложения или результат вернется не в тот коллбэк. 
+Обычно модель работы с лоадерами подразумевает следующие шаги:
+1) Выполняем запрос и получаем результат;
+2) Каким-то образом кэшируем результат (чаще всего в базе данных);
+3) Возвращаем результат в Activity или Fragment. Примечание
+Такая модель хороша тем, что Activity или Fragment не думают, как именно получаются данные. Например, с сервера может вернуться ошибка, но при этом лоадер вернет закэшированные данные. 
+Давайте реализуем такую модель. Я опускаю подробности того, как реализована работа с базой данных, при необходимости вы можете посмотреть пример на Github (ссылка в конце статьи). Здесь тоже возможно множество вариаций, и я буду рассматривать их по очереди, все их преимущества и недостатки, пока, наконец, не дойду до модели, которую считаю оптимальной. Примечание
+Все лоадеры должны работать с универсальным типом данных, чтобы можно было использовать интерфейс LoaderCallbacks в одной активити или фрагменте для разных типов загружаемых данных. Первым таким типом, который приходит на ум, является Cursor.Еще одно примечание
+Все модели, связанные с лоадерами, имеют небольшой недостаток: для каждого запроса нужен отдельный лоадер. А это значит, что при изменении архитектуры или, например, переходе на другую базу данных, мы столкнемся с большим рефакторингом, что не слишком хорошо. Чтобы максимально обойти эту проблему, я буду использовать базовый класс для всех лоадеров и именно в нем хранить всю возможную общую логику. Loader + ContentProvider + асинхронные запросы
+Предусловия: есть классы для работы с базой данных SQLite через ContentProvider, есть возможность сохранять сущности в эту базу.
+В контексте данной модели крайне сложно вынести какую-то общую логику в базовый класс, поэтому в данном случае это всего лишь лоадер, от которого удобно наследоваться для выполнения асинхронных запросов. Его содержание не относится непосредственно к рассматриваемой архитектуре, поэтому он в спойлере. Однако вы также можете использовать его в своих приложениях:BaseLoaderpublic class BaseLoader extends Loader&lt;Cursor&gt; {
+
+    private Cursor mCursor;
+
+    public BaseLoader(Context context) {
+        super(context);
+    }
+
+    @Override
+    public void deliverResult(Cursor cursor) {
+        if (isReset()) {
+            if (cursor != null) {
+                cursor.close();
+            }
+            return;
+        }
+        Cursor oldCursor = mCursor;
+        mCursor = cursor;
+
+        if (isStarted()) {
+            super.deliverResult(cursor);
+        }
+
+        if (oldCursor != null &amp;&amp; oldCursor != cursor &amp;&amp; !oldCursor.isClosed()) {
+            oldCursor.close();
+        }
+    }
+
+    @Override
+    protected void onStartLoading() {
+        if (mCursor != null) {
+            deliverResult(mCursor);
+        } else {
+            forceLoad();
+        }
+    }
+
+    @Override
+    protected void onReset() {
+        if (mCursor != null &amp;&amp; !mCursor.isClosed()) {
+            mCursor.close();
+        }
+        mCursor = null;
+    }
+
+}
+
+Тогда лоадер для загрузки аэропортов может выглядеть следующим образом:public class AirportsLoader extends BaseLoader {
+
+    private final String mGps;
+
+    private final AirportsService mAirportsService;
+
+    public AirportsLoader(Context context, String gps) {
+        super(context);
+        mGps = gps;
+        mAirportsService = ApiFactory.getAirportsService();
+    }
+
+    @Override
+    protected void onForceLoad() {
+        Call&lt;List&lt;Airport&gt;&gt; call = mAirportsService.airports(mGps);
+        call.enqueue(new RetrofitCallback&lt;List&lt;Airport&gt;&gt;() {
+            @Override
+            public void onResponse(Response&lt;List&lt;Airport&gt;&gt; response) {
+                if (response.isSuccess()) {
+                    AirportsTable.clear(getContext());
+                    AirportsTable.save(getContext(), response.body());
+                    Cursor cursor = getContext().getContentResolver().query(AirportsTable.URI,
+                            null, null, null, null);
+                    deliverResult(cursor);
+                } else {
+                    deliverResult(null);
+                }
+            }
+        });
+    }
+}
+
+И теперь мы наконец можем использовать его в UI классах:public class MainActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks&lt;Cursor&gt; {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        getLoaderManager().initLoader(R.id.airports_loader, Bundle.EMPTY, this);
+    }
+
+    @Override
+    public Loader&lt;Cursor&gt; onCreateLoader(int id, Bundle args) {
+        switch (id) {
+            case R.id.airports_loader:
+                return new AirportsLoader(this, "55.749792,37.6324949");
+            default:
+                return null;
+        }
+    }
+
+    @Override
+    public void onLoadFinished(Loader&lt;Cursor&gt; loader, Cursor data) {
+        int id = loader.getId();
+        if (id == R.id.airports_loader) {
+            if (data != null &amp;&amp; data.moveToFirst()) {
+                List&lt;Airport&gt; airports = AirportsTable.listFromCursor(data);
+                //do something here
+            }
+        }
+        getLoaderManager().destroyLoader(id);
+    }
+
+    @Override
+    public void onLoaderReset(Loader&lt;Cursor&gt; loader) {
+    }
+}
+
+Как видно, здесь нет ничего сложного. Это абсолютно стандартная работа с лоадерами. На мой взгляд, лоадеры предоставляют идеальный уровень абстракции. Мы загружаем нужные данные, но без лишних знаний о том, как именно они загружаются.
+Эта модель стабильная, достаточно удобная для использования, но все же имеет недостатки:
+1) Каждый новый лоадер содержит свою логику для работы с результатом. Этот недостаток можно исправить, и частично мы сделаем это в следующей модели и полностью — в последней.
+2) Второй недостаток намного серьезнее: все операции с базой данных выполняются в главном потоке приложения, а это может приводить к различным негативным последствиям, даже до остановки приложения при очень большом количестве сохраняемых данных. Да и в конце концов, мы же используем лоадеры. Давайте делать все асинхронно!Loader + ContentProvider + синхронные запросы
+Спрашивается, зачем мы выполняли запрос асинхронно с помощью Retrofit-а, когда лоадеры и так позволяют нам работать в background? Исправим это.
+Эта модель упрощенная, но основное отличие заключается в том, что асинхронность запроса достигается за счет лоадеров, и работа с базой уже происходит не в основном потоке. Наследники базового класса должны лишь вернуть нам объект типа Cursor. Теперь базовый класс может выглядеть следующим образом:public abstract class BaseLoader extends AsyncTaskLoader&lt;Cursor&gt; {
+
+    public BaseLoader(Context context) {
+        super(context);
+    }
+
+    @Override
+    protected void onStartLoading() {
+        super.onStartLoading();
+        forceLoad();
+    }
+
+    @Override
+    public Cursor loadInBackground() {
+        try {
+            return apiCall();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    protected abstract Cursor apiCall() throws IOException;
+}
+
+И тогда реализация абстрактного метода может выглядеть следующим образом:@Override
+protected Cursor apiCall() throws IOException {
+    AirportsService service = ApiFactory.getAirportsService();
+    Call&lt;List&lt;Airport&gt;&gt; call = service.airports(mGps);
+    List&lt;Airport&gt; airports = call.execute().body();
+    AirportsTable.save(getContext(), airports);
+    return getContext().getContentResolver().query(AirportsTable.URI, null, null, null, null);
+}
+
+Работа с лоадером в UI у нас никак не изменилась. 
+По факту, эта модель является модификацией предыдущей, она частично устраняет ее недостатки. Но на мой взгляд, этого все равно недостаточно. Тут можно снова выделить недостатки:
+1) В каждом лоадере присутствует индивидуальная логика сохранения данных. 
+2) Возможна работа только с базой данных SQLite. 
+И наконец, давайте полностью устраним эти недостатки и получим универсальную и почти идеальную модель!Loader + любое хранилище данных + синхронные запросы
+Перед рассмотрением конкретных моделей я говорил о том, что для лоадеров мы должны использовать единый тип данных. Кроме Cursor ничего на ум не приходит. Так давайте создадим такой тип! Что должно в нем быть? Естественно, он не должен быть generic-типом (иначе мы не сможем использовать коллбэки лоадера для разных типов данных в одной активити / фрагменте), но в то же время он должен быть контейнером для объекта любого типа. И вот здесь я вижу единственное слабое место в этой модели — мы должны использовать тип Object и выполнять unchecked преобразования. Но все же, это не столь существенный минус. Итоговая версия данного типа выглядит следующим образом:public class Response {
+
+    @Nullable private Object mAnswer;
+
+    private RequestResult mRequestResult;
+
+    public Response() {
+        mRequestResult = RequestResult.ERROR;
+    }
+
+    @NonNull
+    public RequestResult getRequestResult() {
+        return mRequestResult;
+    }
+
+    public Response setRequestResult(RequestResult requestResult) {
+        mRequestResult = requestResult;
+        return this;
+    }
+
+    @Nullable
+    public &lt;T&gt; T getTypedAnswer() {
+        if (mAnswer == null) {
+            return null;
+        }
+        //noinspection unchecked
+        return (T) mAnswer;
+    }
+
+    public Response setAnswer(@Nullable Object answer) {
+        mAnswer = answer;
+        return this;
+    }
+
+    public void save(Context context) {
+    }
+}
+
+Данный тип может хранить результат выполнения запроса. Если мы хотим что-то делать для конкретного запроса, нужно унаследоваться от этого класса и переопределить / добавить нужные методы. Например, так:public class AirportsResponse extends Response {
+
+    @Override
+    public void save(Context context) {
+        List&lt;Airport&gt; airports = getTypedAnswer();
+        if (airports != null) {
+            AirportsTable.save(context, airports);
+        }
+    }
+}
+
+Отлично! Теперь напишем базовый класс для лоадеров:public abstract class BaseLoader extends AsyncTaskLoader&lt;Response&gt; {
+
+    public BaseLoader(Context context) {
+        super(context);
+    }
+
+    @Override
+    protected void onStartLoading() {
+        super.onStartLoading();
+        forceLoad();
+    }
+
+    @Override
+    public Response loadInBackground() {
+        try {
+            Response response = apiCall();
+            if (response.getRequestResult() == RequestResult.SUCCESS) {
+                response.save(getContext());
+                onSuccess();
+            } else {
+                onError();
+            }
+            return response;
+        } catch (IOException e) {
+            onError();
+            return new Response();
+        }
+    }
+
+    protected void onSuccess() {
+    }
+
+    protected void onError() {
+    }
+
+    protected abstract Response apiCall() throws IOException;
+}
+
+Этот класс лоадера является конечной целью данной статьи и, на мой взгляд, отличной, работоспособной и расширяемой моделью. Хотите перейти с SQLite, например, на Realm? Не проблема. Рассмотрим это в качестве следующего примера. Классы лоадеров не изменятся, изменится только модель, которую вы бы в любом случае редактировали. Не удалось выполнить запрос? Не проблема, доработайте в наследнике метод apiCall. Хотите очистить базу данных при ошибке? Переопределите onError и работайте — этот метод выполняется в фоновом потоке.
+А любой конкретный лоадер можно представить следующим образом (опять-таки, покажу только реализацию абстрактного метода):@Override
+protected Response apiCall() throws IOException {
+    AirportsService service = ApiFactory.getAirportsService();
+    Call&lt;List&lt;Airport&gt;&gt; call = service.airports(mGps);
+    List&lt;Airport&gt; airports = call.execute().body();
+    return new AirportsResponse()
+            .setRequestResult(RequestResult.SUCCESS)
+            .setAnswer(airports);
+}
+Примечание 
+При неудачно выполненном запросе будет выброшен Exception, и мы попадем в catch-ветку базового лоадера. 
+В итоге мы получили следующие результаты:
+1) Каждый лоадер зависит исключительно от своего запроса (от параметров и результата), но при этом он не знает, что он делает с полученными данными. То есть он будет меняться только при изменении параметров конкретного запроса. 
+2) Базовый лоадер управляет всей логикой выполнения запросов и работы с результатами.
+3) Более того, сами классы модели тоже не имеют понятия о том, как устроена работа с базой данных и прочее. Все это вынесено в отдельные классы / методы. Я этого нигде не указывал явно, но это можно посмотреть в примере на Github — ссылка в конце статьи.Вместо заключения
+Чуть выше я обещал показать еще один пример — переход с SQLite на Realm — и убедиться, что мы действительно не затронем лоадеры. Давайте сделаем это. На самом деле, кода здесь совсем чуть-чуть, ведь работа с базой у нас сейчас выполняется лишь в одном методе (я не учитываю изменения, связанные со спецификой Realm, а они есть, в частности, правила именования полей и работа с Gson; их можно посмотреть на Github).
+Подключим Realm:compile 'io.realm:realm-android:0.82.1'
+
+И изменим метод save в AirportsResponse:public class AirportsResponse extends Response {
+
+    @Override
+    public void save(Context context) {
+        List&lt;Airport&gt; airports = getTypedAnswer();
+        if (airports != null) {
+            AirportsHelper.save(Realm.getInstance(context), airports);
+        }
+    }
+}
+AirportsHelperpublic class AirportsHelper {
+
+    public static void save(@NonNull Realm realm, List&lt;Airport&gt; airports) {
+        realm.beginTransaction();
+        realm.clear(Airport.class);
+        realm.copyToRealm(airports);
+        realm.commitTransaction();
+    }
+
+    @NonNull
+    public static List&lt;Airport&gt; getAirports(@NonNull Realm realm) {
+        return realm.allObjects(Airport.class);
+    }
+}
+
+Вот и все! Мы элементарным образом, не затрагивая классы, которые содержат другую логику, изменили способ хранения данных.Все-таки заключение
+Хочу выделить один достаточно важный момент: мы не рассмотрели вопросы, связанные с использованием закэшированных данных, то есть при отстуствии интернета. Однако стратегия использования закэшированных данных в каждом приложении индивидуальна, и навязывать какой-то определенный подход я не считаю правильным. Да и так статья растянулась.
+В итоге мы рассмотрели основные вопросы организации архитектуры клиент-серверных приложений, и я надеюсь, что эта статья помогла вам узнать что-то новое и что вы будете использовать какую-либо из перечисленных моделей в своих проектах. Кроме того, если у вас есть свои идеи, как можно организовать такую архитектуру, — пишите, я буду рад обсудить.
+Спасибо, что дочитали до конца. Удачной разработки!
+P.S. Обещанная ссылка на код на GitHub.
+
+      
+      
+    

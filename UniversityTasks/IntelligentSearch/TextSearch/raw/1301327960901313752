@@ -1,0 +1,237 @@
+﻿#TITLE:Functional C#: Primitive obsession (одержимость примитивами)
+
+      Это вторая статья из миницикла статей про функциональный C#.Functional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+Что такое одержимость примитивами (Primitive obsession)?
+Если коротко, то это когда для моделирования домена приложения используются в основном примитивные типы (string, int и т.п.). К примеру, вот как класс Customer может выглядеть в типичном приложении:public class Customer
+{
+    public string Name { get; private set; }
+    public string Email { get; private set; }
+ 
+    public Customer(string name, string email)
+    {
+        Name = name;
+        Email = email;
+    }
+}
+
+Проблема здесь в том, что если вам необходимо обеспечить соблюдение каких-то бизнес-правил, вам приходится дублировать логику валидации по всему коду класса:public class Customer
+{
+    public string Name { get; private set; }
+    public string Email { get; private set; }
+ 
+    public Customer(string name, string email)
+    {
+        // Validate name
+        if (string.IsNullOrWhiteSpace(name) || name.Length &gt; 50)
+            throw new ArgumentException(“Name is invalid”);
+ 
+        // Validate e-mail
+        if (string.IsNullOrWhiteSpace(email) || email.Length &gt; 100)
+            throw new ArgumentException(“E-mail is invalid”);
+        if (!Regex.IsMatch(email, @”^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$”))
+            throw new ArgumentException(“E-mail is invalid”);
+ 
+        Name = name;
+        Email = email;
+    }
+ 
+    public void ChangeName(string name)
+    {
+        // Validate name
+        if (string.IsNullOrWhiteSpace(name) || name.Length &gt; 50)
+            throw new ArgumentException(“Name is invalid”);
+ 
+        Name = name;
+    }
+ 
+    public void ChangeEmail(string email)
+    {
+        // Validate e-mail
+        if (string.IsNullOrWhiteSpace(email) || email.Length &gt; 100)
+            throw new ArgumentException(“E-mail is invalid”);
+        if (!Regex.IsMatch(email, @”^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$”))
+            throw new ArgumentException(“E-mail is invalid”);
+ 
+        Email = email;
+    }
+}
+
+Более того, точно такой же код имеет тенденцию попадать в application слой:[HttpPost]
+public ActionResult CreateCustomer(CustomerInfo customerInfo)
+{
+    if (!ModelState.IsValid)
+        return View(customerInfo);
+ 
+    Customer customer = new Customer(customerInfo.Name, customerInfo.Email);
+    // Rest of the method
+}
+
+public class CustomerInfo
+{
+    [Required(ErrorMessage = “Name is required”)]
+    [StringLength(50, ErrorMessage = “Name is too long”)]
+    public string Name { get; set; }
+ 
+    [Required(ErrorMessage = “E-mail is required”)]
+    [RegularExpression(@”^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$”, ErrorMessage = “Invalid e-mail address”)]
+    [StringLength(100, ErrorMessage = “E-mail is too long”)]
+    public string Email { get; set; }
+}
+
+Очевидно, такой подход нарушает принцип DRY. Этот принцип говорит нам о том, что каждая часть информации о домене должна иметь единственный авторитетный источник в коде нашего приложения. В примере выше мы имеем 3 таких источника.Как избавиться от одержимости примитивами?
+Чтобы избавиться от одержимости примитивами, мы должны добавить два новых типа, которые бы агрегировали в себе логику валидации. Таким образом мы сможем избавиться от дублирования:public class Email
+{
+    private readonly string _value;
+ 
+    private Email(string value)
+    {
+        _value = value;
+    }
+ 
+    public static Result&lt;Email&gt; Create(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return Result.Fail&lt;Email&gt;(“E-mail can’t be empty”);
+ 
+        if (email.Length &gt; 100)
+            return Result.Fail&lt;Email&gt;(“E-mail is too long”);
+ 
+        if (!Regex.IsMatch(email, @”^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$”))
+            return Result.Fail&lt;Email&gt;(“E-mail is invalid”);
+ 
+        return Result.Ok(new Email(email));
+    }
+ 
+    public static implicit operator string(Email email)
+    {
+        return email._value;
+    }
+ 
+    public override bool Equals(object obj)
+    {
+        Email email = obj as Email;
+ 
+        if (ReferenceEquals(email, null))
+            return false;
+ 
+        return _value == email._value;
+    }
+ 
+    public override int GetHashCode()
+    {
+        return _value.GetHashCode();
+    }
+}
+
+public class CustomerName
+{
+    public static Result&lt;CustomerName&gt; Create(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail&lt;CustomerName&gt;(“Name can’t be empty”);
+ 
+        if (name.Length &gt; 50)
+            return Result.Fail&lt;CustomerName&gt;(“Name is too long”);
+ 
+        return Result.Ok(new CustomerName(name));
+    }
+ 
+    // Остальная часть класса такая же, как Email
+}
+
+Достоинство этого подхода в том, что в случае изменения логики валидации, нам достаточно отразить это изменение только единожды.
+Обратите вниманите, что конструктор класса Email закрыт, так что единственный способ создать его экземпляр — использовать статический метод Create, который проводит всю необходимую валидацию. Этот подход позволяет нам быть уверенными в том, что все экземпляры класса Email находятся в валидном состоянии на протяжении всей их жизни.
+Вот как контроллер может использовать эти классы:[HttpPost]
+public ActionResult CreateCustomer(CustomerInfo customerInfo)
+{
+    Result&lt;Email&gt; emailResult = Email.Create(customerInfo.Email);
+    Result&lt;CustomerName&gt; nameResult = CustomerName.Create(customerInfo.Name);
+ 
+    if (emailResult.Failure)
+        ModelState.AddModelError(“Email”, emailResult.Error);
+    if (nameResult.Failure)
+        ModelState.AddModelError(“Name”, nameResult.Error);
+ 
+    if (!ModelState.IsValid)
+        return View(customerInfo);
+ 
+    Customer customer = new Customer(nameResult.Value, emailResult.Value);
+    // Rest of the method
+}
+
+Экземпляры Result&lt;Email&gt; и Result&lt;CustomerName&gt; явным образом говорят нам о том, что метод Create может потерпеть неудачу, и если это так, то мы сможем узнать причину прочитав свойство Error.
+Вот как класс Customer выглядит после рефакторинга:public class Customer
+{
+    public CustomerName Name { get; private set; }
+    public Email Email { get; private set; }
+ 
+    public Customer(CustomerName name, Email email)
+    {
+        if (name == null)
+            throw new ArgumentNullException(“name”);
+        if (email == null)
+            throw new ArgumentNullException(“email”);
+ 
+        Name = name;
+        Email = email;
+    }
+ 
+    public void ChangeName(CustomerName name)
+    {
+        if (name == null)
+            throw new ArgumentNullException(“name”);
+ 
+        Name = name;
+    }
+ 
+    public void ChangeEmail(Email email)
+    {
+        if (email == null)
+            throw new ArgumentNullException(“email”);
+ 
+        Email = email;
+    }
+}
+
+Почти все проверки переехали в Email и CustomerName. Единственная оставшаяся валидация — это проверка на null. Мы посмотрим как избавиться и от нее в следующей статье.
+Итак, какие преимущества дает нам избавление от одержимости примитивами?Мы создаем единственный авторитетный источник знаний для каждой проблемы, решаемой нашим кодом. Никаких дублирований, только чистый и «сухой» (dry) код.
+Более строгая система типов. Компилятор работает на нас с удвоенной силой: теперь невозможно ошибочно присвоить свойству типа Email объект типа CustomerName, такой код не будет скомпилирован.
+Нет необходимости в проверке входящих значений. Если мы получаем объект класса Email или CustomerName, мы можем быть на 100% уверены, что он находится в корректном состоянии.
+
+Небольшое замечание. Некоторые разработчики имеют тенденцию «оборачивать» и «разворачивать» примитивные типы по нескольку раз в течение единственной операции:public void Process(string oldEmail, string newEmail)
+{
+    Result&lt;Email&gt; oldEmailResult = Email.Create(oldEmail);
+    Result&lt;Email&gt; newEmailResult = Email.Create(newEmail);
+ 
+    if (oldEmailResult.Failure || newEmailResult.Failure)
+        return;
+ 
+    string oldEmailValue = oldEmailResult.Value;
+    Customer customer = GetCustomerByEmail(oldEmailValue);
+    customer.Email = newEmailResult.Value;
+}
+
+Лучше всего использовать кастомные типы во всем приложении, разворачивая их в примитивы только когда они выходят за границы домена, к примеру сохраняются в базу или рендерятся в HTML. В ваших доменный классах старайтесь всегда использовать кастомные типы, код в таком случае будет более простым и читаемым:public void Process(Email oldEmail, Email newEmail)
+{
+    Customer customer = GetCustomerByEmail(oldEmail);
+    customer.Email = newEmail;
+}
+Ограничения
+К сожалению, создание типов-оберток в C# — процесс не настолько простой как в к примеру в F#. Это возможно изменится в C# 7 если будет реализован pattern matching и record types на уровне языка. До того момента, нам приходится иметь дело с неуклюжестью этого подхода.
+Из-за этого некоторые примитивные типы не стоят того, чтобы быть обернутыми. К примеру, тип «money amount» с единственным инвариантом, говорящим о том, что количество денег не может быть отрицательным, может быть представлен как обычный decimal. Это приведет к некоторому дублированию логики валидации, но даже не смотря на это, такой подход будет более простым решением, даже в долгосрочной перспективе.
+Как обычно, придерживайтесь здравого смысла и взвешивайте плюсы и минусы решений в каждом конкретном случае.Заключение
+С неизменяемыми и непримитивными типами мы подходим ближе к проектированию приложений на C# в более функциональном стиле. В следующей статье мы обсудим как облегчить «ошибку на миллиард долларов» (mitigate the billion dollar mistake).ИсходникиКод с primitive obsession
+Код без primitive obsession
+Остальные статьи в циклеFunctional C#: Immutability
+Functional C#: Primitive obsession
+Functional C#: Non-nullable reference types
+Functional C#: работа с ошибками
+
+Английская версия статьи: Functional C#: Primitive obsession
+
+      
+      
+    

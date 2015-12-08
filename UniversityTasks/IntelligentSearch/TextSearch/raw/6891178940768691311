@@ -1,0 +1,98 @@
+﻿#TITLE:SMS-уведомление о перебое питания, используя Asterisk + Dongle и apcupsd
+
+      Нужно, чтобы на мобильный приходило смс в случае исчезновения и возобновления питания на сервере. Есть Freebsd демон apcupsd управления ИБП APC и asterisk с подключенными к нему GSM-модемами.
+Если у вас данный демон управление ИБП стоит на той же машине, что и астериск, можно написать скрипт:#!/usr/local/bin/bash
+
+/usr/local/sbin/asterisk -rx "dongle sms KS_out +380501111234 Power fackup"
+
+Но у меня управляет ИБП другой сервер, и тут на помощь приходит AMI Asterisk.
+Первое что необходимо сделать, это включить AMI и завести пользователя, с помощью которого клиентская программа будет аутентифицироваться. В файл /etc/asterisk/manager.conf:[general]
+enabled = yes
+port = 5038
+bindaddr = 0.0.0.0
+ 
+/etc/asterisk/manager.conf[admin]
+secret=FrUyHn6FSaX
+deny=0.0.0.0/0.0.0.0
+permit=192.168.0.0/255.255.0.0
+read=system,call,log,verbose,command,agent,user,config,command,dtmf,reporting,cdr,dialplan,originate
+write=system,call,log,verbose,command,agent,user,config,command,dtmf,reporting,cdr,dialplan,originate
+
+Для применения изменений выполним reload:asterisk -rx "module reload manager"&lt;/&gt;
+
+Создаем два скрипта на базе PHP. Основа взята &lt;a href="habrahabr.ru/company/centosadmin/blog/161521/"&gt;отсюда&lt;/a&gt;.
+
+poweroff.php:
+
+&lt;source lang="php"&gt;
+&lt;?php
+
+# —- define globals —-
+$strhost = "192.168.1.6";
+$strport = "5038";
+$timeout = "10";
+$d=date(DATE_RFC822);
+$errno=0 ;
+$errstr=0 ;
+
+$sconn = fsockopen ($strhost, $strport, &amp;$errno, &amp;$errstr, $timeout) or die("Connection to $strhost:$strport failed");
+
+if (!$sconn) { echo "$errstr ($errno)&lt;br&gt;\n"; }
+
+else {
+
+fputs ($sconn, "Action: login\r\n");
+fputs ($sconn, "Username: admin\r\n");
+fputs ($sconn, "Secret: FrUyHn6FSaX\r\n");
+fputs ($sconn, "Events: on\r\n\r\n");
+usleep(1000);
+fputs ($sconn, "Action: Command\r\n");
+fputs ($sconn, "Command: dongle sms MTS_out +380661111234 Power failure. $d \r\n");
+fputs ($sconn, "Action: Logoff\r\n\r\n");
+usleep (500);
+
+fclose ($sconn);
+
+}
+
+И poweron.php:&lt;?php
+
+# —- define globals —-
+$strhost = "192.168.1.6";
+$strport = "5038";
+$timeout = "10";
+$d=date(DATE_RFC822);
+$errno=0 ;
+$errstr=0 ;
+
+$sconn = fsockopen ($strhost, $strport, &amp;$errno, &amp;$errstr, $timeout) or die("Connection to $strhost:$strport failed");
+
+if (!$sconn) { echo "$errstr ($errno)&lt;br&gt;\n"; }
+
+else {
+
+fputs ($sconn, "Action: login\r\n");
+fputs ($sconn, "Username: admin\r\n");
+fputs ($sconn, "Secret: FrUyHn6FSaX\r\n");
+fputs ($sconn, "Events: on\r\n\r\n");
+usleep(1000);
+fputs ($sconn, "Action: Command\r\n");
+fputs ($sconn, "Command: dongle sms MTS_out +380661111234 Power is back. $d \r\n");
+fputs ($sconn, "Action: Logoff\r\n\r\n");
+usleep (500);
+
+fclose ($sconn);
+
+}
+
+
+Далее переходим:# cd /usr/local/etc/apcupsd/
+И редактируем два файла onbattery — событие при переключении на батарею и offbattery — переходим на основное питание.
+Добавляем строчки в начале файла: /usr/local/bin/php -f /root/scripts/poweroff.php
+И так же для poweron.php:/usr/local/bin/php -f /root/scripts/poweron.php
+Результат — при переходе ИБП на работу от батарей приходит смс с текстом «Power failure. Wed, 05 Jun 13 15:53:59 +0300.
+И обратная смс при возвращении питания.
+
+      
+      
+    
