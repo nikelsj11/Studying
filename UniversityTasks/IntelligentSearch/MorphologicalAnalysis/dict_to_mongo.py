@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     with open(file_name_input) as file_input:
         for line in file_input:
-
+            line_counter += 1
             progress(line_counter, total_line_count, '%d / %d ' % (line_counter, total_line_count))
 
             process_item = line.replace('\n', '')
@@ -57,7 +57,9 @@ if __name__ == "__main__":
             else:
                 last_root = collection.insert_one(parsed_item).inserted_id
 
-            line_counter += 1
+
 
     collection.create_index([('_id', ASCENDING)], unique=True)
     collection.create_index([('word', ASCENDING)], unique=False)
+
+    print '\nDone.'
