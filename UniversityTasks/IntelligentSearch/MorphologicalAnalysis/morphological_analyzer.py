@@ -76,12 +76,12 @@ if __name__ == "__main__":
     total_line_count = get_line_count(file_name_input)
     line_counter = 1
 
-    token_counter = 0
-    word_counter = 0
-    punctuation_counter = 0
-    not_found_counter = 0
-    forms_counter = 0
-    words_with_one_more_form = 0
+    token_counter = 0.0
+    word_counter = 0.0
+    punctuation_counter = 0.0
+    not_found_counter = 0.0
+    forms_counter = 0.0
+    words_with_one_more_form = 0.0
 
     with open(file_name_output, 'w') as file_output:
         with open(file_name_input, 'r') as file_input:
