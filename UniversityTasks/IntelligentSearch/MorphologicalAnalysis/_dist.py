@@ -6,7 +6,7 @@ DB_COLLECTION = 'speakrus'
 
 
 def get_line_count(file_name):
-    return int(subprocess.check_output('wc -l %s' % file_name, shell=True).strip().split()[0]) + 1
+    return int(subprocess.check_output('wc -l %s' % file_name, shell=True).strip().split()[0])
 
 
 def progress(count, total, suffix=''):
