@@ -152,6 +152,14 @@ $ wc -w raw/* | sed 's/\s\+/ /g' | cut -d ' ' -f2 | sort -nrk1 | head -2 | tail 
 -----LOG: Длительность поиска: 1.669 сек.
 ```
 
+Чем больше уникальных поисковых слов, тем быстрее поиск после индексации.  
+
+До индексации:  
+![Example 2](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-2.png?raw=true)
+
+После индексации:  
+![Example 3](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-3.png?raw=true)
+
 ######Результат
 
 ![Example 1](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-1.png?raw=true)
