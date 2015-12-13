@@ -2,6 +2,7 @@
 import os
 import sys
 from colorama import Fore, Back, Style, init
+import time
 
 init(autoreset=True)
 
@@ -14,7 +15,7 @@ def log(message, color=Fore.WHITE, limiter=False):
     print('%s%sLOG: %s' % (limiter and '-' * limiter or '', color, message))
 
 
-def search(text, search_query, max_distance):
+def search(text, search_query, max_distance, indexer):
     assert max_distance > 0 and search_query
 
     if not text:
@@ -29,6 +30,8 @@ def search(text, search_query, max_distance):
     for segment in segmented_text:
         for item_holder in segment:
             if item_holder['type'] is 'WORD':
+                if indexer:
+                    indexer(item_holder['token'])
                 position += 1
                 if item_holder['token'] in search_query:
                     if item_holder['token'] in query_counter:
@@ -68,58 +71,117 @@ def search(text, search_query, max_distance):
             return scope
 
 
+def get_invariant_indexer():
+    index_scope = {}
+
+    def get_file_indexer(file_name_in):
+        def _index(word):
+            word_in = u'%s' % word
+            word_index_scope = index_scope.get(word_in)
+            if word_index_scope is None:
+                index_scope[word_in] = [file_name_in]
+            elif not (file_name_in in word_index_scope):
+                index_scope[word_in].append(file_name_in)
+        return _index
+
+    def has_intersection(file_name_in, words):
+        for word in words:
+            index_holder = index_scope.get(word)
+            if index_holder is None:
+                return False
+
+            if not (file_name_in in index_holder):
+                return False
+
+        return True
+
+    return {
+        'get_file_indexer': get_file_indexer,
+        'has_intersection': has_intersection,
+        '_A': index_scope
+    }
+
+
 if __name__ == "__main__":
-    print Back.GREEN + u'Максимальное расстояние между 2мя словами из поискового запроса:'
-    print Back.RED + u'-> ',
-    max_len = int(input())
+    is_indexed = False
+    invariant_indexer = get_invariant_indexer()
+    while True:
+        print Back.GREEN + u'Начать поиск (Д/н)?'
+        print Back.RED + u'-> ',
+        answer = raw_input().decode('utf8').lower()
+        if answer == u'н':
+            break
+        if not (answer == u'д'):
+            continue
 
-    print Back.GREEN + u'Слова поискового запроса (через пробел):'
-    print Back.RED + u'-> ',
-    words = raw_input().decode('utf8').split(' ')
+        print Back.GREEN + u'Максимальное расстояние между 2мя словами из поискового запроса:'
+        print Back.RED + u'-> ',
+        max_len = int(input())
 
-    print
+        print Back.GREEN + u'Слова поискового запроса (через пробел):'
+        print Back.RED + u'-> ',
+        words = raw_input().decode('utf8').split(' ')
 
-    log(u'Запрос состоит из %d слов, максимальное расстояние между словами = %d' % (len(words), max_len))
+        print
 
-    raw_files = os.listdir('raw')
+        log(u'Запрос состоит из %d слов, максимальное расстояние между словами = %d' % (len(words), max_len))
 
-    log(u'Загружено %s файлов для поиска' % len(raw_files))
+        startTime = time.time()
+        raw_files = os.listdir('raw')
 
-    print
+        log(u'Загружено %s файлов для поиска' % len(raw_files))
 
-    log(u'Начинаем поиск:')
+        print
 
-    result_counter = 1
+        log(u'Начинаем поиск:')
 
-    for file_name in raw_files:
+        result_counter = 1
 
-        with open('raw/%s' % file_name) as file:
-            raw = file.read().decode('utf8').split('\n')
-            article_name = raw[0].strip()
-            results = search(' '.join(raw[2:]), words, max_len)
+        for file_name in raw_files:
+            indexer = None
+            if not is_indexed:
+                indexer = invariant_indexer['get_file_indexer'](file_name)
+            elif not invariant_indexer['has_intersection'](file_name, words):
+                continue
+            with open('raw/%s' % file_name) as file_instance:
+                raw = file_instance.read().decode('utf8').split('\n')
+                article_name = raw[0].strip()
+                results = search(' '.join(raw[2:]), words, max_len, indexer)
 
-            if results:
-                log(u'Результат = %d' % result_counter, color=Fore.RED, limiter=5)
-                log(u'Поиск по файлу: %s' % file_name, color=Fore.CYAN, limiter=2)
-                log(u'%s' % article_name, color=Fore.YELLOW, limiter=2)
+                if results:
+                    log(u'Результат = %d' % result_counter, color=Fore.RED, limiter=5)
+                    log(u'Поиск по файлу: %s' % file_name, color=Fore.CYAN, limiter=2)
+                    log(u'%s' % article_name, color=Fore.YELLOW, limiter=2)
 
-                for result in results:
-                    output = []
-                    for item in result[2]:
-                        output.append(
-                            Back.GREEN + "<%s>" % item['position'] + item['token'] +
-                            Back.RESET if item.get('position') == result[0] else item['token']
+                    for result in results:
+                        output = []
+                        for item in result[2]:
+                            output.append(
+                                Back.GREEN + "<%s>" % item['position'] + item['token'] +
+                                Back.RESET if item.get('position') == result[0] else item['token']
+                            )
+
+                        print u'%s%s%s %s' % (
+                            Fore.GREEN,
+                            '=>',
+                            Fore.RESET,
+                            ' '.join(output)
                         )
 
-                    print u'%s%s%s %s' % (
-                        Fore.GREEN,
-                        '=>',
-                        Fore.RESET,
-                        ' '.join(output)
-                    )
+                    print
 
-                print
+                    result_counter += 1
+        is_indexed = True
 
-                result_counter += 1
+        log("Длительность поиска: {:.3f} сек.".format(time.time() - startTime), color=Fore.YELLOW, limiter=5)
+
+        print
 
     print Style.RESET_ALL
+
+    # for key in invariant_indexer['_A'].keys():
+    #     files = invariant_indexer['_A'][key]
+    #
+    #     print "\n --- ", key
+    #     for file_instance in files:
+    #         print "\t\t > ", file_instance
