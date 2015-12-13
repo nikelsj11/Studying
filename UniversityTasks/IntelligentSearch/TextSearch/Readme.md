@@ -160,6 +160,10 @@ $ wc -w raw/* | sed 's/\s\+/ /g' | cut -d ' ' -f2 | sort -nrk1 | head -2 | tail 
 После индексации:  
 ![Example 3](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-3.png?raw=true)
 
+```
+28.650 сек -> 0.236 сек
+```
+
 ######Результат
 
 ![Example 1](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-1.png?raw=true)
@@ -167,9 +171,6 @@ $ wc -w raw/* | sed 's/\s\+/ /g' | cut -d ' ' -f2 | sort -nrk1 | head -2 | tail 
 ![Example 3](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-3.png?raw=true)
 ![Example 4](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-4.png?raw=true)
 ![Example 6](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-6.png?raw=true)
-![Example 7](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-7.png?raw=true)
-![Example 8](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-8.png?raw=true)
-![Example 9](https://github.com/nikelsj11/Studying/blob/master/UniversityTasks/IntelligentSearch/TextSearch/_img/exp-9.png?raw=true)
 
 Название скрипта: *search_words_in_range.py*.
 
