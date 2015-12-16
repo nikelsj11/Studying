@@ -11,9 +11,9 @@ def get_line_count(file_name):
 
 def progress(count, total, suffix=''):
     bar_len = 60
-    filled_len = int(round(bar_len * count / float(total)))
+    filled_len = int(round(bar_len * count / (float(total) or 1)))
 
-    percents = round(100.0 * count / float(total), 1)
+    percents = round(100.0 * count / (float(total) or 1), 1)
     bar = '=' * filled_len + '-' * (bar_len - filled_len)
 
     sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', suffix))
