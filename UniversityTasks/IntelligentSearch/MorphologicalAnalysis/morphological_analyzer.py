@@ -122,7 +122,7 @@ if __name__ == "__main__":
                 punctuation_counter,
                 not_found_counter,
                 words_with_one_more_form,
-                forms_counter/(word_counter-not_found_counter),
+                forms_counter/(word_counter-not_found_counter or 1),
             )
 
             file_output.write(output)
