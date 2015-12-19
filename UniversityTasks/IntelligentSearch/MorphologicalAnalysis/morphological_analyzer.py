@@ -22,7 +22,7 @@ CТАТИСТИКА:
     5: Количество токенов-словоупотреблений, для которых найдено более 1 варианта
                         нормализации или более 1 набора признаков (омонимичные токены): %d.
     6: Среднее количество омонимов из расчёта на 1 токен-словоупотребление
-                                            (только для найденных в словаре словоформ): %d.
+                                            (только для найденных в словаре словоформ): %f.
 """
 
 
@@ -74,14 +74,15 @@ if __name__ == "__main__":
     finder = get_finder(DB_NAME, DB_COLLECTION)
 
     total_line_count = get_line_count(file_name_input)
+    total_line_count = total_line_count or 1
     line_counter = 1
 
-    token_counter = 0.0
-    word_counter = 0.0
-    punctuation_counter = 0.0
-    not_found_counter = 0.0
-    forms_counter = 0.0
-    words_with_one_more_form = 0.0
+    token_counter = 0
+    word_counter = 0
+    punctuation_counter = 0
+    not_found_counter = 0
+    forms_counter = 0
+    words_with_one_more_form = 0
 
     with open(file_name_output, 'w') as file_output:
         with open(file_name_input, 'r') as file_input:
@@ -118,11 +119,11 @@ if __name__ == "__main__":
 
             output = stat_pattern % (
                 token_counter,
-                word_counter,
                 punctuation_counter,
+                word_counter,
                 not_found_counter,
                 words_with_one_more_form,
-                forms_counter/(word_counter-not_found_counter or 1),
+                forms_counter/((0.0+word_counter-not_found_counter) or 1),
             )
 
             file_output.write(output)
