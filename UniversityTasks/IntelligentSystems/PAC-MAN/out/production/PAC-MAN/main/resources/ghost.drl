@@ -1,0 +1,105 @@
+package game
+
+import game.pacman.GhostActor
+import game.pacman.PacManActor
+import game.pacman.DirectionMap
+
+rule "0"
+when
+    gh: GhostActor(isPassMovement == true);
+then
+    gh.setIsPassMovement(false);
+end
+
+rule "1"
+when
+    gh: GhostActor(myState == GhostActor.BLIND, isPassMovement == false, bc : currentBlindCount);
+then
+    gh.setCurrentBlindCount(bc - 1);
+end
+
+rule "2"
+when
+    gh: GhostActor(myState == GhostActor.BLIND, isPassMovement == false, currentBlindCount < blindCount / 3);
+then
+    gh.setMyBlink(1);
+end
+
+rule "3"
+when
+    gh: GhostActor(myState == GhostActor.BLIND, isPassMovement == false, currentBlindCount == 0);
+then
+    gh.setMyState(gh.OUT);
+end
+
+rule "4"
+when
+    gh: GhostActor(myState == GhostActor.BLIND, isPassMovement == false, 1 == (currentBlindCount % 2));
+then
+    gh.setIsPassMovement(true);
+end
+
+rule "5"
+when
+    gh: GhostActor(myState == GhostActor.BLIND, isMove == 0);
+then
+    gh.setIsPassMovement(true);
+end
+
+rule "6"
+when
+    gh: GhostActor((myX % 16) == 0, (myY % 16) == 0, isPassMovement == false, myState == GhostActor.IN);
+then
+    gh.setMyDir(gh.INSelect());
+end
+
+rule "7"
+when
+    gh: GhostActor((myX % 16) == 0, (myY % 16) == 0, isPassMovement == false, myState == GhostActor.OUT);
+    pc: PacManActor(pcX: myX, pcY: myY, pcDir: myDir);
+then
+    gh.setMyDir(gh.OUTSelect(pcX, pcY, pcDir));
+end
+
+rule "8"
+when
+    gh: GhostActor((myX % 16) == 0, (myY % 16) == 0, isPassMovement == false, myState == GhostActor.BLIND);
+    pc: PacManActor(pcX: myX, pcY: myY, pcDir: myDir);
+then
+    gh.setMyDir(gh.BLINDSelect(pcX, pcY, pcDir));
+end
+
+rule "9"
+when
+    gh: GhostActor((myX % 16) == 0, (myY % 16) == 0, isPassMovement == false, myState == GhostActor.EYE);
+then
+    gh.setMyDir(gh.EYESelect());
+end
+
+rule "10"
+when
+    gh: GhostActor(
+        isPassMovement == false,
+        myState != GhostActor.EYE,
+        ghX : myX,
+        ghY : myY,
+        ghDir : myDir
+    );
+then
+    gh.setMyX(ghX + DirectionMap.XDirection[ghDir]);
+    gh.setMyY(ghY + DirectionMap.YDirection[ghDir]);
+end
+
+rule "11"
+when
+    gh: GhostActor(
+        isPassMovement == false,
+        myState == GhostActor.EYE,
+        ghX : myX,
+        ghY : myY,
+        ghDir : myDir
+    );
+then
+	gh.setMyX(ghX + 2 * DirectionMap.XDirection[ghDir]);
+	gh.setMyY(ghY + 2 * DirectionMap.YDirection[ghDir]);
+end
